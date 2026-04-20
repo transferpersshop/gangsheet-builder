@@ -22,6 +22,8 @@ const I18N = {
     uploadTipLink:'Bekijk onze tips',
     loadingVector:'Vector wordt verwerkt…',
     unsupportedFile:'Bestandstype niet ondersteund',
+    epsConvertHint:'Dit EPS-bestand kan niet worden geopend. Sla het op als PDF of SVG vanuit Illustrator en upload opnieuw.',
+    epsLoading:'EPS-bestand wordt geconverteerd…',
     unitLabel:'Meeteenheid',
     gapLabel:"Tussenruimte tussen logo's",
     gapHelp:"Bepaal de tussenruimte tussen de logo's voor het knippen/snijden van de transfers.",
@@ -149,6 +151,8 @@ const I18N = {
     uploadTipLink:'View our tips',
     loadingVector:'Processing vector file…',
     unsupportedFile:'File type not supported',
+    epsConvertHint:'This EPS file could not be opened. Save it as PDF or SVG from Illustrator and re-upload.',
+    epsLoading:'Converting EPS file…',
     unitLabel:'Measurement unit',
     gapLabel:'Spacing between logos',
     gapHelp:'Set the spacing between logos for cutting/trimming the transfers.',
@@ -809,12 +813,17 @@ function handleFiles(files){
       };
       reader.readAsText(file);
     } else if(ext==='eps'){
-      // EPS files: try embedded SVG first, then always fall back to pdf.js
-      // (pdf.js can render many EPS files directly from their ArrayBuffer).
+      // EPS strategy (multi-layered for maximum compatibility):
+      // 1. Embedded SVG (rare but ideal — instant)
+      // 2. Embedded PDF stream (Illustrator "PDF Compatibility")
+      // 3. Ghostscript WASM fallback (handles ALL EPS files)
       const reader = new FileReader();
       reader.onload = ev=>{
-        const text = ev.target.result;
-        // Some EPS files contain embedded SVG or XML preview.
+        const buf = ev.target.result;
+        const bytes = new Uint8Array(buf);
+        const text = new TextDecoder('latin1').decode(bytes);
+
+        // 1. Embedded SVG?
         const svgStart = text.indexOf('<svg');
         if(svgStart !== -1){
           const svgEnd = text.indexOf('</svg>', svgStart);
@@ -823,12 +832,21 @@ function handleFiles(files){
             return;
           }
         }
-        // Always try pdf.js rendering as fallback — it handles most EPS files
-        const reader2 = new FileReader();
-        reader2.onload = ev2=>loadPdfAsImage(ev2.target.result, file.name);
-        reader2.readAsArrayBuffer(file);
+
+        // 2. Embedded PDF stream? (Illustrator "PDF Compatibility" mode)
+        const pdfStart = text.indexOf('%PDF-');
+        if(pdfStart !== -1){
+          let pdfEnd = text.lastIndexOf('%%EOF');
+          if(pdfEnd !== -1) pdfEnd += 5; else pdfEnd = bytes.length;
+          const pdfBuf = buf.slice(pdfStart, pdfEnd);
+          loadPdfAsImage(pdfBuf, file.name);
+          return;
+        }
+
+        // 3. Server-side Ghostscript — handles any EPS file
+        loadEpsViaServer(buf, file.name);
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     } else if(type==='application/pdf' || ext==='pdf'){
       const reader = new FileReader();
       reader.onload = ev=>loadPdfAsImage(ev.target.result, file.name);
@@ -918,6 +936,48 @@ async function loadPdfAsImage(arrayBuffer, name){
   } catch(err){
     console.error('PDF load error:', err);
     toast(`⚠️ "${name}": kon bestand niet openen. Probeer het om te zetten naar SVG of PNG.`, 'error', 6000);
+    throw err; // re-throw so callers (EPS handler) can catch
+  }
+}
+
+/* =========================================================
+   EPS RENDERING — Server-side Ghostscript via API
+   Sends pure EPS files to a conversion endpoint that runs
+   Ghostscript and returns SVG (vector, editable, scalable).
+   ========================================================= */
+const EPS_CONVERTER_URL = 'https://eps-converter-transferpersshop.onrender.com/convert';
+
+async function loadEpsViaServer(arrayBuffer, name){
+  // First try pdf.js (works for EPS with embedded PDF that our
+  // text-scan might have missed in binary-wrapped files)
+  try {
+    await loadPdfAsImage(arrayBuffer, name);
+    return; // success
+  } catch(e){ /* expected — continue to server conversion */ }
+
+  // Send to conversion API → SVG (vector output)
+  toast(t('epsLoading'), 'info', 5000);
+  try {
+    const formData = new FormData();
+    formData.append('file', new Blob([arrayBuffer], { type:'application/postscript' }), name);
+
+    const resp = await fetch(EPS_CONVERTER_URL + '?format=svg', {
+      method: 'POST',
+      body: formData
+    });
+
+    if(!resp.ok){
+      const errData = await resp.json().catch(()=>({ error:'Server error' }));
+      throw new Error(errData.error || `HTTP ${resp.status}`);
+    }
+
+    const svgText = await resp.text();
+
+    // Load as SVG vector — fully editable (colors, scalable)
+    loadSvg(svgText, name);
+  } catch(err){
+    console.error('EPS server conversion failed:', err);
+    toast(`⚠️ "${name}": ${t('epsConvertHint')}`, 'warn', 8000);
   }
 }
 
@@ -1558,18 +1618,17 @@ function renderSelectedPanel(){
       <div class="panel-group-title">${t('sectionTransform')}</div>
 
       <div class="panel-row-label">${t('logoSize')}</div>
-      <div class="row size-row" style="margin-bottom:10px;align-items:end">
-        <div class="field" style="margin-bottom:0;flex:1">
+      <div class="size-row" style="margin-bottom:10px">
+        <div class="field">
           <label>${t('width')} (${unit})</label>
           <input type="number" step="0.1" id="inpW" value="${w}">
         </div>
-        <button type="button" class="ratio-lock active" id="ratioLockBtn" title="${t('ratioLock')}" aria-label="${t('ratioLock')}">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        <button type="button" class="ratio-lock${_ratioLocked?' active':''}" id="ratioLockBtn" title="${_ratioLocked?t('ratioLock'):t('ratioUnlock')}" aria-label="${t('ratioLock')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            ${_ratioLocked?'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>':'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M17 11V7a5 5 0 0 0-10 0"></path>'}
           </svg>
         </button>
-        <div class="field" style="margin-bottom:0;flex:1">
+        <div class="field">
           <label>${t('height')} (${unit})</label>
           <input type="number" step="0.1" id="inpH" value="${h}">
         </div>
@@ -1640,8 +1699,8 @@ function renderSelectedPanel(){
       lockBtn.title = _ratioLocked ? t('ratioLock') : t('ratioUnlock');
       // Update lock icon: locked vs unlocked
       lockBtn.innerHTML = _ratioLocked
-        ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
-        : '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5"></path></svg>';
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M17 11V7a5 5 0 0 0-10 0"></path></svg>';
       // Also toggle Fabric's interactive scaling lock on current object
       const cur = getSelectedObj();
       if(cur){
