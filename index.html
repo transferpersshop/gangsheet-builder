@@ -270,6 +270,11 @@
   .panel-row-label:first-child{margin-top:0}
   .panel-group .field{margin-bottom:8px}
 
+  /* ── Aspect ratio lock button ── */
+  .ratio-lock{background:none;border:2px solid var(--border);border-radius:8px;padding:4px 6px;cursor:pointer;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .15s;margin:0 4px;margin-top:18px}
+  .ratio-lock:hover{border-color:var(--primary);color:var(--primary)}
+  .ratio-lock.active{border-color:var(--primary);color:var(--primary);background:rgba(29,154,175,.08)}
+
   /* ── PDF progress (inline above export button) ── */
   .pdf-progress{width:100%;max-height:0;opacity:0;overflow:hidden;transition:max-height .35s ease,opacity .3s ease,margin .3s ease;margin-bottom:0}
   .pdf-progress.visible{max-height:60px;opacity:1;margin-bottom:10px}

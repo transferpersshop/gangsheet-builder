@@ -49,7 +49,7 @@ const I18N = {
     exportBtn:'Download print-ready PDF',
     close:'Sluiten',
     zoomFit:'Passend', zoomHint:'Sneltoetsen: +, −, 0',
-    width:'Breedte', height:'Hoogte', rotation:'Rotatie', logoSize:'Afmeting logo', actions:'Acties',
+    width:'Breedte', height:'Hoogte', rotation:'Rotatie', logoSize:'Afmeting logo', actions:'Acties', ratioLock:'Verhouding vergrendelen', ratioUnlock:'Verhouding ontgrendelen',
     sectionTransform:'Transformatie', sectionAppearance:'Uiterlijk', sectionLayout:'Indeling', sectionInfo:'Info',
     dpiAt:'Resolutie bij deze grootte',
     quality:'Kwaliteit',
@@ -176,7 +176,7 @@ const I18N = {
     exportBtn:'Download print-ready PDF',
     close:'Close',
     zoomFit:'Fit', zoomHint:'Shortcuts: +, −, 0',
-    width:'Width', height:'Height', rotation:'Rotation', logoSize:'Logo size', actions:'Actions',
+    width:'Width', height:'Height', rotation:'Rotation', logoSize:'Logo size', actions:'Actions', ratioLock:'Lock aspect ratio', ratioUnlock:'Unlock aspect ratio',
     sectionTransform:'Transform', sectionAppearance:'Appearance', sectionLayout:'Layout', sectionInfo:'Info',
     dpiAt:'Resolution at this size',
     quality:'Quality',
@@ -809,7 +809,8 @@ function handleFiles(files){
       };
       reader.readAsText(file);
     } else if(ext==='eps'){
-      // EPS files: try extracting embedded SVG or degrade gracefully.
+      // EPS files: try embedded SVG first, then always fall back to pdf.js
+      // (pdf.js can render many EPS files directly from their ArrayBuffer).
       const reader = new FileReader();
       reader.onload = ev=>{
         const text = ev.target.result;
@@ -822,15 +823,10 @@ function handleFiles(files){
             return;
           }
         }
-        // Try PDF rendering (some EPS contain PDF section)
-        const pdfStart = text.indexOf('%PDF-');
-        if(pdfStart !== -1){
-          const reader2 = new FileReader();
-          reader2.onload = ev2=>loadPdfAsImage(ev2.target.result, file.name);
-          reader2.readAsArrayBuffer(file);
-          return;
-        }
-        toast(`⚠️ "${file.name}": ${t('unsupportedFile')}. EPS-bestanden worden het best eerst omgezet naar SVG of PDF.`, 'warn', 8000);
+        // Always try pdf.js rendering as fallback — it handles most EPS files
+        const reader2 = new FileReader();
+        reader2.onload = ev2=>loadPdfAsImage(ev2.target.result, file.name);
+        reader2.readAsArrayBuffer(file);
       };
       reader.readAsText(file);
     } else if(type==='application/pdf' || ext==='pdf'){
@@ -876,16 +872,38 @@ async function loadPdfAsImage(arrayBuffer, name){
     const ctx = offscreen.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
 
-    // --- Strip white page background → transparent ---
+    // --- Smart white background detection ---
+    // Only strip white if the image has a solid white border (page background),
+    // not if white is part of the actual design. We check the outer 2px edge:
+    // if >90% of edge pixels are near-white, it's a page bg and we strip it.
     const imgData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
     const px = imgData.data;
-    const BG_THRESH = 250; // near-white → transparent
-    for(let i = 0; i < px.length; i += 4){
-      if(px[i] >= BG_THRESH && px[i+1] >= BG_THRESH && px[i+2] >= BG_THRESH){
-        px[i+3] = 0; // alpha → 0
+    const BG_THRESH = 250;
+    const ow = offscreen.width, oh = offscreen.height;
+    let edgeWhite = 0, edgeTotal = 0;
+    for(let x = 0; x < ow; x++){
+      for(const y of [0, 1, oh-2, oh-1]){
+        const i = (y * ow + x) * 4;
+        edgeTotal++;
+        if(px[i] >= BG_THRESH && px[i+1] >= BG_THRESH && px[i+2] >= BG_THRESH) edgeWhite++;
       }
     }
-    ctx.putImageData(imgData, 0, 0);
+    for(let y = 2; y < oh-2; y++){
+      for(const x of [0, 1, ow-2, ow-1]){
+        const i = (y * ow + x) * 4;
+        edgeTotal++;
+        if(px[i] >= BG_THRESH && px[i+1] >= BG_THRESH && px[i+2] >= BG_THRESH) edgeWhite++;
+      }
+    }
+    const hasPageBg = edgeTotal > 0 && (edgeWhite / edgeTotal) > 0.90;
+    if(hasPageBg){
+      for(let i = 0; i < px.length; i += 4){
+        if(px[i] >= BG_THRESH && px[i+1] >= BG_THRESH && px[i+2] >= BG_THRESH){
+          px[i+3] = 0;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
 
     const dataUrl = offscreen.toDataURL('image/png');
     const naturalW = offscreen.width;
@@ -1540,12 +1558,18 @@ function renderSelectedPanel(){
       <div class="panel-group-title">${t('sectionTransform')}</div>
 
       <div class="panel-row-label">${t('logoSize')}</div>
-      <div class="row" style="margin-bottom:10px">
-        <div class="field" style="margin-bottom:0">
+      <div class="row size-row" style="margin-bottom:10px;align-items:end">
+        <div class="field" style="margin-bottom:0;flex:1">
           <label>${t('width')} (${unit})</label>
           <input type="number" step="0.1" id="inpW" value="${w}">
         </div>
-        <div class="field" style="margin-bottom:0">
+        <button type="button" class="ratio-lock active" id="ratioLockBtn" title="${t('ratioLock')}" aria-label="${t('ratioLock')}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+        <div class="field" style="margin-bottom:0;flex:1">
           <label>${t('height')} (${unit})</label>
           <input type="number" step="0.1" id="inpH" value="${h}">
         </div>
@@ -1605,6 +1629,27 @@ function renderSelectedPanel(){
   });
   document.getElementById('inpW').onchange = e=>setSizeMm('w', parseFloat(e.target.value));
   document.getElementById('inpH').onchange = e=>setSizeMm('h', parseFloat(e.target.value));
+
+  // Ratio lock button
+  const lockBtn = document.getElementById('ratioLockBtn');
+  if(lockBtn){
+    lockBtn.classList.toggle('active', _ratioLocked);
+    lockBtn.onclick = ()=>{
+      _ratioLocked = !_ratioLocked;
+      lockBtn.classList.toggle('active', _ratioLocked);
+      lockBtn.title = _ratioLocked ? t('ratioLock') : t('ratioUnlock');
+      // Update lock icon: locked vs unlocked
+      lockBtn.innerHTML = _ratioLocked
+        ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
+        : '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5"></path></svg>';
+      // Also toggle Fabric's interactive scaling lock on current object
+      const cur = getSelectedObj();
+      if(cur){
+        cur.lockUniScaling = _ratioLocked;
+        canvas.requestRenderAll();
+      }
+    };
+  }
 
   // Bg remove (raster only)
   const bgBtn = document.getElementById('bgRemoveBtn');
@@ -1825,14 +1870,20 @@ function renderPickerUI(area, rasterMode){
   }
 }
 
+let _ratioLocked = true; // aspect ratio lock — default ON
+
 function setSizeMm(dim, val){
   const obj = getSelectedObj();
   if(!obj) return;
   if(state.unit==='cm') val *= 10;
-  // aspect ratio is always locked
-  const ratio = obj._mmW / obj._mmH;
-  if(dim==='w'){ obj._mmW = val; obj._mmH = val / ratio; }
-  else { obj._mmH = val; obj._mmW = val * ratio; }
+  if(_ratioLocked){
+    const ratio = obj._mmW / obj._mmH;
+    if(dim==='w'){ obj._mmW = val; obj._mmH = val / ratio; }
+    else { obj._mmH = val; obj._mmW = val * ratio; }
+  } else {
+    if(dim==='w') obj._mmW = val;
+    else obj._mmH = val;
+  }
   obj.scaleX = (obj._mmW * displayPxPerMm) / obj.width;
   obj.scaleY = (obj._mmH * displayPxPerMm) / obj.height;
   obj.setCoords();
