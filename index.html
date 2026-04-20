@@ -271,9 +271,12 @@
   .panel-group .field{margin-bottom:8px}
 
   /* ── Aspect ratio lock button ── */
-  .ratio-lock{background:none;border:2px solid var(--border);border-radius:8px;padding:4px 6px;cursor:pointer;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .15s;margin:0 4px;margin-top:18px}
-  .ratio-lock:hover{border-color:var(--primary);color:var(--primary)}
-  .ratio-lock.active{border-color:var(--primary);color:var(--primary);background:rgba(29,154,175,.08)}
+  .size-row{display:flex;gap:6px;align-items:end;flex-wrap:nowrap}
+  .size-row .field{flex:1;min-width:0;margin-bottom:0}
+  .ratio-lock{background:none;border:none;padding:0;cursor:pointer;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:color .15s;flex-shrink:0;width:16px;height:16px;margin-bottom:6px;opacity:.45}
+  .ratio-lock svg{width:12px;height:12px}
+  .ratio-lock:hover{color:var(--primary);opacity:.8}
+  .ratio-lock.active{color:var(--primary);opacity:.7}
 
   /* ── PDF progress (inline above export button) ── */
   .pdf-progress{width:100%;max-height:0;opacity:0;overflow:hidden;transition:max-height .35s ease,opacity .3s ease,margin .3s ease;margin-bottom:0}
@@ -316,6 +319,7 @@
   .info-panel .tip-card{background:var(--bg-light);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px}
   .info-panel .tip-card strong{color:var(--primary);font-size:.82rem}
   .info-panel .tip-card p{font-size:.8rem;margin:4px 0 0;color:var(--muted)}
+  .info-panel .version-tag{font-size:.65rem;color:var(--muted);opacity:.5;text-align:center;margin:24px 0 0;letter-spacing:.3px}
 
   /* Tour overlay */
   .tour-backdrop{position:fixed;inset:0;z-index:700;display:none}
@@ -531,6 +535,7 @@
         <tr><td style="padding:3px 8px 3px 0;color:var(--muted)">0</td><td style="padding:3px 0" data-i18n="zoomFit">Passend</td></tr>
       </table>
     </div>
+    <p class="version-tag">v1.0.1 · 20-04-2026</p>
   </div>
 </div>
 
