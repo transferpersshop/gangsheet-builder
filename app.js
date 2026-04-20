@@ -20,7 +20,7 @@ const I18N = {
     dropTitle:'Klik of sleep hier', dropHint:'SVG, EPS, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
     uploadTip:'Gebruik vectorbestanden (SVG, EPS, AI, PDF) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
     uploadTipLink:'Bekijk onze tips',
-    loadingVector:'Vector wordt verwerkt…',
+    loadingVector:'Vector wordt verwerkt…', logoAdded:'toegevoegd',
     unsupportedFile:'Bestandstype niet ondersteund',
     epsConvertHint:'Dit EPS-bestand kan niet worden geopend. Sla het op als PDF of SVG vanuit Illustrator en upload opnieuw.',
     epsLoading:'EPS-bestand wordt geconverteerd…',
@@ -149,7 +149,7 @@ const I18N = {
     dropTitle:'Click or drop files', dropHint:'SVG, EPS, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
     uploadTip:'Use vector files (SVG, EPS, AI, PDF) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
     uploadTipLink:'View our tips',
-    loadingVector:'Processing vector file…',
+    loadingVector:'Processing vector file…', logoAdded:'added',
     unsupportedFile:'File type not supported',
     epsConvertHint:'This EPS file could not be opened. Save it as PDF or SVG from Illustrator and re-upload.',
     epsLoading:'Converting EPS file…',
@@ -871,12 +871,12 @@ function loadRaster(dataUrl, name){
 
 // Render the first page of a PDF/AI file at 300 DPI equivalent using pdf.js,
 // strip the white page background to transparent, then place on the canvas.
-async function loadPdfAsImage(arrayBuffer, name){
+async function loadPdfAsImage(arrayBuffer, name, silent){
   if(!window.pdfjsLib){
-    toast('PDF.js niet geladen — kan PDF/AI niet openen.', 'error');
-    return;
+    if(!silent) toast('PDF.js niet geladen — kan PDF/AI niet openen.', 'error');
+    throw new Error('pdf.js not loaded');
   }
-  toast(t('loadingVector'), 'info', 3000);
+  if(!silent) toast(t('loadingVector'), 'info', 3000);
   try {
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
@@ -935,7 +935,7 @@ async function loadPdfAsImage(arrayBuffer, name){
     }, { crossOrigin:'anonymous' });
   } catch(err){
     console.error('PDF load error:', err);
-    toast(`⚠️ "${name}": kon bestand niet openen. Probeer het om te zetten naar SVG of PNG.`, 'error', 6000);
+    if(!silent) toast(`⚠️ "${name}": kon bestand niet openen. Probeer het om te zetten naar SVG of PNG.`, 'error', 6000);
     throw err; // re-throw so callers (EPS handler) can catch
   }
 }
@@ -948,11 +948,11 @@ async function loadPdfAsImage(arrayBuffer, name){
 const EPS_CONVERTER_URL = 'https://eps-converter-transferpersshop.onrender.com/convert';
 
 async function loadEpsViaServer(arrayBuffer, name){
-  // First try pdf.js (works for EPS with embedded PDF that our
+  // First try pdf.js silently (works for EPS with embedded PDF that our
   // text-scan might have missed in binary-wrapped files)
   try {
-    await loadPdfAsImage(arrayBuffer, name);
-    return; // success
+    await loadPdfAsImage(arrayBuffer, name, true);
+    return; // success — no need for server
   } catch(e){ /* expected — continue to server conversion */ }
 
   // Send to conversion API → SVG (vector output)
@@ -971,10 +971,43 @@ async function loadEpsViaServer(arrayBuffer, name){
       throw new Error(errData.error || `HTTP ${resp.status}`);
     }
 
-    const svgText = await resp.text();
+    let svgText = await resp.text();
+
+    // Validate: check SVG is not empty
+    if(!svgText || !svgText.includes('<svg')){
+      throw new Error('Server returned invalid SVG');
+    }
+
+    // pdf2svg output often has a white background rect as first child.
+    // Parse and remove it so the logo has a transparent background.
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgText, 'image/svg+xml');
+      const svg = doc.querySelector('svg');
+      if(svg){
+        // Find background rects: first rect(s) with white-ish fill
+        // that span the full SVG dimensions
+        const svgW = parseFloat(svg.getAttribute('width')) || 0;
+        const svgH = parseFloat(svg.getAttribute('height')) || 0;
+        const rects = svg.querySelectorAll('rect');
+        rects.forEach(rect => {
+          const rw = parseFloat(rect.getAttribute('width')) || 0;
+          const rh = parseFloat(rect.getAttribute('height')) || 0;
+          const rx = parseFloat(rect.getAttribute('x')) || 0;
+          const ry = parseFloat(rect.getAttribute('y')) || 0;
+          const fill = (rect.getAttribute('fill') || rect.style.fill || '').toLowerCase().replace(/\s/g,'');
+          const isWhite = !fill || fill === '#fff' || fill === '#ffffff' || fill === 'white' || fill === 'rgb(255,255,255)';
+          const isFullSize = svgW > 0 && svgH > 0 && Math.abs(rw - svgW) < 2 && Math.abs(rh - svgH) < 2 && rx < 1 && ry < 1;
+          if(isWhite && isFullSize) rect.remove();
+        });
+        // Also remove clip-path rects that create a white mask
+        svgText = new XMLSerializer().serializeToString(svg);
+      }
+    } catch(e){ console.warn('SVG cleanup failed, using raw:', e); }
 
     // Load as SVG vector — fully editable (colors, scalable)
     loadSvg(svgText, name);
+    toast(`✓ "${name}" ${t('logoAdded')}`, 'success', 3000);
   } catch(err){
     console.error('EPS server conversion failed:', err);
     toast(`⚠️ "${name}": ${t('epsConvertHint')}`, 'warn', 8000);
