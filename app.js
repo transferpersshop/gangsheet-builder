@@ -17,13 +17,11 @@ const I18N = {
     projectTitleLabel:'Transfer naam', projectTitlePlaceholder:"Bijv. borstlogo's bedrijf X",
     clear:'Leegmaken', clearSheet:'Vel leegmaken',
     step1:'Kies vel formaat', step2:"Upload logo's", step3:"Logo's bewerken", step4:"Logo's bewerken",
-    dropTitle:'Klik of sleep hier', dropHint:'SVG, EPS, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
-    uploadTip:'Gebruik vectorbestanden (SVG, EPS, AI, PDF) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
+    dropTitle:'Klik of sleep hier', dropHint:'SVG, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
+    uploadTip:'Gebruik vectorbestanden (SVG, AI, PDF) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
     uploadTipLink:'Bekijk onze tips',
     loadingVector:'Vector wordt verwerkt…', logoAdded:'toegevoegd',
     unsupportedFile:'Bestandstype niet ondersteund',
-    epsConvertHint:'Dit EPS-bestand kan niet worden geopend. Sla het op als PDF of SVG vanuit Illustrator en upload opnieuw.',
-    epsLoading:'EPS-bestand wordt geconverteerd…',
     unitLabel:'Meeteenheid',
     gapLabel:"Tussenruimte tussen logo's",
     gapHelp:"Bepaal de tussenruimte tussen de logo's voor het knippen/snijden van de transfers.",
@@ -105,7 +103,7 @@ const I18N = {
     infoTipDetail:'Minimale detailgrootte',
     infoTipDetailBody:'Details kleiner dan 0,4 mm (1 pt) kunnen wegvallen tijdens productie. Houd hier rekening mee bij kleine teksten, dunne lijnen en fijne patronen.',
     infoTipVector:'Vector boven raster',
-    infoTipVectorBody:'Gebruik bij voorkeur vectorbestanden (SVG, EPS, AI, PDF). Deze zijn schaalbaar zonder kwaliteitsverlies. PNG en JPG zijn rasterbestanden — hoe groter je ze maakt, hoe lager de DPI en hoe waziger de print.',
+    infoTipVectorBody:'Gebruik bij voorkeur vectorbestanden (SVG, AI, PDF). Deze zijn schaalbaar zonder kwaliteitsverlies. PNG en JPG zijn rasterbestanden — hoe groter je ze maakt, hoe lager de DPI en hoe waziger de print.',
     infoTipDpi:'Resolutie (DPI)',
     infoTipDpiBody:'Voor scherpe prints heb je minimaal 300 DPI nodig. Upload rasterbestanden in de hoogst mogelijke resolutie. De tool toont automatisch een waarschuwing als de DPI te laag is.',
     infoTipBg:'Transparante achtergrond',
@@ -116,7 +114,7 @@ const I18N = {
     tourStep1Title:'Kies vel formaat',
     tourStep1Body:'Selecteer het formaat van je vel. 55×100 DTF is het standaard formaat voor DTF-rollen en ondersteunt automatisch meerdere vellen.',
     tourStep2Title:"Upload logo's",
-    tourStep2Body:'Sleep je bestanden hierheen of klik om te uploaden. Vectorbestanden (SVG, EPS, AI, PDF) geven de scherpste resultaten. PNGs met transparante achtergrond op minimaal 300 DPI zijn ook uitstekend.',
+    tourStep2Body:'Sleep je bestanden hierheen of klik om te uploaden. Vectorbestanden (SVG, AI, PDF) geven de scherpste resultaten. PNGs met transparante achtergrond op minimaal 300 DPI zijn ook uitstekend.',
     tourStep3Title:"Logo's bewerken",
     tourStep3Body:'Pas de tussenruimte aan, verwijder witte achtergronden en stel de drempelwaarde in. Selecteer een logo op het vel om het te roteren, schalen of dupliceren.',
     tourStep4Title:'Vel vullen',
@@ -146,13 +144,11 @@ const I18N = {
     projectTitleLabel:'Transfer name', projectTitlePlaceholder:'E.g. chest logos company X',
     clear:'Clear', clearSheet:'Clear sheet',
     step1:'Choose sheet size', step2:'Upload logos', step3:'Edit logos', step4:'Edit logos',
-    dropTitle:'Click or drop files', dropHint:'SVG, EPS, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
-    uploadTip:'Use vector files (SVG, EPS, AI, PDF) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
+    dropTitle:'Click or drop files', dropHint:'SVG, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
+    uploadTip:'Use vector files (SVG, AI, PDF) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
     uploadTipLink:'View our tips',
     loadingVector:'Processing vector file…', logoAdded:'added',
     unsupportedFile:'File type not supported',
-    epsConvertHint:'This EPS file could not be opened. Save it as PDF or SVG from Illustrator and re-upload.',
-    epsLoading:'Converting EPS file…',
     unitLabel:'Measurement unit',
     gapLabel:'Spacing between logos',
     gapHelp:'Set the spacing between logos for cutting/trimming the transfers.',
@@ -234,7 +230,7 @@ const I18N = {
     infoTipDetail:'Minimum detail size',
     infoTipDetailBody:'Details smaller than 0.4 mm (1 pt) may be lost during production. Keep this in mind for small text, thin lines, and fine patterns.',
     infoTipVector:'Vector over raster',
-    infoTipVectorBody:'Use vector files (SVG, EPS, AI, PDF) whenever possible. They scale without quality loss. PNG and JPG are raster files — the larger you make them, the lower the DPI and the blurrier the print.',
+    infoTipVectorBody:'Use vector files (SVG, AI, PDF) whenever possible. They scale without quality loss. PNG and JPG are raster files — the larger you make them, the lower the DPI and the blurrier the print.',
     infoTipDpi:'Resolution (DPI)',
     infoTipDpiBody:'You need at least 300 DPI for sharp prints. Upload raster files at the highest possible resolution. The tool automatically warns you if the DPI is too low.',
     infoTipBg:'Transparent background',
@@ -245,7 +241,7 @@ const I18N = {
     tourStep1Title:'Choose sheet size',
     tourStep1Body:'Select the format for your sheet. 55×100 DTF is the default format for DTF rolls and supports automatic multi-sheet overflow.',
     tourStep2Title:'Upload logos',
-    tourStep2Body:'Drag files here or click to upload. Vector files (SVG, EPS, AI, PDF) give the sharpest results. PNGs with transparent backgrounds at 300+ DPI are also excellent.',
+    tourStep2Body:'Drag files here or click to upload. Vector files (SVG, AI, PDF) give the sharpest results. PNGs with transparent backgrounds at 300+ DPI are also excellent.',
     tourStep3Title:'Edit logos',
     tourStep3Body:'Adjust spacing, remove white backgrounds, and set the threshold. Select a logo on the sheet to rotate, scale, or duplicate it.',
     tourStep4Title:'Fill sheet',
@@ -812,41 +808,6 @@ function handleFiles(files){
         }
       };
       reader.readAsText(file);
-    } else if(ext==='eps'){
-      // EPS strategy (multi-layered for maximum compatibility):
-      // 1. Embedded SVG (rare but ideal — instant)
-      // 2. Embedded PDF stream (Illustrator "PDF Compatibility")
-      // 3. Ghostscript WASM fallback (handles ALL EPS files)
-      const reader = new FileReader();
-      reader.onload = ev=>{
-        const buf = ev.target.result;
-        const bytes = new Uint8Array(buf);
-        const text = new TextDecoder('latin1').decode(bytes);
-
-        // 1. Embedded SVG?
-        const svgStart = text.indexOf('<svg');
-        if(svgStart !== -1){
-          const svgEnd = text.indexOf('</svg>', svgStart);
-          if(svgEnd !== -1){
-            loadSvg(text.substring(svgStart, svgEnd + 6), file.name);
-            return;
-          }
-        }
-
-        // 2. Embedded PDF stream? (Illustrator "PDF Compatibility" mode)
-        const pdfStart = text.indexOf('%PDF-');
-        if(pdfStart !== -1){
-          let pdfEnd = text.lastIndexOf('%%EOF');
-          if(pdfEnd !== -1) pdfEnd += 5; else pdfEnd = bytes.length;
-          const pdfBuf = buf.slice(pdfStart, pdfEnd);
-          loadPdfAsImage(pdfBuf, file.name);
-          return;
-        }
-
-        // 3. Server-side Ghostscript — handles any EPS file
-        loadEpsViaServer(buf, file.name);
-      };
-      reader.readAsArrayBuffer(file);
     } else if(type==='application/pdf' || ext==='pdf'){
       const reader = new FileReader();
       reader.onload = ev=>loadPdfAsImage(ev.target.result, file.name);
@@ -871,12 +832,12 @@ function loadRaster(dataUrl, name){
 
 // Render the first page of a PDF/AI file at 300 DPI equivalent using pdf.js,
 // strip the white page background to transparent, then place on the canvas.
-async function loadPdfAsImage(arrayBuffer, name, silent){
+async function loadPdfAsImage(arrayBuffer, name){
   if(!window.pdfjsLib){
-    if(!silent) toast('PDF.js niet geladen — kan PDF/AI niet openen.', 'error');
+    toast('PDF.js niet geladen — kan PDF/AI niet openen.', 'error');
     throw new Error('pdf.js not loaded');
   }
-  if(!silent) toast(t('loadingVector'), 'info', 3000);
+  toast(t('loadingVector'), 'info', 3000);
   try {
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
@@ -935,82 +896,8 @@ async function loadPdfAsImage(arrayBuffer, name, silent){
     }, { crossOrigin:'anonymous' });
   } catch(err){
     console.error('PDF load error:', err);
-    if(!silent) toast(`⚠️ "${name}": kon bestand niet openen. Probeer het om te zetten naar SVG of PNG.`, 'error', 6000);
-    throw err; // re-throw so callers (EPS handler) can catch
-  }
-}
-
-/* =========================================================
-   EPS RENDERING — Server-side Ghostscript via API
-   Sends pure EPS files to a conversion endpoint that runs
-   Ghostscript and returns SVG (vector, editable, scalable).
-   ========================================================= */
-const EPS_CONVERTER_URL = 'https://eps-converter-transferpersshop.onrender.com/convert';
-
-async function loadEpsViaServer(arrayBuffer, name){
-  // First try pdf.js silently (works for EPS with embedded PDF that our
-  // text-scan might have missed in binary-wrapped files)
-  try {
-    await loadPdfAsImage(arrayBuffer, name, true);
-    return; // success — no need for server
-  } catch(e){ /* expected — continue to server conversion */ }
-
-  // Send to conversion API → SVG (vector output)
-  toast(t('epsLoading'), 'info', 5000);
-  try {
-    const formData = new FormData();
-    formData.append('file', new Blob([arrayBuffer], { type:'application/postscript' }), name);
-
-    const resp = await fetch(EPS_CONVERTER_URL + '?format=svg', {
-      method: 'POST',
-      body: formData
-    });
-
-    if(!resp.ok){
-      const errData = await resp.json().catch(()=>({ error:'Server error' }));
-      throw new Error(errData.error || `HTTP ${resp.status}`);
-    }
-
-    let svgText = await resp.text();
-
-    // Validate: check SVG is not empty
-    if(!svgText || !svgText.includes('<svg')){
-      throw new Error('Server returned invalid SVG');
-    }
-
-    // pdf2svg output often has a white background rect as first child.
-    // Parse and remove it so the logo has a transparent background.
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svgText, 'image/svg+xml');
-      const svg = doc.querySelector('svg');
-      if(svg){
-        // Find background rects: first rect(s) with white-ish fill
-        // that span the full SVG dimensions
-        const svgW = parseFloat(svg.getAttribute('width')) || 0;
-        const svgH = parseFloat(svg.getAttribute('height')) || 0;
-        const rects = svg.querySelectorAll('rect');
-        rects.forEach(rect => {
-          const rw = parseFloat(rect.getAttribute('width')) || 0;
-          const rh = parseFloat(rect.getAttribute('height')) || 0;
-          const rx = parseFloat(rect.getAttribute('x')) || 0;
-          const ry = parseFloat(rect.getAttribute('y')) || 0;
-          const fill = (rect.getAttribute('fill') || rect.style.fill || '').toLowerCase().replace(/\s/g,'');
-          const isWhite = !fill || fill === '#fff' || fill === '#ffffff' || fill === 'white' || fill === 'rgb(255,255,255)';
-          const isFullSize = svgW > 0 && svgH > 0 && Math.abs(rw - svgW) < 2 && Math.abs(rh - svgH) < 2 && rx < 1 && ry < 1;
-          if(isWhite && isFullSize) rect.remove();
-        });
-        // Also remove clip-path rects that create a white mask
-        svgText = new XMLSerializer().serializeToString(svg);
-      }
-    } catch(e){ console.warn('SVG cleanup failed, using raw:', e); }
-
-    // Load as SVG vector — fully editable (colors, scalable)
-    loadSvg(svgText, name);
-    toast(`✓ "${name}" ${t('logoAdded')}`, 'success', 3000);
-  } catch(err){
-    console.error('EPS server conversion failed:', err);
-    toast(`⚠️ "${name}": ${t('epsConvertHint')}`, 'warn', 8000);
+    toast(`⚠️ "${name}": kon bestand niet openen. Probeer het om te zetten naar SVG of PNG.`, 'error', 6000);
+    throw err;
   }
 }
 
@@ -2007,9 +1894,12 @@ function actOnSelected(act){
         objs.forEach(o => canvas.remove(o));
         canvas.requestRenderAll();
         canvas.discardActiveObject();
+        cleanupEmptyOverflowTabs();
         renderItemList();
         renderSelectedPanel();
+        renderSheetTabs();
         updateInfoBar();
+        updateSummary();
         pushUndo();
         break;
     }
@@ -2108,9 +1998,12 @@ function removeObj(obj){
     state.fillTemplate = null;
   }
   canvas.remove(obj);
+  cleanupEmptyOverflowTabs();
   renderItemList();
   renderSelectedPanel();
+  renderSheetTabs();
   updateInfoBar();
+  updateSummary();
   pushUndo();
 }
 
@@ -2120,9 +2013,12 @@ document.getElementById('clearBtn').onclick = ()=>{
     if(!ok) return;
     canvas.clear();
     state.fillTemplate = null;
+    cleanupEmptyOverflowTabs();
     renderItemList();
     renderSelectedPanel();
+    renderSheetTabs();
     updateInfoBar();
+    updateSummary();
     pushUndo();
     toast(t('clearDone'),'success');
   });
@@ -2379,15 +2275,40 @@ function removeGroupFromAllSavedTabs(originalId){
   return total;
 }
 
-// Auto-drop empty overflow tabs (keep tab 0 and the active tab).
+// Auto-drop empty overflow tabs (keep tab 0 always).
+// If the active tab becomes empty and is not tab 0, switch to the previous tab first.
 function cleanupEmptyOverflowTabs(){
+  // First: check if the current active tab (not tab 0) is now empty on canvas.
+  // If so, save its (empty) state so the json is up to date.
+  if(state.activeTab > 0){
+    const liveObjs = canvas.getObjects().filter(o => o._id);
+    if(liveObjs.length === 0){
+      saveCurrentTabState();
+    }
+  }
+
+  let switched = false;
   for(let i = state.sheetTabs.length - 1; i > 0; i--){
-    if(i === state.activeTab) continue;
     const tab = state.sheetTabs[i];
-    if(tab.json && tab.json.objects && tab.json.objects.length === 0){
+    const isEmpty = !tab.json || !tab.json.objects || tab.json.objects.length === 0;
+    if(!isEmpty) continue;
+
+    if(i === state.activeTab){
+      // Active tab is empty — switch to previous tab before removing
+      const newIdx = Math.max(0, i - 1);
+      state.sheetTabs.splice(i, 1);
+      state.activeTab = Math.min(newIdx, state.sheetTabs.length - 1);
+      switched = true;
+    } else {
       state.sheetTabs.splice(i, 1);
       if(state.activeTab > i) state.activeTab--;
     }
+  }
+
+  // If we removed the active tab, load the new active tab onto the canvas
+  if(switched){
+    loadTabState(state.activeTab);
+    renderSheetTabs();
   }
 }
 
@@ -2923,8 +2844,9 @@ exportBtn.onclick = async ()=>{
   // Show PDF progress indicator above export button
   showPdfProgress(true);
 
-  // Yield so the browser paints the spinner before heavy work
-  await new Promise(r => requestAnimationFrame(()=> setTimeout(r, 50)));
+  // Wait for the CSS transition to fully complete (350ms) so the progress
+  // bar is visible before heavy work blocks the main thread.
+  await new Promise(r => setTimeout(r, 400));
 
   // save current tab first
   saveCurrentTabState();
@@ -2967,21 +2889,38 @@ exportBtn.onclick = async ()=>{
   const tileEl = document.createElement('canvas');
   offDiv.appendChild(tileEl);
 
+  // Yield to browser so spinner stays animated and UI stays responsive.
+  // Uses setTimeout(0) which queues a macrotask — this lets the browser
+  // paint, run animations, and handle user input between render chunks.
   const yieldFrame = ()=> new Promise(r => setTimeout(r, 0));
 
+  const totalTabs = state.sheetTabs.length;
+
   const renderTab = async (tabIdx) => {
+    // Update progress label per sheet
+    updatePdfProgress(tabIdx + 1, totalTabs);
     const tab = state.sheetTabs[tabIdx];
     const objs = tab.json && tab.json.objects ? tab.json.objects : [];
 
     // Clear page canvas (transparent background — DTF film)
     pageCtx.clearRect(0, 0, exportPxW, exportPxH);
 
-    for(let idx = 0; idx < objs.length; idx++){
-      const oData = objs[idx];
-      if(oData._mmW == null) continue;
+    // --- Batch enliven all objects at once (much faster than one-by-one) ---
+    const validObjs = objs.filter(o => o._mmW != null);
+    const enlivened = await new Promise(resolve => {
+      if(!validObjs.length){ resolve([]); return; }
+      fabric.util.enlivenObjects(validObjs, resolve);
+    });
+
+    // Yield after enlivening so the browser can breathe
+    await yieldFrame();
+
+    // --- Render each enlivened object onto a tile, composite onto page ---
+    for(let idx = 0; idx < enlivened.length; idx++){
+      const o = enlivened[idx];
+      const oData = validObjs[idx];
 
       const isRotated = Math.abs(((oData.angle||0) % 180)) > 0.1;
-      // Bounding box in export pixels (+ small padding for anti-alias)
       const bboxW = Math.ceil(oData._mmW * exportPxPerMm) + 4;
       const bboxH = Math.ceil(oData._mmH * exportPxPerMm) + 4;
       const destX = Math.round(oData._mmLeft * exportPxPerMm);
@@ -2996,45 +2935,42 @@ exportBtn.onclick = async ()=>{
         enableRetinaScaling: false,
       });
 
-      // Enliven single object from its serialised data
-      await new Promise(resolve => {
-        fabric.util.enlivenObjects([oData], (enlivened) => {
-          if(!enlivened.length){ resolve(); return; }
-          const o = enlivened[0];
-          // Scale to 300 DPI
-          if(isRotated){
-            o.scaleY = (oData._mmW * exportPxPerMm) / o.height;
-            o.scaleX = (oData._mmH * exportPxPerMm) / o.width;
-          } else {
-            o.scaleX = (oData._mmW * exportPxPerMm) / o.width;
-            o.scaleY = (oData._mmH * exportPxPerMm) / o.height;
-          }
-          // Position at tile centre
-          if(o.originX === 'center' && o.originY === 'center'){
-            o.left = bboxW / 2;
-            o.top  = bboxH / 2;
-          } else {
-            o.left = 2;
-            o.top  = 2;
-          }
-          o.setCoords();
-          tileCanvas.add(o);
-          tileCanvas.renderAll();
-          resolve();
-        });
-      });
+      // Scale to 300 DPI
+      if(isRotated){
+        o.scaleY = (oData._mmW * exportPxPerMm) / o.height;
+        o.scaleX = (oData._mmH * exportPxPerMm) / o.width;
+      } else {
+        o.scaleX = (oData._mmW * exportPxPerMm) / o.width;
+        o.scaleY = (oData._mmH * exportPxPerMm) / o.height;
+      }
+      // Position at tile centre
+      if(o.originX === 'center' && o.originY === 'center'){
+        o.left = bboxW / 2;
+        o.top  = bboxH / 2;
+      } else {
+        o.left = 2;
+        o.top  = 2;
+      }
+      o.setCoords();
+      tileCanvas.add(o);
+      tileCanvas.renderAll();
 
       // Composite tile onto page canvas using fast native drawImage
       pageCtx.drawImage(tileEl, destX, destY);
       tileCanvas.dispose();
 
-      // Yield every 3 objects so the spinner stays animated
-      if(idx % 3 === 2) await yieldFrame();
+      // Yield every 2 objects so the browser can repaint the spinner.
+      // Every-object yields add ~4ms overhead each; every-2 is the sweet spot.
+      if(idx % 2 === 1) await yieldFrame();
     }
 
-    // Add page to PDF — pass raw HTMLCanvasElement directly
+    // Add page to PDF — pass raw HTMLCanvasElement directly.
+    // Using 'PNG' format to preserve transparency (DTF film).
     if(tabIdx > 0) pdf.addPage([state.sheet.w, state.sheet.h], state.sheet.w > state.sheet.h ? 'landscape' : 'portrait');
     pdf.addImage(pageCanvasEl, 'PNG', 0, 0, state.sheet.w, state.sheet.h, undefined, 'FAST');
+
+    // Yield after addImage — this is the heaviest single call (PNG encoding)
+    await yieldFrame();
   };
 
   try {
@@ -3086,7 +3022,7 @@ function showPdfProgress(show, doneMsg){
   if(show){
     wrap.innerHTML = `<div class="pdf-progress-inner">
       <div class="pdf-spinner"></div>
-      <span>${t('pdfGenerating')}</span>
+      <span id="pdfProgressLabel">${t('pdfGenerating')}</span>
     </div>`;
     wrap.classList.add('visible');
     document.getElementById('exportBtn').disabled = true;
@@ -3097,6 +3033,13 @@ function showPdfProgress(show, doneMsg){
     </div>`;
     document.getElementById('exportBtn').disabled = false;
     setTimeout(()=>{ wrap.classList.remove('visible'); wrap.innerHTML = ''; }, 3500);
+  }
+}
+function updatePdfProgress(current, total){
+  const label = document.getElementById('pdfProgressLabel');
+  if(label){
+    if(total > 1) label.textContent = `${t('pdfGenerating')} (${current}/${total})…`;
+    else label.textContent = t('pdfGenerating');
   }
 }
 
@@ -3491,9 +3434,12 @@ document.addEventListener('keydown', e=>{
       objs.forEach(o => canvas.remove(o));
       canvas.requestRenderAll();
       canvas.discardActiveObject();
+      cleanupEmptyOverflowTabs();
       renderItemList();
       renderSelectedPanel();
+      renderSheetTabs();
       updateInfoBar();
+      updateSummary();
       pushUndo();
     } else {
       removeObj(obj);
@@ -3628,6 +3574,14 @@ function showTourStep(idx){
   const el = document.querySelector(step.target);
   if(!el){ showTourStep(idx+1); return; }
 
+  // Scroll the sidebar so the target element is visible before positioning
+  el.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'nearest' });
+
+  // Use a small delay so scrollIntoView finishes and getBoundingClientRect is correct
+  clearTimeout(showTourStep._scrollTimer);
+  showTourStep._scrollTimer = setTimeout(()=> _positionTourStep(idx, step, el), 350);
+}
+function _positionTourStep(idx, step, el){
   const rect = el.getBoundingClientRect();
   const pad = 8;
   tourHighlight.style.left   = (rect.left - pad) + 'px';
@@ -3659,6 +3613,17 @@ function showTourStep(idx){
     tourTooltip.style.left = rect.left + 'px';
     tourTooltip.style.top  = (rect.bottom + margin) + 'px';
   }
+
+  // Clamp tooltip so it stays within the viewport
+  requestAnimationFrame(()=>{
+    const tr = tourTooltip.getBoundingClientRect();
+    if(tr.bottom > window.innerHeight - 8){
+      tourTooltip.style.top = Math.max(8, window.innerHeight - tr.height - 8) + 'px';
+    }
+    if(tr.right > window.innerWidth - 8){
+      tourTooltip.style.left = Math.max(8, window.innerWidth - tr.width - 8) + 'px';
+    }
+  });
 }
 
 function startTour(){
