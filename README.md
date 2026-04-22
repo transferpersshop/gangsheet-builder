@@ -2,7 +2,7 @@
 
 Online tool voor het samenstellen van DTF transfer gang sheets. Upload je logo's, pas formaat en kleuren aan, en download een print-ready 300 DPI PDF.
 
-**Live:** [transferpersshop.nl/builder](https://www.transferpersshop.nl/builder)
+**Live:** https://transferpersshop.github.io/gangsheet-builder/
 
 ## Technologie
 
