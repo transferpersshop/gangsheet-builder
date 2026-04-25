@@ -295,6 +295,8 @@ window.addEventListener('load', ()=>{
   .toast.sticky .toast-text{text-align:left}
   .toast-close{background:rgba(0,0,0,.05);border:none;width:26px;height:26px;border-radius:50%;font-size:1.1rem;line-height:1;color:var(--muted);cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:0;font-weight:700}
   .toast-close:hover{background:rgba(0,0,0,.1);color:var(--text)}
+  .toast-dismiss-btn{background:var(--primary);border:none;border-radius:6px;color:#fff;font-size:.75rem;font-weight:600;padding:6px 14px;cursor:pointer;flex-shrink:0;white-space:nowrap;margin-left:8px}
+  .toast-dismiss-btn:hover{opacity:.85}
   .toast.warn{border-left-color:var(--warn)}
   .toast.error{border-left-color:var(--error)}
   .toast.success{border-left-color:var(--success)}
@@ -568,7 +570,25 @@ window.addEventListener('load', ()=>{
     </div>
     <div class="tip-card">
       <strong data-i18n="infoTipDpi">Resolutie (DPI)</strong>
-      <p data-i18n="infoTipDpiBody">Voor scherpe prints heb je minimaal 300 DPI nodig. Upload rasterbestanden in de hoogst mogelijke resolutie. De tool toont automatisch een waarschuwing als de DPI te laag is.</p>
+      <p data-i18n="infoTipDpiBody" style="margin-bottom:8px">DPI (dots per inch) bepaalt de scherpte van je print. Alleen relevant voor rasterbestanden (PNG, JPG) — vectorbestanden zijn altijd scherp.</p>
+      <table style="width:100%;font-size:.8rem;border-collapse:collapse;line-height:1.4">
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--success);white-space:nowrap">Vector</td>
+          <td style="padding:4px 0">SVG, AI, PDF — oneindig scherp, altijd de beste keuze. Schaalbaar zonder kwaliteitsverlies.</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--success);white-space:nowrap">300+ DPI</td>
+          <td style="padding:4px 0">Uitstekende printkwaliteit. Scherpe lijnen en details, geen zichtbare pixels.</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--warn);white-space:nowrap">72–299 DPI</td>
+          <td style="padding:4px 0">Matige kwaliteit. Bruikbaar voor grote vlakken, maar fijne details en tekst kunnen wazig worden.</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--error);white-space:nowrap">&lt; 72 DPI</td>
+          <td style="padding:4px 0">Onvoldoende voor print. Zichtbaar pixelig, niet geschikt voor productie. Upload een hoger-resolutie bestand of maak het logo kleiner.</td>
+        </tr>
+      </table>
     </div>
     <div class="tip-card">
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
@@ -588,7 +608,7 @@ window.addEventListener('load', ()=>{
         <tr><td style="padding:3px 8px 3px 0;color:var(--muted)">0</td><td style="padding:3px 0" data-i18n="zoomFit">Passend</td></tr>
       </table>
     </div>
-    <p class="version-tag">v1.2.1 · 25-04-2026 · 13:30</p>
+    <p class="version-tag">v1.4.4 · 25-04-2026</p>
   </div>
 </div>
 

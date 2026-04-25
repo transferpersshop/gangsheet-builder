@@ -75,8 +75,9 @@ const I18N = {
     smallDetailWarn:'Let op: dit logo bevat details kleiner dan 0.4 mm bij deze grootte. Zeer fijne details kunnen verloren gaan in de print.',
     embeddedRasterWarn:'Dit vectorbestand bevat een ingesloten afbeelding (raster). De printkwaliteit hangt af van de resolutie van die afbeelding.',
     embeddedRasterHint:'Dit vectorbestand bevat een ingesloten afbeelding. De DPI is gebaseerd op die afbeelding, niet op het vectorbestand zelf.',
-    lowDpiWarn:'Resolutie laag',
-    lowDpiMore:'Voor scherp printen heb je minstens 300 DPI nodig. Maak het logo kleiner of upload een grotere versie.',
+    lowDpiWarn:'Het geüploade logo heeft een lage resolutie',
+    lowDpiMore:'Upload een betere resolutie of vector bestand voor een betere print.',
+    lowDpiDismiss:'Ik begrijp het',
     pdfGenerating:'PDF wordt aangemaakt…',
     pdfSaved:'opgeslagen · 300 DPI',
     addLogoFirst:'Voeg eerst een logo toe',
@@ -109,7 +110,7 @@ const I18N = {
     infoTipVector:'Vector boven raster',
     infoTipVectorBody:'Gebruik bij voorkeur vectorbestanden (SVG, AI, PDF). Deze zijn schaalbaar zonder kwaliteitsverlies. PNG en JPG zijn rasterbestanden — hoe groter je ze maakt, hoe lager de DPI en hoe waziger de print.',
     infoTipDpi:'Resolutie (DPI)',
-    infoTipDpiBody:'Voor scherpe prints heb je minimaal 300 DPI nodig. Upload rasterbestanden in de hoogst mogelijke resolutie. De tool toont automatisch een waarschuwing als de DPI te laag is.',
+    infoTipDpiBody:'DPI (dots per inch) bepaalt de scherpte van je print. Alleen relevant voor rasterbestanden (PNG, JPG) — vectorbestanden zijn altijd scherp.',
     infoTipBg:'Transparante achtergrond',
     infoTipBgBody:'Gebruik PNGs met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.',
     tourSkip:'Sluiten', tourNext:'Volgende', tourFinish:'Afronden',
@@ -206,8 +207,9 @@ const I18N = {
     smallDetailWarn:'Warning: this logo contains details smaller than 0.4 mm at this size. Very fine details may be lost in print.',
     embeddedRasterWarn:'This vector file contains an embedded image (raster). Print quality depends on the resolution of that image.',
     embeddedRasterHint:'This vector file contains an embedded image. The DPI is based on that image, not the vector file itself.',
-    lowDpiWarn:'Low resolution',
-    lowDpiMore:'You need at least 300 DPI for sharp printing. Make the logo smaller or upload a higher-resolution version.',
+    lowDpiWarn:'The uploaded logo has a low resolution',
+    lowDpiMore:'Upload a higher resolution or vector file for better print quality.',
+    lowDpiDismiss:'I understand',
     pdfGenerating:'Generating PDF…',
     pdfSaved:'saved · 300 DPI',
     addLogoFirst:'Add a logo first',
@@ -240,7 +242,7 @@ const I18N = {
     infoTipVector:'Vector over raster',
     infoTipVectorBody:'Use vector files (SVG, AI, PDF) whenever possible. They scale without quality loss. PNG and JPG are raster files — the larger you make them, the lower the DPI and the blurrier the print.',
     infoTipDpi:'Resolution (DPI)',
-    infoTipDpiBody:'You need at least 300 DPI for sharp prints. Upload raster files at the highest possible resolution. The tool automatically warns you if the DPI is too low.',
+    infoTipDpiBody:'DPI (dots per inch) determines print sharpness. Only relevant for raster files (PNG, JPG) — vector files are always sharp.',
     infoTipBg:'Transparent background',
     infoTipBgBody:'Use PNGs with transparent backgrounds. A white background will print as a white block around your logo. The "Remove white background" feature can help, but a truly transparent source file is always better.',
     tourSkip:'Close', tourNext:'Next', tourFinish:'Finish',
@@ -1441,75 +1443,155 @@ function packSpotsSmart(mmW, mmH, count, existingBoxes){
 
   const gap = state.gapMm || 0;
 
-  // Snapshot obstacle boxes (expanded by gap) if caller didn't supply any.
-  let existing = existingBoxes;
-  if(!existing){
-    existing = [];
+  // Snapshot obstacle boxes (expanded by half-gap on each side for spacing).
+  let obstacles = existingBoxes;
+  if(!obstacles){
+    obstacles = [];
     const objs = canvas.getObjects();
     for(let i=0; i<objs.length; i++){
       const o = objs[i];
       if(!o._mmW) continue;
-      existing.push({
-        x1: o._mmLeft - gap, y1: o._mmTop - gap,
-        x2: o._mmLeft + o._mmW + gap, y2: o._mmTop + o._mmH + gap,
+      obstacles.push({
+        x1: o._mmLeft, y1: o._mmTop,
+        x2: o._mmLeft + o._mmW, y2: o._mmTop + o._mmH,
       });
     }
   }
 
-  const results = [];
-  const placed = [];
+  // ----------------------------------------------------------------
+  // Row-by-row strip packing with obstacle awareness.
+  //
+  // For each candidate row (y position), scan left-to-right and place
+  // logos wherever they fit without overlapping obstacles or previously
+  // placed logos. Try both orientations per row and pick the one that
+  // packs more. This fills gaps naturally because every valid position
+  // is tested, not just grid-aligned ones.
+  // ----------------------------------------------------------------
 
-  const overlapsAnyBox = (x, y, w, h)=>{
-    const bx2 = x + w, by2 = y + h;
-    for(let i=0; i<existing.length; i++){
-      const b = existing[i];
-      if(bx2 > b.x1 && x < b.x2 && by2 > b.y1 && y < b.y2) return true;
+  const placed = []; // {x1,y1,x2,y2} of placed logos (with gap)
+
+  const overlaps = (x, y, w, h)=>{
+    const bx1 = x, by1 = y, bx2 = x + w, by2 = y + h;
+    for(let i=0; i<obstacles.length; i++){
+      const b = obstacles[i];
+      // Check with gap spacing between obstacle and new logo
+      if(bx2 + gap > b.x1 && bx1 < b.x2 + gap &&
+         by2 + gap > b.y1 && by1 < b.y2 + gap) return true;
     }
     for(let i=0; i<placed.length; i++){
       const b = placed[i];
-      if(bx2 > b.x1 && x < b.x2 && by2 > b.y1 && y < b.y2) return true;
+      if(bx2 > b.x1 && bx1 < b.x2 && by2 > b.y1 && by1 < b.y2) return true;
     }
     return false;
   };
 
-  const pushSpot = (x, y, w, h, rotated)=>{
-    results.push({ x, y, w, h, rotated });
-    placed.push({
-      x1: x - gap, y1: y - gap,
-      x2: x + w + gap, y2: y + h + gap,
-    });
+  // For a given row y-position and block dimensions, scan left-to-right
+  // and return all non-overlapping positions found.
+  const scanRow = (y, bw, bh, rotated)=>{
+    if(bw > sheetW || bh > sheetH) return [];
+    if(y + bh > sheetH + 0.01) return [];
+    const spots = [];
+    let x = 0;
+    while(x + bw <= sheetW + 0.01){
+      if(!overlaps(x, y, bw, bh)){
+        spots.push({ x, y, w: bw, h: bh, rotated });
+        x += bw + gap;
+      } else {
+        // Step forward by 1mm to find the next gap
+        x += 1;
+      }
+    }
+    return spots;
   };
 
-  // Step 1: bestLayout gives a dense rotation-aware layout for an empty
-  // sheet. We filter its slots against existing obstacles.
-  const layout = bestLayout(mmW, mmH, gap, sheetW, sheetH);
-  for(let i=0; i<layout.length && results.length < count; i++){
-    const p = layout[i];
-    if(!overlapsAnyBox(p.x, p.y, p.w, p.h)){
-      pushSpot(p.x, p.y, p.w, p.h, p.rotated);
+  // bestLayout for empty-sheet baseline (fast grid, no obstacles).
+  // We use this first for maximum density when no obstacles exist.
+  const results = [];
+  if(obstacles.length === 0){
+    const layout = bestLayout(mmW, mmH, gap, sheetW, sheetH);
+    for(let i=0; i<layout.length && results.length < count; i++){
+      const p = layout[i];
+      results.push(p);
+      placed.push({
+        x1: p.x - gap, y1: p.y - gap,
+        x2: p.x + p.w + gap, y2: p.y + p.h + gap,
+      });
+    }
+    return results.slice(0, count);
+  }
+
+  // With obstacles: row-by-row scan.
+  // Collect all candidate Y positions where a row could start:
+  //   - y=0
+  //   - bottom edge of every obstacle + gap
+  //   - bottom edge of every placed logo + gap
+  // This ensures we try rows that start right below obstacles.
+  const candidateYs = new Set([0]);
+  for(const b of obstacles){
+    candidateYs.add(Math.ceil(b.y2 + gap));
+  }
+  // Also add regular grid rows for both orientations
+  const heights = new Set();
+  if(nativeFits) heights.add(mmH);
+  if(rotatedFits) heights.add(mmW);
+  for(const h of heights){
+    for(let y = 0; y + h <= sheetH + 0.01; y += h + gap){
+      candidateYs.add(Math.round(y * 100) / 100);
     }
   }
 
-  // Step 2: fine-grained fallback scan. Tries both orientations to
-  // squeeze extra copies into odd corners left by obstacles.
+  // Sort Y candidates
+  const sortedYs = [...candidateYs].sort((a,b) => a - b);
+
+  // For each Y position, try both orientations and greedily place logos
+  for(const y of sortedYs){
+    if(results.length >= count) break;
+
+    // Try both orientations, pick whichever places more in this row
+    let bestRow = [];
+    if(nativeFits){
+      const row = scanRow(y, mmW, mmH, false);
+      if(row.length > bestRow.length) bestRow = row;
+    }
+    if(rotatedFits){
+      const row = scanRow(y, mmH, mmW, true);
+      if(row.length > bestRow.length) bestRow = row;
+    }
+
+    // Place the winning row's logos
+    for(const spot of bestRow){
+      if(results.length >= count) break;
+      // Double-check (placed array grew since scanRow ran)
+      if(!overlaps(spot.x, spot.y, spot.w, spot.h)){
+        results.push(spot);
+        placed.push({
+          x1: spot.x - gap, y1: spot.y - gap,
+          x2: spot.x + spot.w + gap, y2: spot.y + spot.h + gap,
+        });
+      }
+    }
+  }
+
+  // Final sweep: try placing in any remaining gaps with 1mm precision.
+  // Uses both orientations in a single pass.
   if(results.length < count){
-    const tryScan = (w, h, rotated)=>{
-      if(w > sheetW || h > sheetH) return;
-      if(results.length >= count) return;
-      const step = Math.max(2, Math.floor(Math.min(w, h) / 4) || 2);
-      const maxY = sheetH - h;
-      const maxX = sheetW - w;
-      for(let y=0; y<=maxY && results.length < count; y+=step){
-        for(let x=0; x<=maxX && results.length < count; x+=step){
-          if(!overlapsAnyBox(x, y, w, h)){
-            pushSpot(x, y, w, h, rotated);
-            x += Math.max(0, Math.floor(w / step) * step - step);
+    const tryFill = (bw, bh, rotated)=>{
+      if(bw > sheetW || bh > sheetH) return;
+      for(let y = 0; y + bh <= sheetH + 0.01 && results.length < count; y += 1){
+        for(let x = 0; x + bw <= sheetW + 0.01 && results.length < count; x += 1){
+          if(!overlaps(x, y, bw, bh)){
+            results.push({ x, y, w: bw, h: bh, rotated });
+            placed.push({
+              x1: x - gap, y1: y - gap,
+              x2: x + bw + gap, y2: y + bh + gap,
+            });
+            x += bw + gap - 1; // jump past placed logo
           }
         }
       }
     };
-    tryScan(mmW, mmH, false);
-    tryScan(mmH, mmW, true);
+    if(nativeFits) tryFill(mmW, mmH, false);
+    if(rotatedFits && results.length < count) tryFill(mmH, mmW, true);
   }
 
   return results;
@@ -1588,20 +1670,22 @@ function overlapsAny(x,y,w,h){
 
 function calcEffectiveDpi(obj){
   // Pure vector SVG without embedded raster → infinite resolution.
-  if(obj.type === 'group' && obj._svgSource && !obj._embeddedRasterW) return Infinity;
+  // Check _svgSource regardless of type: after rasterization for canvas
+  // performance, clones are fabric.Image (type 'image') but still vector
+  // for export purposes because _svgSource is preserved.
+  if(obj._svgSource && !obj._embeddedRasterW) return Infinity;
   // SVG with embedded raster → DPI based on the raster dimensions vs print size.
-  if(obj.type === 'group' && obj._svgSource && obj._embeddedRasterW){
+  if(obj._svgSource && obj._embeddedRasterW){
     return (obj._embeddedRasterW / obj._mmW) * MM_PER_INCH;
   }
   // PDF/AI rendered as raster but originally vector → treat as infinite DPI.
-  // These are rendered at 300 DPI by pdf.js, so they're always high quality.
   if(obj._vectorOrigin) return Infinity;
   return (obj._naturalW / obj._mmW) * MM_PER_INCH;
 }
 function dpiStatus(dpi){
   if(!isFinite(dpi)) return {label:'vector ✓', cls:'dpi-ok'};
-  if(dpi >= 300) return {label:Math.round(dpi)+' dpi', cls:'dpi-ok'};
-  if(dpi >= 150) return {label:Math.round(dpi)+' dpi', cls:'dpi-warn'};
+  if(dpi >= 300) return {label:Math.round(dpi)+' dpi ✓', cls:'dpi-ok'};
+  if(dpi >= 72)  return {label:Math.round(dpi)+' dpi', cls:'dpi-warn'};
   return {label:Math.round(dpi)+' dpi', cls:'dpi-bad'};
 }
 // Track which logos we've already warned about so the sticky DPI toast only
@@ -1617,10 +1701,11 @@ function checkDpi(obj){
   if(warnedDpiIds.has(key)) return;
   warnedDpiIds.add(key);
   toast(
-    `⚠️ ${t('lowDpiWarn')}: ${Math.round(dpi)} DPI. ${t('lowDpiMore')}`,
+    `${t('lowDpiWarn')} (${Math.round(dpi)} DPI). ${t('lowDpiMore')}`,
     'warn',
     0, // sticky — user closes it
-    ()=>{ warnedDpiIds.delete(key); }
+    ()=>{ warnedDpiIds.delete(key); },
+    t('lowDpiDismiss')
   );
 }
 
@@ -2607,8 +2692,11 @@ function buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, baseAngle, new
   clone.angle   = slot.rotated ? 90 : (baseAngle || 0);
   clone.flipX   = false;
   clone.flipY   = false;
-  clone.scaleX  = sx;
-  clone.scaleY  = sy;
+  // When angle=90, fabric's visual axes swap: visual width = height*scaleY.
+  // Keep sx/sy = the original aspect ratio, but assign them so the visual
+  // result fills the slot correctly.
+  clone.scaleX  = slot.rotated ? sy : sx;
+  clone.scaleY  = slot.rotated ? sx : sy;
   clone.left    = (slot.x + slot.w/2) * displayPxPerMm;
   clone.top     = (slot.y + slot.h/2) * displayPxPerMm;
   clone._id     = newId;
@@ -2762,8 +2850,15 @@ function changeGroupCount(originalId, targetCount){
             img._mmLeft = slot.x; img._mmTop = slot.y;
             img.originX = 'center'; img.originY = 'center';
             img.angle = slot.rotated ? 90 : 0;
-            img.scaleX = (slot.w * displayPxPerMm) / img.width;
-            img.scaleY = (slot.h * displayPxPerMm) / img.height;
+            if(slot.rotated){
+              // When angle=90, fabric's X-axis points down: visual width = height*scaleY,
+              // visual height = width*scaleX. Swap scales to maintain aspect ratio.
+              img.scaleX = (slot.h * displayPxPerMm) / img.width;
+              img.scaleY = (slot.w * displayPxPerMm) / img.height;
+            } else {
+              img.scaleX = (slot.w * displayPxPerMm) / img.width;
+              img.scaleY = (slot.h * displayPxPerMm) / img.height;
+            }
             img.left = (slot.x + slot.w/2) * displayPxPerMm;
             img.top  = (slot.y + slot.h/2) * displayPxPerMm;
             attachObjListeners(img);
@@ -2866,7 +2961,55 @@ function removeWhiteBg(obj, threshold){
     }
   }
   tctx.putImageData(data, 0, 0);
-  fabric.Image.fromURL(tmp.toDataURL('image/png'), newImg=>{
+
+  /* --- Auto-crop: find bounding box of non-transparent pixels --- */
+  const w = tmp.width, h = tmp.height;
+  let minX = w, minY = h, maxX = 0, maxY = 0;
+  for(let y = 0; y < h; y++){
+    for(let x = 0; x < w; x++){
+      if(px[(y * w + x) * 4 + 3] > 0){
+        if(x < minX) minX = x;
+        if(x > maxX) maxX = x;
+        if(y < minY) minY = y;
+        if(y > maxY) maxY = y;
+      }
+    }
+  }
+
+  // Only crop if there's meaningful transparent border (> 2% on any side)
+  const hasContent = maxX >= minX && maxY >= minY;
+  const leftPct  = hasContent ? minX / w : 0;
+  const topPct   = hasContent ? minY / h : 0;
+  const rightPct = hasContent ? (w - 1 - maxX) / w : 0;
+  const botPct   = hasContent ? (h - 1 - maxY) / h : 0;
+  const shouldCrop = hasContent && (leftPct > 0.02 || topPct > 0.02 || rightPct > 0.02 || botPct > 0.02);
+
+  let finalDataUrl, finalW, finalH, cropRatioW, cropRatioH;
+  if(shouldCrop){
+    const cropW = maxX - minX + 1;
+    const cropH = maxY - minY + 1;
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = cropW;
+    cropCanvas.height = cropH;
+    const cctx = cropCanvas.getContext('2d');
+    cctx.putImageData(tctx.getImageData(minX, minY, cropW, cropH), 0, 0);
+    finalDataUrl = cropCanvas.toDataURL('image/png');
+    finalW = cropW;
+    finalH = cropH;
+    cropRatioW = cropW / w;
+    cropRatioH = cropH / h;
+    console.log(`[GSB BgRemove] Auto-crop: ${w}×${h} → ${cropW}×${cropH} (removed ${((1 - cropRatioW * cropRatioH) * 100).toFixed(1)}% transparent area)`);
+  } else {
+    finalDataUrl = tmp.toDataURL('image/png');
+    finalW = w;
+    finalH = h;
+    cropRatioW = 1;
+    cropRatioH = 1;
+  }
+
+  fabric.Image.fromURL(finalDataUrl, newImg=>{
+    /* Keep the same scale per natural pixel — the bounding box shrinks
+       because the image now has fewer natural pixels after crop. */
     newImg.set({
       left: obj.left, top: obj.top, angle: obj.angle, flipX: obj.flipX, flipY: obj.flipY,
       scaleX: obj.scaleX, scaleY: obj.scaleY,
@@ -2874,10 +3017,10 @@ function removeWhiteBg(obj, threshold){
     newImg._id = obj._id;
     newImg._originalId = obj._originalId;
     newImg._name = obj._name;
-    newImg._naturalW = tmp.width;
-    newImg._naturalH = tmp.height;
-    newImg._mmW = obj._mmW;
-    newImg._mmH = obj._mmH;
+    newImg._naturalW = finalW;
+    newImg._naturalH = finalH;
+    newImg._mmW = obj._mmW * cropRatioW;
+    newImg._mmH = obj._mmH * cropRatioH;
     newImg._mmLeft = obj._mmLeft;
     newImg._mmTop = obj._mmTop;
     // Preserve vector-origin flag so DPI stays correct after bg removal
@@ -2891,6 +3034,7 @@ function removeWhiteBg(obj, threshold){
     canvas.add(newImg);
     canvas.setActiveObject(newImg);
     canvas.requestRenderAll();
+    syncMmFromPx(newImg);
     renderItemList();
     toast(t('bgRemoved'),'success');
   });
@@ -3041,19 +3185,26 @@ function tileSheet(){
   if(!sample){ toast(t('logoGone'),'error'); state.fillTemplate = null; return; }
   ft.sampleObj = sample;
 
-  // clear non-sample copies of this logo + any existing tiles
+  // Clear ALL copies/tiles of this logo — keep OTHER logos intact
   const toRemove = canvas.getObjects().filter(o=>
-    (o._originalId === ft.originalId && o !== sample) || o._isFillTile
+    o._originalId === ft.originalId
   );
   toRemove.forEach(o=>canvas.remove(o));
 
   // Force sample to a known orientation (top-left origin, no rotation, no flip)
   sample.set({ originX:'left', originY:'top', angle:0, flipX:false, flipY:false });
 
-  const layout = bestLayout(ft.mmW, ft.mmH, state.gapMm, state.sheet.w, state.sheet.h);
+  // Use packSpotsSmart which respects existing objects from OTHER logos as obstacles.
+  // The sample is temporarily removed so it doesn't block itself.
+  // Pass a high count to fill all available space.
+  const maxSlots = 999;
+  let layout = packSpotsSmart(ft.mmW, ft.mmH, maxSlots);
   if(!layout || layout.length === 0){
     toast(t('sizeTooLarge'),'error');
     state.fillTemplate = null;
+    // Re-add the sample so it's not lost
+    canvas.add(sample);
+    canvas.requestRenderAll();
     return;
   }
 
@@ -3061,13 +3212,18 @@ function tileSheet(){
   const natH = sample.height;
 
   const placeAt = (target, p)=>{
+    // Use the TARGET's own width/height for scale calculation.
+    // For SVG groups, tw = SVG coordinate units; for raster PNG clones, tw = pixel width.
+    // This prevents size mismatch when rasterized clones have different .width than the SVG group.
+    const tw = target.width;
+    const th = target.height;
     let sx, sy;
     if(p.rotated){
-      sy = (p.w * displayPxPerMm) / natH;
-      sx = (p.h * displayPxPerMm) / natW;
+      sy = (p.w * displayPxPerMm) / th;
+      sx = (p.h * displayPxPerMm) / tw;
     } else {
-      sx = (p.w * displayPxPerMm) / natW;
-      sy = (p.h * displayPxPerMm) / natH;
+      sx = (p.w * displayPxPerMm) / tw;
+      sy = (p.h * displayPxPerMm) / th;
     }
     target.set({
       originX:'center', originY:'center',
@@ -3084,6 +3240,7 @@ function tileSheet(){
   };
 
   placeAt(sample, layout[0]);
+  canvas.add(sample); // re-add after removal for packing
 
   // --- Performance: rasterize SVG groups to PNG for fast tiling ---
   const isGroup = sample.type === 'group';
@@ -3202,7 +3359,7 @@ function collectAllSheetStats(){
     const dpi = calcEffectiveDpi(o);
     if(!isFinite(dpi)) { stats.okDpi++; return; }
     if(dpi >= 300) stats.okDpi++;
-    else if(dpi >= 150) stats.midDpi++;
+    else if(dpi >= 72) stats.midDpi++;
     else stats.lowDpi++;
   });
 
@@ -3238,62 +3395,83 @@ function updateSummary(){
 const exportBtn = document.getElementById('exportBtn');
 
 exportBtn.onclick = async ()=>{
-  // Check for logos
+  /* -------------------------------------------------------
+     VECTOR-FIRST PDF EXPORT
+     Primary engine: pdf-lib (creates final PDF)
+     SVG track:      jsPDF + svg2pdf.js → intermediate PDF → embed in pdf-lib
+     AI/PDF track:   original ArrayBuffer → embed in pdf-lib
+     Raster track:   fabric clone → canvas PNG → embed in pdf-lib
+     Canvas is NEVER used as export source for vector input.
+     ------------------------------------------------------- */
   const canvasObjs = canvas.getObjects().filter(o => o._mmW != null);
-  if(canvasObjs.length === 0){
-    toast(t('addLogoFirst'),'warn');
-    return;
-  }
+  if(canvasObjs.length === 0){ toast(t('addLogoFirst'),'warn'); return; }
 
-  // Check for low DPI (use same calcEffectiveDpi as summary)
+  // Low DPI warning
   let lowDpiCount = 0;
-  canvasObjs.forEach(o => {
-    const dpi = calcEffectiveDpi(o);
-    if(isFinite(dpi) && dpi < 300) lowDpiCount++;
-  });
+  canvasObjs.forEach(o => { const d = calcEffectiveDpi(o); if(isFinite(d) && d < 300) lowDpiCount++; });
   if(lowDpiCount > 0){
     const ok = await confirmModal(t('lowResFound'), `${lowDpiCount} ${t('lowResBody')}`, {okLabel:t('lowResOk')});
     if(!ok) return;
   }
 
-  // Show PDF progress indicator
   showPdfProgress(true);
   await new Promise(r => setTimeout(r, 400));
 
-  // Trim PDF height to content: only export down to the last logo + gap
+  // Trim height to content
   const contentBottomMm = getContentBottomMm();
   const exportGap = state.gapMm || 0;
   const trimmedH = Math.min(state.sheet.h, Math.ceil(contentBottomMm + exportGap));
+  const sheetW = state.sheet.w;
 
-  // NOTE: PDF uses sRGB color space — this is correct for DTF printing.
-  const pdf = new jsPDF({
-    orientation: state.sheet.w > trimmedH ? 'landscape' : 'portrait',
-    unit: 'mm',
-    format: [state.sheet.w, trimmedH],
-  });
-
-  // Target 300 DPI
-  const DPI = 300;
-  const exportPxPerMm = DPI / MM_PER_INCH;
-  const exportPxW = Math.round(state.sheet.w * exportPxPerMm);
-  const exportPxH = Math.round(trimmedH * exportPxPerMm);
-  // Scale factor from display pixels to 300 DPI export pixels
-  const exportScale = exportPxPerMm / displayPxPerMm;
+  // Conversion constants
+  const MM_TO_PT = 72 / 25.4;          // 1 mm = 2.8346… pt
+  const RASTER_DPI = 300;
+  const RASTER_PX_PER_MM = RASTER_DPI / 25.4;  // ~11.81 px/mm
 
   const yieldFrame = ()=> new Promise(r => setTimeout(r, 0));
 
   try {
     updatePdfProgress(1, 1);
 
-    // --- Collect all live objects and group by originalId ---
-    const liveObjs = canvas.getObjects().filter(o => o._mmW != null);
+    // --- Library detection ---
+    const hasPdfLib = typeof window.PDFLib !== 'undefined' && typeof window.PDFLib.PDFDocument !== 'undefined';
+    if(!hasPdfLib) throw new Error('pdf-lib niet geladen — kan geen PDF maken');
 
-    const uniqueLogos = new Map(); // originalId → { sample, tiles: [{mmLeft,mmTop,mmW,mmH,angle}] }
+    const { PDFDocument, rgb } = window.PDFLib;
+
+    // Detect svg2pdf.js availability — it may register as:
+    //  (a) jsPDF plugin: new jsPDF().svg() exists, OR
+    //  (b) window.svg2pdf global (function or object with .default)
+    const hasJsPDF = typeof window.jspdf !== 'undefined' && typeof window.jspdf.jsPDF === 'function';
+    let hasSvg2pdf = false;
+    if(hasJsPDF){
+      try {
+        const probe = new window.jspdf.jsPDF({ unit:'mm', format:[10,10] });
+        if(typeof probe.svg === 'function') hasSvg2pdf = true;
+      } catch(_){}
+    }
+    if(!hasSvg2pdf){
+      hasSvg2pdf = (typeof window.svg2pdf === 'function') ||
+                   (typeof window.svg2pdf === 'object' && window.svg2pdf !== null &&
+                    typeof (window.svg2pdf.default || window.svg2pdf.svg2pdf) === 'function');
+    }
+
+    const canDoSvgVector = hasSvg2pdf && hasJsPDF;
+    console.log('[GSB Export] hasPdfLib:', hasPdfLib, '| hasSvg2pdf:', hasSvg2pdf,
+                '| hasJsPDF:', hasJsPDF, '| canDoSvgVector:', canDoSvgVector);
+
+    // --- Create final pdf-lib document ---
+    const finalDoc = await PDFDocument.create();
+    const pageWPt = sheetW * MM_TO_PT;
+    const pageHPt = trimmedH * MM_TO_PT;
+    const page = finalDoc.addPage([pageWPt, pageHPt]);
+
+    // --- Collect objects grouped by originalId ---
+    const liveObjs = canvas.getObjects().filter(o => o._mmW != null);
+    const uniqueLogos = new Map(); // oid → { sample, tiles: [] }
     for(const o of liveObjs){
       const oid = o._originalId || o._id;
-      if(!uniqueLogos.has(oid)){
-        uniqueLogos.set(oid, { sample: o, tiles: [] });
-      }
+      if(!uniqueLogos.has(oid)) uniqueLogos.set(oid, { sample: o, tiles: [] });
       uniqueLogos.get(oid).tiles.push({
         mmLeft: o._mmLeft, mmTop: o._mmTop,
         mmW: o._mmW, mmH: o._mmH,
@@ -3301,84 +3479,51 @@ exportBtn.onclick = async ()=>{
       });
     }
 
-    // --- Classify each unique logo into one of three export tracks ---
-    //  1. vectorSvgIds  — SVG with _svgSource → embed via svg2pdf.js (vector paths)
-    //  2. vectorPdfIds  — AI/PDF with stored ArrayBuffer → embed via pdf-lib (original PDF page)
-    //  3. rasterIds     — everything else → 300 DPI raster PNG
-    //
-    // Detect svg2pdf.js: may be a jsPDF plugin (pdf.svg) or standalone function
-    const canSvg2pdf = (typeof pdf.svg === 'function') ||
-                       (typeof window.svg2pdf === 'function') ||
-                       (typeof window.svg2pdf === 'object' && window.svg2pdf !== null &&
-                        typeof (window.svg2pdf.default || window.svg2pdf) === 'function');
-    const hasPdfLib = typeof window.PDFLib !== 'undefined' && typeof window.PDFLib.PDFDocument !== 'undefined';
-    console.log('[GSB Export] canSvg2pdf:', canSvg2pdf, '| pdf.svg:', typeof pdf.svg,
-                '| window.svg2pdf:', typeof window.svg2pdf,
-                '| hasPdfLib:', hasPdfLib);
-
+    // --- Classify into three tracks ---
+    // Rotated tiles stay in their vector track — drawAtTile handles rotation via
+    // pdf-lib transformation matrices, preserving vector data even when rotated.
     const vectorSvgIds = new Set();
     const vectorPdfIds = new Set();
     const rasterIds = new Set();
 
     for(const [oid, grp] of uniqueLogos){
       const s = grp.sample;
-      const anyRotated = grp.tiles.some(t => Math.abs((t.angle % 180)) > 0.1);
-
-      if(canSvg2pdf && s._svgSource && !s._embeddedRasterW && !anyRotated){
+      if(canDoSvgVector && s._svgSource && !s._embeddedRasterW){
         vectorSvgIds.add(oid);
-      } else if(hasPdfLib && s._vectorOrigin && pdfSourceBuffers.has(s._originalId || oid) && !anyRotated){
+      } else if(s._vectorOrigin && pdfSourceBuffers.has(s._originalId || oid)){
         vectorPdfIds.add(oid);
       } else {
         rasterIds.add(oid);
       }
     }
+    console.log(`[GSB Export] Classification: ${vectorSvgIds.size} SVG vector, ${vectorPdfIds.size} PDF/AI vector, ${rasterIds.size} raster`);
 
-    console.log(`PDF export: ${vectorSvgIds.size} SVG vector, ${vectorPdfIds.size} PDF vector, ${rasterIds.size} raster`);
-
-    // --- Helper: call svg2pdf with correct API (plugin or standalone) ---
-    async function callSvg2pdf(svgEl, targetPdf, opts){
-      // Method 1: jsPDF plugin (svg2pdf auto-registers pdf.svg() when loaded after jsPDF)
-      if(typeof targetPdf.svg === 'function'){
-        console.log('[GSB] Using pdf.svg() plugin method');
-        return await targetPdf.svg(svgEl, opts);
-      }
-      // Method 2: standalone global function
-      if(typeof window.svg2pdf === 'function'){
-        console.log('[GSB] Using window.svg2pdf() standalone');
-        return await window.svg2pdf(svgEl, targetPdf, opts);
-      }
-      // Method 3: ES module default export wrapped in UMD object
-      if(window.svg2pdf && typeof window.svg2pdf.default === 'function'){
-        console.log('[GSB] Using window.svg2pdf.default()');
-        return await window.svg2pdf.default(svgEl, targetPdf, opts);
-      }
-      // Method 4: named export
-      if(window.svg2pdf && typeof window.svg2pdf.svg2pdf === 'function'){
-        console.log('[GSB] Using window.svg2pdf.svg2pdf()');
-        return await window.svg2pdf.svg2pdf(svgEl, targetPdf, opts);
-      }
-      throw new Error('svg2pdf not available — no compatible calling convention found');
+    // --- Helper: call svg2pdf with correct API ---
+    async function callSvg2pdf(svgEl, targetJsPdf, opts){
+      if(typeof targetJsPdf.svg === 'function')
+        return await targetJsPdf.svg(svgEl, opts);
+      if(typeof window.svg2pdf === 'function')
+        return await window.svg2pdf(svgEl, targetJsPdf, opts);
+      if(window.svg2pdf && typeof window.svg2pdf.default === 'function')
+        return await window.svg2pdf.default(svgEl, targetJsPdf, opts);
+      if(window.svg2pdf && typeof window.svg2pdf.svg2pdf === 'function')
+        return await window.svg2pdf.svg2pdf(svgEl, targetJsPdf, opts);
+      throw new Error('svg2pdf not available');
     }
 
-    // --- Track 3: Rasterize each UNIQUE raster logo once at 300 DPI ---
-    const logoImages = new Map();
-    for(const oid of rasterIds){
-      const grp = uniqueLogos.get(oid);
-      const sample = grp.sample;
-      const pxW = Math.round(sample._mmW * exportPxPerMm);
-      const pxH = Math.round(sample._mmH * exportPxPerMm);
-
+    // --- Helper: rasterize a fabric object to PNG ArrayBuffer at 300 DPI ---
+    async function rasterizeLogo(sample, mmW, mmH){
+      const pxW = Math.round(mmW * RASTER_PX_PER_MM);
+      const pxH = Math.round(mmH * RASTER_PX_PER_MM);
       const tmpEl = document.createElement('canvas');
       tmpEl.width = pxW; tmpEl.height = pxH;
       const tmpFab = new fabric.StaticCanvas(tmpEl, {
-        width: pxW, height: pxH,
-        backgroundColor: null, enableRetinaScaling: false,
+        width: pxW, height: pxH, backgroundColor: null, enableRetinaScaling: false,
       });
-
-      const clone = await new Promise(resolve => sample.clone(resolve, FABRIC_EXTRA_PROPS));
+      const clone = await new Promise(res => sample.clone(res, FABRIC_EXTRA_PROPS));
       clone.set({
-        originX: 'center', originY: 'center',
-        left: pxW / 2, top: pxH / 2,
+        originX:'center', originY:'center',
+        left: pxW/2, top: pxH/2,
         scaleX: pxW / clone.width,
         scaleY: pxH / clone.height,
         angle: 0,
@@ -3386,140 +3531,324 @@ exportBtn.onclick = async ()=>{
       clone.setCoords();
       tmpFab.add(clone);
       tmpFab.renderAll();
-
-      const img = new Image();
-      img.src = tmpEl.toDataURL('image/png');
-      await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
-      logoImages.set(oid, img);
+      // Get PNG as ArrayBuffer
+      const dataUrl = tmpEl.toDataURL('image/png');
       tmpFab.dispose();
-      await yieldFrame();
+      // Convert data URL to Uint8Array
+      const base64 = dataUrl.split(',')[1];
+      const binStr = atob(base64);
+      const bytes = new Uint8Array(binStr.length);
+      for(let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+      return bytes;
     }
 
-    // --- Render raster logos in horizontal strips ---
-    if(rasterIds.size > 0){
-      const MAX_STRIP_PX = 8000;
-      const numStrips = Math.ceil(exportPxH / MAX_STRIP_PX);
-      const stripEl = document.createElement('canvas');
-      stripEl.width = exportPxW;
+    // --- Helper: draw embedded content at tile position, handling rotation ---
+    // For rotated tiles (angle≈90), _mmW/_mmH are the bounding box (swapped
+    // relative to source). We draw at the SOURCE's natural aspect and rotate.
+    function drawAtTile(embeddedObj, tile, isPage){
+      const isRotated = Math.abs(tile.angle % 360) > 0.1;
 
-      for(let stripIdx = 0; stripIdx < numStrips; stripIdx++){
-        const stripStartPx = stripIdx * MAX_STRIP_PX;
-        const stripHeightPx = Math.min(MAX_STRIP_PX, exportPxH - stripStartPx);
-        const stripStartMm = stripStartPx / exportPxPerMm;
-        const stripHeightMm = stripHeightPx / exportPxPerMm;
+      if(!isRotated){
+        // Simple case: draw directly at bounding box position
+        const xPt = tile.mmLeft * MM_TO_PT;
+        const wPt = tile.mmW * MM_TO_PT;
+        const hPt = tile.mmH * MM_TO_PT;
+        const yPt = pageHPt - (tile.mmTop + tile.mmH) * MM_TO_PT;
+        const drawOpts = { x: xPt, y: yPt, width: wPt, height: hPt };
+        if(isPage) page.drawPage(embeddedObj, drawOpts);
+        else page.drawImage(embeddedObj, drawOpts);
+      } else {
+        // Rotated: _mmW = bounding width (source's height), _mmH = bounding height (source's width)
+        // Source natural dims when un-rotated: srcW = _mmH, srcH = _mmW
+        const bboxW = tile.mmW * MM_TO_PT;
+        const bboxH = tile.mmH * MM_TO_PT;
+        const srcW = bboxH;  // source width  = bounding height (since 90° rotation)
+        const srcH = bboxW;  // source height = bounding width
 
-        stripEl.height = stripHeightPx;
-        const stripCtx = stripEl.getContext('2d');
-        stripCtx.clearRect(0, 0, exportPxW, stripHeightPx);
+        // Center of the bounding box in pdf-lib coords
+        const cx = tile.mmLeft * MM_TO_PT + bboxW / 2;
+        const cy = pageHPt - (tile.mmTop * MM_TO_PT + bboxH / 2);
 
-        let hasContent = false;
-        for(const oid of rasterIds){
-          const grp = uniqueLogos.get(oid);
-          const logoImg = logoImages.get(oid);
-          if(!logoImg) continue;
-          for(const tile of grp.tiles){
-            const tileBottomMm = tile.mmTop + tile.mmH;
-            if(tileBottomMm < stripStartMm || tile.mmTop > stripStartMm + stripHeightMm) continue;
+        const rad = -(tile.angle * Math.PI / 180);
+        const cos = Math.cos(rad), sin = Math.sin(rad);
 
-            const destX = Math.round(tile.mmLeft * exportPxPerMm);
-            const destY = Math.round(tile.mmTop * exportPxPerMm) - stripStartPx;
-            const destW = Math.round(tile.mmW * exportPxPerMm);
-            const destH = Math.round(tile.mmH * exportPxPerMm);
-            const isRotated = Math.abs((tile.angle % 180)) > 0.1;
-
-            if(isRotated){
-              stripCtx.save();
-              stripCtx.translate(destX + destW/2, destY + destH/2);
-              stripCtx.rotate(tile.angle * Math.PI / 180);
-              stripCtx.drawImage(logoImg, -destH/2, -destW/2, destH, destW);
-              stripCtx.restore();
-            } else {
-              stripCtx.drawImage(logoImg, destX, destY, destW, destH);
-            }
-            hasContent = true;
-          }
-        }
-
-        if(hasContent){
-          pdf.addImage(stripEl, 'PNG', 0, stripStartMm, state.sheet.w, stripHeightMm, undefined, 'FAST');
-        }
-        await yieldFrame();
+        // Affine transform: rotate around center
+        // T = translate(cx,cy) · rotate(rad) · translate(-cx,-cy)
+        // The 6 params of concatTransformationMatrix are [a,b,c,d,e,f]
+        // corresponding to the matrix | a c e |
+        //                             | b d f |
+        //                             | 0 0 1 |
+        page.pushOperators(
+          window.PDFLib.pushGraphicsState(),
+          window.PDFLib.concatTransformationMatrix(
+            cos, sin, -sin, cos,
+            cx - cos*cx + sin*cy,
+            cy - sin*cx - cos*cy
+          ),
+        );
+        // Draw at center minus half source dims (in un-rotated space)
+        const drawOpts = { x: cx - srcW/2, y: cy - srcH/2, width: srcW, height: srcH };
+        if(isPage) page.drawPage(embeddedObj, drawOpts);
+        else page.drawImage(embeddedObj, drawOpts);
+        page.pushOperators(window.PDFLib.popGraphicsState());
       }
     }
 
-    // --- Track 1: Embed vector SVG logos via svg2pdf.js ---
+    let vectorOk = 0, vectorFail = 0, pdfVectorOk = 0;
+
+    // ===========================================================
+    // TRACK 1: SVG VECTOR — svg2pdf.js → intermediate jsPDF → embed as PDF page in pdf-lib
+    // ===========================================================
     if(vectorSvgIds.size > 0){
+      // Self-test svg2pdf with a trivial SVG → temp jsPDF
+      let svg2pdfWorks = false;
+      try {
+        const testJsPdf = new window.jspdf.jsPDF({ unit:'mm', format:[10,10] });
+        const testSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        testSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        testSvg.setAttribute('viewBox', '0 0 10 10');
+        testSvg.setAttribute('width', '10'); testSvg.setAttribute('height', '10');
+        const testRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        testRect.setAttribute('width','10'); testRect.setAttribute('height','10'); testRect.setAttribute('fill','red');
+        testSvg.appendChild(testRect);
+        testSvg.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none';
+        document.body.appendChild(testSvg);
+        await callSvg2pdf(testSvg, testJsPdf, { x:0, y:0, width:10, height:10 });
+        document.body.removeChild(testSvg);
+        svg2pdfWorks = true;
+        console.log('%c[GSB] svg2pdf self-test: PASSED', 'color:green;font-weight:bold');
+      } catch(e){
+        console.error('[GSB] svg2pdf self-test FAILED:', e);
+        try { document.body.querySelector('svg[style*="-9999"]')?.remove(); } catch(_){}
+      }
+
+      if(!svg2pdfWorks){
+        console.error('[GSB] svg2pdf broken — moving all SVG logos to raster track');
+        for(const oid of vectorSvgIds) rasterIds.add(oid);
+        vectorSvgIds.clear();
+      }
+    }
+
+    if(vectorSvgIds.size > 0){
+      // Container must NOT constrain SVG size (no width/height limits).
+      // svg2pdf.js calls getComputedStyle — if the SVG is inside a 1px box,
+      // computed dimensions collapse and the render breaks.
+      const svgContainer = document.createElement('div');
+      svgContainer.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;overflow:visible';
+      document.body.appendChild(svgContainer);
       const parser = new DOMParser();
+
+      // Cache: oid → embeddedPage (so we embed once, stamp many times)
+      const svgEmbedCache = new Map();
+
       for(const oid of vectorSvgIds){
         const grp = uniqueLogos.get(oid);
         const svgText = grp.sample._svgSource;
-        let svgEl;
+        if(!svgText){ rasterIds.add(oid); continue; }
+
+        let embeddedPage = null;
         try {
-          const doc = parser.parseFromString(svgText, 'image/svg+xml');
-          svgEl = doc.documentElement;
-          // Ensure width/height for svg2pdf sizing
-          if(!svgEl.getAttribute('width') || !svgEl.getAttribute('height')){
-            const vb = svgEl.getAttribute('viewBox');
-            if(vb){
-              const parts = vb.split(/[\s,]+/).map(Number);
-              if(parts.length === 4){
-                svgEl.setAttribute('width', parts[2]);
-                svgEl.setAttribute('height', parts[3]);
-              }
-            }
+          // 1. Determine the logo's physical mm dimensions (un-rotated).
+          //    These are the GROUND TRUTH for how big this logo should be.
+          const refTile = grp.tiles.find(t => Math.abs(t.angle % 360) <= 0.1) || grp.tiles[0];
+          const isRefRot = Math.abs(refTile.angle % 360) > 0.1;
+          const srcMmW = isRefRot ? refTile.mmH : refTile.mmW;
+          const srcMmH = isRefRot ? refTile.mmW : refTile.mmH;
+
+          // 2. Parse SVG into DOM element
+          const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+          const parseErr = svgDoc.querySelector('parsererror');
+          if(parseErr) throw new Error('SVG parse error: ' + parseErr.textContent.substring(0, 200));
+          let svgEl = svgDoc.documentElement;
+
+          if(!svgEl.getAttribute('xmlns'))
+            svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+          // Ensure viewBox exists
+          if(!svgEl.getAttribute('viewBox')){
+            const aw = parseFloat(svgEl.getAttribute('width')) || 100;
+            const ah = parseFloat(svgEl.getAttribute('height')) || 100;
+            svgEl.setAttribute('viewBox', `0 0 ${aw} ${ah}`);
           }
+
+          // 3. Read viewBox — this is the SVG's native coordinate system.
+          const vbParts = svgEl.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+          const vbW = vbParts[2];
+          const vbH = vbParts[3];
+
+          // ============================================================
+          // IDENTITY-TRANSFORM APPROACH (definitive fix for stretching)
+          // ============================================================
+          // Previous attempts tried to let svg2pdf.js scale SVG→mm.
+          // svg2pdf consistently distorted the content regardless of how
+          // we configured width/height/units.
+          //
+          // New strategy: svg2pdf does ZERO scaling.
+          //   - SVG width/height = viewBox dimensions (unitless)
+          //   - jsPDF page = viewBox dimensions in POINTS
+          //   - svg2pdf target = viewBox dimensions in POINTS
+          //   → viewBox ≡ viewport ≡ page ≡ target = identity transform
+          //   → svg2pdf just writes SVG paths at native coordinates
+          //
+          // All physical scaling (to mm) happens AFTER, in pdf-lib's
+          // drawPage({width, height}) which is a simple affine transform.
+          // ============================================================
+          svgEl.setAttribute('width', String(vbW));
+          svgEl.setAttribute('height', String(vbH));
+          // Strip any preserveAspectRatio that could cause svg2pdf to
+          // add offsets or non-uniform scaling within the identity page
+          svgEl.setAttribute('preserveAspectRatio', 'none');
+          // Remove inline styles that could override dimensions
+          svgEl.style.cssText = '';
+
+          console.log(`[GSB SVG] ${grp.sample._name || oid}: ` +
+            `viewBox=${vbParts.join(' ')}, target=${srcMmW.toFixed(1)}×${srcMmH.toFixed(1)}mm`);
+
+          // 4. Import into DOM (required for getComputedStyle by svg2pdf)
+          const imported = document.importNode(svgEl, true);
+          svgContainer.appendChild(imported);
+
+          // 5. Create intermediate jsPDF at VIEWBOX dimensions in POINTS.
+          //    1 SVG user unit = 1 point. No mm, no scaling.
+          //    CRITICAL: jsPDF silently swaps format[0]/format[1] when the
+          //    first dimension > second AND no orientation is specified
+          //    (defaults to portrait). This caused ALL previous stretching
+          //    bugs — the page became portrait while svg2pdf rendered
+          //    landscape content, producing a clipped/stretched result.
+          const tmpPdf = new window.jspdf.jsPDF({
+            unit: 'pt',
+            format: [vbW, vbH],
+            orientation: vbW > vbH ? 'landscape' : 'portrait',
+            compress: false,
+          });
+
+          // 6. svg2pdf renders at viewBox scale — identity, no distortion.
+          await callSvg2pdf(imported, tmpPdf, {
+            x: 0, y: 0,
+            width: vbW, height: vbH,
+          });
+
+          // 7. Embed the identity-scale page in pdf-lib.
+          //    drawAtTile will scale it to physical mm via drawPage({width,height}).
+          const tmpBytes = tmpPdf.output('arraybuffer');
+          // Verify jsPDF didn't swap our dimensions
+          const jsPdfW = tmpPdf.internal.pageSize.getWidth();
+          const jsPdfH = tmpPdf.internal.pageSize.getHeight();
+          console.log(`[GSB SVG] Intermediate: ${tmpBytes.byteLength} bytes, ` +
+            `requested=${vbW}×${vbH}pt, jsPDF actual=${jsPdfW}×${jsPdfH}pt, ` +
+            `match=${Math.abs(jsPdfW-vbW)<0.1 && Math.abs(jsPdfH-vbH)<0.1 ? '✓' : '✗ SWAPPED!'}`);
+
+          const tmpDoc = await PDFDocument.load(tmpBytes);
+          const [ep] = await finalDoc.embedPdf(tmpDoc, [0]);
+          embeddedPage = ep;
+          svgEmbedCache.set(oid, embeddedPage);
+
+          // Clean up DOM
+          svgContainer.removeChild(imported);
+
+          console.log(`[GSB] SVG vector embed OK: ${grp.sample._name || oid} (${srcMmW.toFixed(1)}×${srcMmH.toFixed(1)}mm)`);
         } catch(e){
-          console.warn('SVG parse failed, falling back to raster for', oid, e);
-          svgEl = null;
+          console.error('[GSB] SVG vector embed FAILED for', oid, ':', e);
+          embeddedPage = null;
         }
 
-        for(const tile of grp.tiles){
-          if(svgEl){
+        if(embeddedPage){
+          // Draw at each tile position
+          for(const tile of grp.tiles){
             try {
-              await callSvg2pdf(svgEl, pdf, {
-                x: tile.mmLeft,
-                y: tile.mmTop,
-                width: tile.mmW,
-                height: tile.mmH,
-              });
-              continue; // success
+              drawAtTile(embeddedPage, tile, true);
+              vectorOk++;
             } catch(e){
-              console.warn('svg2pdf embed failed, falling back to raster:', e);
+              console.error('[GSB] drawPage failed for SVG tile:', e);
+              vectorFail++;
             }
           }
-          // Fallback: raster stamp for this tile
-          if(!logoImages.has(oid)){
-            const sample = grp.sample;
-            const pxW = Math.round(sample._mmW * exportPxPerMm);
-            const pxH = Math.round(sample._mmH * exportPxPerMm);
-            const tmpEl = document.createElement('canvas');
-            tmpEl.width = pxW; tmpEl.height = pxH;
-            const tmpFab = new fabric.StaticCanvas(tmpEl, {
-              width: pxW, height: pxH, backgroundColor: null, enableRetinaScaling: false,
-            });
-            const clone = await new Promise(resolve => sample.clone(resolve, FABRIC_EXTRA_PROPS));
-            clone.set({ originX:'center', originY:'center', left:pxW/2, top:pxH/2,
-              scaleX:pxW/clone.width, scaleY:pxH/clone.height, angle:0 });
-            clone.setCoords(); tmpFab.add(clone); tmpFab.renderAll();
-            const fbImg = new Image();
-            fbImg.src = tmpEl.toDataURL('image/png');
-            await new Promise(resolve => { fbImg.onload = resolve; fbImg.onerror = resolve; });
-            logoImages.set(oid, fbImg);
-            tmpFab.dispose();
-          }
-          const fbImg = logoImages.get(oid);
-          const tileEl = document.createElement('canvas');
-          tileEl.width = Math.round(tile.mmW * exportPxPerMm);
-          tileEl.height = Math.round(tile.mmH * exportPxPerMm);
-          const tileCtx = tileEl.getContext('2d');
-          tileCtx.drawImage(fbImg, 0, 0, tileEl.width, tileEl.height);
-          pdf.addImage(tileEl, 'PNG', tile.mmLeft, tile.mmTop, tile.mmW, tile.mmH, undefined, 'FAST');
+        } else {
+          // Fallback to raster for this logo
+          console.warn('[GSB] SVG logo', oid, 'falling back to raster');
+          rasterIds.add(oid);
+          vectorFail += grp.tiles.length;
         }
         await yieldFrame();
       }
+      document.body.removeChild(svgContainer);
     }
 
-    // --- Build output: if we have PDF-vector logos, post-process with pdf-lib ---
+    // ===========================================================
+    // TRACK 2: AI/PDF VECTOR — embed original PDF page via pdf-lib
+    // ===========================================================
+    for(const oid of vectorPdfIds){
+      const grp = uniqueLogos.get(oid);
+      const srcId = grp.sample._originalId || oid;
+      const srcBuffer = pdfSourceBuffers.get(srcId);
+      if(!srcBuffer){
+        console.warn('[GSB] No source buffer for PDF/AI logo', oid, '— falling back to raster');
+        rasterIds.add(oid);
+        continue;
+      }
+
+      let embeddedPage = null;
+      try {
+        const srcDoc = await PDFDocument.load(srcBuffer, { ignoreEncryption: true });
+        const [ep] = await finalDoc.embedPdf(srcDoc, [0]);
+        embeddedPage = ep;
+        console.log(`[GSB] PDF/AI vector embed OK: ${grp.sample._name || oid}`);
+      } catch(e){
+        console.error('[GSB] pdf-lib embed failed for', oid, ':', e);
+        rasterIds.add(oid);
+        continue;
+      }
+
+      for(const tile of grp.tiles){
+        try {
+          drawAtTile(embeddedPage, tile, true);
+          pdfVectorOk++;
+        } catch(e){
+          console.error('[GSB] drawPage failed for PDF/AI tile:', e);
+        }
+      }
+      await yieldFrame();
+    }
+
+    // ===========================================================
+    // TRACK 3: RASTER — 300 DPI PNG embedded as image in pdf-lib
+    // ===========================================================
+    // Cache: oid → embedded PDFImage
+    const rasterEmbedCache = new Map();
+
+    for(const oid of rasterIds){
+      const grp = uniqueLogos.get(oid);
+      if(!grp) continue;
+      const sample = grp.sample;
+
+      let embeddedImg = rasterEmbedCache.get(oid);
+      if(!embeddedImg){
+        try {
+          // Find a non-rotated tile's dimensions, or un-swap from a rotated tile
+          const refTile = grp.tiles.find(t => Math.abs(t.angle % 360) <= 0.1) || grp.tiles[0];
+          const isRefRotated = Math.abs(refTile.angle % 360) > 0.1;
+          const srcMmW = isRefRotated ? refTile.mmH : refTile.mmW;
+          const srcMmH = isRefRotated ? refTile.mmW : refTile.mmH;
+          const pngBytes = await rasterizeLogo(sample, srcMmW, srcMmH);
+          embeddedImg = await finalDoc.embedPng(pngBytes);
+          rasterEmbedCache.set(oid, embeddedImg);
+        } catch(e){
+          console.error('[GSB] Rasterize failed for', oid, ':', e);
+          continue;
+        }
+      }
+
+      for(const tile of grp.tiles){
+        try {
+          drawAtTile(embeddedImg, tile, false);
+        } catch(e){
+          console.error('[GSB] drawImage failed for raster tile:', e);
+        }
+      }
+      await yieldFrame();
+    }
+
+    // --- Save and download ---
     const projectTitle = (document.getElementById('projectTitleInput').value || '').trim();
     const today = new Date();
     const dateStr = String(today.getDate()).padStart(2,'0') + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + today.getFullYear();
@@ -3528,87 +3857,30 @@ exportBtn.onclick = async ()=>{
       ? `${safeTitle}-dtf-${dateStr}.pdf`
       : `gangsheet-dtf-${dateStr}.pdf`;
 
-    if(vectorPdfIds.size > 0 && hasPdfLib){
-      // Track 2: Embed original AI/PDF pages as vector via pdf-lib
-      const basePdfBytes = pdf.output('arraybuffer');
-      const { PDFDocument } = window.PDFLib;
-      const finalDoc = await PDFDocument.load(basePdfBytes);
-      const outPage = finalDoc.getPages()[0];
-      const pageHeightPt = outPage.getHeight();
-      const mmToPt = 72 / 25.4;
+    const finalBytes = await finalDoc.save();
+    const blob = new Blob([finalBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(()=> URL.revokeObjectURL(url), 5000);
 
-      for(const oid of vectorPdfIds){
-        const grp = uniqueLogos.get(oid);
-        const srcId = grp.sample._originalId || oid;
-        const srcBuffer = pdfSourceBuffers.get(srcId);
-        if(!srcBuffer){
-          console.warn('No source buffer for PDF vector logo', oid);
-          continue;
-        }
+    // --- Report results ---
+    const totalTiles = [...uniqueLogos.values()].reduce((s, g) => s + g.tiles.length, 0);
+    const rasterTiles = totalTiles - vectorOk - pdfVectorOk;
+    console.log(`[GSB Export] Done: ${vectorOk} SVG vector, ${pdfVectorOk} PDF/AI vector, ${rasterTiles} raster, ${vectorFail} fallbacks`);
 
-        let embeddedPage;
-        try {
-          const srcDoc = await PDFDocument.load(srcBuffer, { ignoreEncryption: true });
-          const [ep] = await finalDoc.embedPdf(srcDoc, [0]);
-          embeddedPage = ep;
-        } catch(e){
-          console.warn('pdf-lib embed failed for', oid, '— falling back to raster:', e);
-          // Fallback: stamp as raster
-          if(!logoImages.has(oid)){
-            const sample = grp.sample;
-            const pxW = Math.round(sample._mmW * exportPxPerMm);
-            const pxH = Math.round(sample._mmH * exportPxPerMm);
-            const tmpEl = document.createElement('canvas');
-            tmpEl.width = pxW; tmpEl.height = pxH;
-            const tmpFab = new fabric.StaticCanvas(tmpEl, {
-              width: pxW, height: pxH, backgroundColor: null, enableRetinaScaling: false,
-            });
-            const clone = await new Promise(resolve => sample.clone(resolve, FABRIC_EXTRA_PROPS));
-            clone.set({ originX:'center', originY:'center', left:pxW/2, top:pxH/2,
-              scaleX:pxW/clone.width, scaleY:pxH/clone.height, angle:0 });
-            clone.setCoords(); tmpFab.add(clone); tmpFab.renderAll();
-            const fbImg = new Image();
-            fbImg.src = tmpEl.toDataURL('image/png');
-            await new Promise(r => { fbImg.onload = r; fbImg.onerror = r; });
-            logoImages.set(oid, fbImg);
-            tmpFab.dispose();
-          }
-          // Note: raster fallback for pdf-lib failures is added to the base jsPDF
-          // but base is already in finalDoc — add raster via pdf-lib instead
-          // For simplicity, we skip this edge case; pdf-lib embed rarely fails
-          continue;
-        }
-
-        for(const tile of grp.tiles){
-          // pdf-lib coords: origin bottom-left, Y up. Our coords: origin top-left, Y down.
-          const xPt = tile.mmLeft * mmToPt;
-          const yPt = pageHeightPt - (tile.mmTop + tile.mmH) * mmToPt;
-          const wPt = tile.mmW * mmToPt;
-          const hPt = tile.mmH * mmToPt;
-          outPage.drawPage(embeddedPage, { x: xPt, y: yPt, width: wPt, height: hPt });
-        }
-        await yieldFrame();
-      }
-
-      // Save with pdf-lib
-      const finalBytes = await finalDoc.save();
-      const blob = new Blob([finalBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
-      setTimeout(()=> URL.revokeObjectURL(url), 5000);
+    if(vectorOk > 0 || pdfVectorOk > 0){
+      toast(`PDF opgeslagen: ${vectorOk + pdfVectorOk} vector, ${rasterTiles} raster (300 DPI)`, 'success', 5000);
+    } else if(vectorFail > 0){
+      toast('PDF opgeslagen als 300 DPI raster (vector embedding mislukt — zie console)', 'warn', 5000);
     } else {
-      // No PDF-vector logos — save directly from jsPDF
-      pdf.save(filename);
+      toast('PDF opgeslagen (300 DPI raster)', 'success', 3000);
     }
-
     showPdfProgress(false, `${filename} ${t('pdfSaved')}`);
   } catch(err){
     console.error('PDF export error:', err);
     showPdfProgress(false, 'Export mislukt');
-    toast('PDF export mislukt','warn');
-  } finally {
-    // cleanup handled per-strip
+    toast('PDF export mislukt: ' + (err.message || err), 'warn');
   }
 };
 
@@ -3645,7 +3917,7 @@ function updatePdfProgress(current, total){
    TOAST + MODAL
    ========================================================= */
 const toastWrap = document.getElementById('toastWrap');
-function toast(msg, type='info', ms=3000, onClose){
+function toast(msg, type='info', ms=3000, onClose, dismissLabel){
   const el = document.createElement('div');
   el.className = 'toast ' + type + (ms === 0 ? ' sticky' : '');
   const text = document.createElement('span');
@@ -3654,10 +3926,16 @@ function toast(msg, type='info', ms=3000, onClose){
   el.appendChild(text);
   if(ms === 0){
     const close = document.createElement('button');
-    close.className = 'toast-close';
     close.type = 'button';
-    close.setAttribute('aria-label', 'Sluiten');
-    close.innerHTML = '&times;';
+    if(dismissLabel){
+      // Text button instead of × icon
+      close.className = 'toast-dismiss-btn';
+      close.textContent = dismissLabel;
+    } else {
+      close.className = 'toast-close';
+      close.setAttribute('aria-label', 'Sluiten');
+      close.innerHTML = '&times;';
+    }
     close.onclick = ()=>{
       el.style.opacity = '0';
       el.style.transform = 'translateY(-6px)';
