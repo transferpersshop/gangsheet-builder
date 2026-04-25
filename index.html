@@ -18,11 +18,49 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- svg2pdf.js: auto-registers pdf.svg() on jsPDF when loaded after jspdf.
+     Primary: jsDelivr (npm mirror). Fallback: unpkg (npm mirror). -->
+<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js"
+  onerror="console.warn('[GSB] svg2pdf.js primary CDN failed, trying fallback...');
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js';
+    s.onerror=function(){console.error('[GSB] svg2pdf.js FAILED to load from both CDNs')};
+    document.head.appendChild(s);"></script>
+<!-- pdf-lib: for embedding original AI/PDF pages as vector in export -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"
+  onerror="console.warn('[GSB] pdf-lib primary CDN failed, trying fallback...');
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    s.onerror=function(){console.error('[GSB] pdf-lib FAILED to load from both CDNs')};
+    document.head.appendChild(s);"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script>
+// Startup diagnostic — runs after all scripts have had time to load
+window.addEventListener('load', ()=>{
+  const j = typeof window.jspdf !== 'undefined';
+  // svg2pdf.js either patches jsPDF.API.svg or exposes a global
+  let svg2pdfMethod = 'NONE';
+  if(j){
+    const t = new window.jspdf.jsPDF();
+    if(typeof t.svg === 'function') svg2pdfMethod = 'pdf.svg()';
+  }
+  if(svg2pdfMethod === 'NONE' && typeof window.svg2pdf === 'function') svg2pdfMethod = 'window.svg2pdf()';
+  if(svg2pdfMethod === 'NONE' && typeof window.svg2pdf === 'object' && window.svg2pdf) svg2pdfMethod = 'window.svg2pdf (object)';
+  const pl = typeof window.PDFLib !== 'undefined' && typeof window.PDFLib.PDFDocument !== 'undefined';
+  console.log('%c[Gang Sheet Builder] Library check:', 'font-weight:bold');
+  console.log('  jsPDF:', j ? '✓' : '✗ MISSING');
+  console.log('  svg2pdf.js:', svg2pdfMethod !== 'NONE' ? '✓ via ' + svg2pdfMethod : '✗ MISSING — SVG→vector export disabled');
+  console.log('  pdf-lib:', pl ? '✓' : '✗ MISSING — AI/PDF→vector export disabled');
+  console.log('  pdf.js:', typeof window.pdfjsLib !== 'undefined' ? '✓' : '✗ MISSING');
+  // Store for use in export
+  window._gsbLibs = { svg2pdf: svg2pdfMethod, pdfLib: pl };
+});
+</script>
 <style>
   :root{
     --primary:#1d9aaf;--secondary:#65358c;--accent:#F39200;
@@ -111,6 +149,12 @@
   .project-title-input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:.85rem;font-family:'Inter',sans-serif;outline:none;transition:border-color .2s}
   .project-title-input:focus{border-color:var(--primary)}
   .project-title-input::placeholder{color:var(--muted);font-weight:400}
+  .format-btn{padding:10px 6px;border:1px solid var(--border);border-radius:10px;background:#fff;font-size:.8rem;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s;text-align:center;line-height:1.3}
+  .format-btn:hover{border-color:var(--primary);background:#f0fbfc}
+  .format-btn.active{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:9px 5px}
+  .format-btn .fmt-title{display:block;font-weight:700;font-size:.82rem}
+  .format-btn.active .fmt-title{color:var(--primary)}
+  .format-btn .fmt-size{display:block;font-size:.65rem;font-weight:400;color:var(--muted);margin-top:2px}
   .gap-stepper-wrap{display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;width:100%}
   .gap-step-btn{width:40px;height:40px;border:none;background:#f9fafb;font-size:1.1rem;font-weight:700;color:var(--primary);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .gap-step-btn:hover{background:#e6f7fa}
@@ -119,14 +163,6 @@
   .gap-stepper-wrap input::-webkit-outer-spin-button,.gap-stepper-wrap input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .gap-unit{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 16px;white-space:nowrap;flex-shrink:0}
 
-  .sheet-tabs{display:flex;align-items:center;gap:6px;padding:10px 16px 8px;background:#fff;border-bottom:1px solid var(--border);flex-wrap:wrap}
-  .sheet-tab{padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;font-size:.8rem;font-weight:700;color:var(--muted);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-  .sheet-tab:hover{border-color:var(--primary)}
-  .sheet-tab.active{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;color:var(--primary);padding:5px 11px}
-  .sheet-tab .close{border:none;background:transparent;color:var(--muted);padding:0 2px;font-size:1rem;cursor:pointer;line-height:1}
-  .sheet-tab .close:hover{color:var(--error)}
-  .sheet-tab-add{padding:6px 10px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;font-size:.8rem;color:var(--muted);cursor:pointer;font-weight:700}
-  .sheet-tab-add:hover{border-color:var(--primary);color:var(--primary)}
 
   .zoom-bar{display:flex;align-items:center;gap:6px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--muted)}
   .zoom-bar button.zoom-btn{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:.8rem;color:var(--text);font-weight:700;cursor:pointer}
@@ -167,8 +203,20 @@
   .item-row .row-del:hover{background:#fecaca}
   .item-row .row-del svg{width:14px;height:14px;stroke:currentColor;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
 
-  .canvas-wrap{position:relative;flex:1;display:flex;align-items:safe center;justify-content:safe center;padding:44px 24px 24px;overflow:auto;background:radial-gradient(circle at 1px 1px,rgba(0,0,0,.06) 1px,transparent 0);background-size:18px 18px}
-  .sheet-shadow{position:relative;box-shadow:0 10px 40px rgba(0,0,0,.15);border-radius:2px;flex-shrink:0;margin:auto}
+  .canvas-wrap{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;padding:16px 24px 24px;overflow:auto;background:radial-gradient(circle at 1px 1px,rgba(0,0,0,.06) 1px,transparent 0);background-size:18px 18px}
+  .canvas-ruler-col{display:flex;flex-direction:column;flex-shrink:0}
+  .canvas-hruler-row{display:flex;align-items:flex-end}
+  .canvas-hruler-corner{width:36px;height:20px;flex-shrink:0;margin-right:4px}
+  .canvas-hruler{position:relative;height:20px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.7);margin-bottom:2px}
+  .hruler-tick{position:absolute;bottom:0;width:0;border-left:1px solid rgba(0,0,0,.2)}
+  .hruler-label{position:absolute;bottom:calc(100% + 1px);left:-6px;font-size:.55rem;color:var(--muted);white-space:nowrap;line-height:1}
+  .canvas-ruler-row{display:flex;align-items:flex-start;gap:0;flex-shrink:0}
+  .canvas-ruler{position:relative;width:36px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(255,255,255,.7);margin-right:4px}
+  .ruler-tick{position:absolute;right:0;height:0;border-top:1px solid rgba(0,0,0,.2)}
+  .ruler-tick.ruler-meter{border-top:1.5px solid var(--primary)}
+  .ruler-label{position:absolute;right:calc(100% + 4px);top:-6px;font-size:.6rem;color:var(--muted);white-space:nowrap;line-height:1}
+  .ruler-label-meter{font-weight:700;color:var(--primary);font-size:.7rem}
+  .sheet-shadow{position:relative;box-shadow:0 10px 40px rgba(0,0,0,.15);border-radius:2px;flex-shrink:0}
   .sheet-shadow canvas{background:transparent !important}
   .sheet-shadow .canvas-container{background:transparent !important}
   .sheet-shadow.bg-white{background:#fff}
@@ -181,14 +229,15 @@
   .bg-swatch[data-bg="white"]{background:#fff}
   .bg-swatch[data-bg="gray"]{background:#e5e7eb}
   .bg-swatch[data-bg="checker"]{background-color:#fff;background-image:linear-gradient(45deg,#d1d5db 25%,transparent 25%),linear-gradient(-45deg,#d1d5db 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d1d5db 75%),linear-gradient(-45deg,transparent 75%,#d1d5db 75%);background-size:10px 10px;background-position:0 0,0 5px,5px -5px,-5px 0px}
-  .ruler-info{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.95);backdrop-filter:blur(8px);padding:6px 14px;border-radius:999px;font-size:.75rem;color:var(--muted);box-shadow:0 2px 8px rgba(0,0,0,.08);display:flex;gap:12px;align-items:center;z-index:5}
-  .ruler-info strong{color:var(--text)}
+  .toolbar-info{display:flex;gap:10px;align-items:center;font-size:.72rem;color:var(--muted);margin-right:4px}
+  .toolbar-info strong{color:var(--text)}
   .fill-meter{width:100px;height:6px;background:var(--border);border-radius:999px;overflow:hidden}
   .fill-meter span{display:block;height:100%;background:var(--gradient);transition:width .3s}
 
   .item-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff;font-size:.8rem;cursor:pointer;transition:border-color .15s}
   .item-row:hover{border-color:#cbd5e1}
   .item-row.selected{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:9px}
+  .item-row.item-row-empty{opacity:.5}
   .item-thumb{width:42px;height:42px;background:#f3f4f6;border-radius:8px;flex-shrink:0;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--border)}
   .item-info{flex:1;min-width:0}
   .item-info .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
@@ -365,7 +414,7 @@
     <aside class="left">
 
       <div class="section" id="projectTitleSection">
-        <div class="section-head"><span class="num">1</span><h3 data-i18n="projectTitleLabel">Transfer naam</h3></div>
+        <div class="section-head"><span class="num">1</span><h3 data-i18n="projectTitleLabel">Opdracht naam</h3></div>
         <input type="text" class="project-title-input" id="projectTitleInput" placeholder="Bijv. borstlogo's bedrijf X" data-i18n-placeholder="projectTitlePlaceholder">
       </div>
 
@@ -397,7 +446,7 @@
       </div>
 
       <div class="section" id="itemListSection">
-        <div class="section-head"><span class="num">5</span><h3><span data-i18n="allLogos">Alle logo's</span> <span id="itemCount" style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:4px">(0)</span></h3></div>
+        <div class="section-head"><span class="num">5</span><h3><span data-i18n="allLogos">Geüploade logo's</span> <span id="itemCount" style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:4px">(0)</span></h3></div>
         <div id="itemList">
           <p class="empty" data-i18n="listEmpty">Nog niets geüpload.</p>
         </div>
@@ -409,7 +458,6 @@
     </aside>
 
     <div class="center">
-      <div class="sheet-tabs" id="sheetTabs"></div>
       <div class="zoom-bar">
         <button class="zoom-btn undo-redo-btn" id="undoBtn" title="Ongedaan maken (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11a5 5 0 0 1 0 10H7"/><path d="m3 7 4-4"/><path d="m3 7 4 4"/></svg></button>
         <button class="zoom-btn undo-redo-btn" id="redoBtn" title="Herhalen (Ctrl+Shift+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H10a5 5 0 0 0 0 10h7"/><path d="m21 7-4-4"/><path d="m21 7-4 4"/></svg></button>
@@ -420,28 +468,36 @@
         <button class="zoom-btn" id="zoomFitBtn" title="Passend (0)" data-i18n="zoomFit">Passend</button>
         <button class="zoom-btn" id="zoomOneBtn" title="2×">2×</button>
         <div class="zoom-sep"></div>
-        <button class="clear-btn-center" id="optimizeBtn" disabled data-i18n="optimizeLayout">Optimaliseer indeling</button>
         <button class="clear-btn-center" id="fillSheetBtn" disabled data-i18n="fillSheet">Vel vullen met logo</button>
         <button class="clear-btn-center" id="clearBtn" disabled data-i18n="clearSheet">Vel leegmaken</button>
         <div style="flex:1"></div>
-      </div>
-      <div class="canvas-wrap" id="canvasWrap">
-        <div class="ruler-info">
+        <div class="toolbar-info">
           <span><span data-i18n="infoSheet">Vel</span>: <strong id="infoSize">—</strong></span>
           <span><span data-i18n="infoUsed">Gebruikt</span>: <strong id="infoUsedVal">0%</strong></span>
           <span>Logo's: <strong id="infoLogoCount">0</strong></span>
           <div class="fill-meter"><span id="fillMeter" style="width:0%"></span></div>
         </div>
-        <div class="sheet-shadow bg-checker" id="sheetShadow">
-          <canvas id="canvas"></canvas>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <div class="canvas-ruler-col">
+          <div class="canvas-hruler-row">
+            <div class="canvas-hruler-corner"></div>
+            <div class="canvas-hruler" id="canvasHRuler"></div>
+          </div>
+          <div class="canvas-ruler-row">
+            <div class="canvas-ruler" id="canvasRuler"></div>
+            <div class="sheet-shadow bg-checker" id="sheetShadow">
+              <canvas id="canvas"></canvas>
+            </div>
+          </div>
         </div>
       </div>
       <div class="canvas-bottom-bar">
         <div class="canvas-bottom-group">
           <span class="canvas-bottom-label" data-i18n="unitLabel">Meeteenheid</span>
           <div class="unit-toggle" id="unitToggle">
-            <button data-unit="mm" class="active">mm</button>
-            <button data-unit="cm">cm</button>
+            <button data-unit="cm" class="active">cm</button>
+            <button data-unit="mm">mm</button>
           </div>
         </div>
         <div class="canvas-bottom-sep"></div>
@@ -472,17 +528,14 @@
             <div class="summary-row"><span class="label" data-i18n="sumUnique">Unieke logo's</span><span class="val" id="sumUnique">0</span></div>
             <div class="summary-row"><span class="label" data-i18n="sumTotal">Totaal aantal kopieën</span><span class="val" id="sumTotal">0</span></div>
             <div class="summary-row"><span class="label" data-i18n="sumUsage">Gebruik van vel</span><span class="val" id="sumUsage">0%</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumLength">Formaat</span><span class="val" id="sumLength">1m</span></div>
             <div class="summary-row"><span class="label" data-i18n="sumDpi">DPI-status</span><span class="val" id="sumDpi">—</span></div>
-            <div class="summary-row"><span class="label" data-i18n="sumSheets">Aantal vellen</span><span class="val" id="sumSheets">1</span></div>
             <div class="summary-row"><span class="label" data-i18n="sumColor">Kleurruimte</span><span class="val">sRGB · 300 DPI</span></div>
           </div>
         </div>
 
       </div>
       <div class="right-footer">
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <button class="btn btn-ghost" style="flex:1;font-size:0.8rem" id="previewBtn" data-i18n="printPreview">Preview</button>
-        </div>
         <div class="pdf-progress" id="pdfProgressWrap"></div>
         <button class="btn btn-grad-fill export-btn-big" id="exportBtn" data-i18n="exportBtn">Download print-ready PDF</button>
       </div>
@@ -535,7 +588,7 @@
         <tr><td style="padding:3px 8px 3px 0;color:var(--muted)">0</td><td style="padding:3px 0" data-i18n="zoomFit">Passend</td></tr>
       </table>
     </div>
-    <p class="version-tag">v1.0.2 · 22-04-2026 · 09:11</p>
+    <p class="version-tag">v1.2.1 · 25-04-2026 · 13:30</p>
   </div>
 </div>
 
