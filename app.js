@@ -9,6 +9,11 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* =========================================================
+   EPS CONVERSION ENDPOINT
+   ========================================================= */
+const EPS_CONVERT_URL = 'https://eps-to-svg-converter.YOUR-ACCOUNT.workers.dev/convert';
+
+/* =========================================================
    I18N
    ========================================================= */
 const I18N = {
@@ -18,8 +23,12 @@ const I18N = {
     clear:'Leegmaken', clearSheet:'Vel leegmaken',
     step1:'Kies vel formaat', step2:"Upload logo's", step3:"Logo's bewerken", step4:"Logo's bewerken",
     sheetFormat:'Vel formaat',
-    dropTitle:'Klik of sleep hier', dropHint:'SVG, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
-    uploadTip:'Gebruik vectorbestanden (SVG, AI, PDF) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
+    dropTitle:'Klik of sleep hier', dropHint:'SVG, AI, PDF, EPS, PNG, JPG', dropMax:'Max. 50 MB',
+    epsConverting:'EPS wordt geconverteerd naar SVG…',
+    epsConvertOk:'EPS geconverteerd — SVG geladen',
+    epsConvertFail:'EPS conversie mislukt',
+    epsNotice:'EPS bestanden worden geconverteerd naar SVG voor bewerking. Sommige complexe effecten (zoals gradients) kunnen mogelijk worden vereenvoudigd.',
+    uploadTip:'Gebruik vectorbestanden (SVG, AI, PDF, EPS) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
     uploadTipLink:'Bekijk onze tips',
     loadingVector:'Vector wordt verwerkt…', logoAdded:'toegevoegd',
     unsupportedFile:'Bestandstype niet ondersteund',
@@ -150,8 +159,12 @@ const I18N = {
     clear:'Clear', clearSheet:'Clear sheet',
     step1:'Choose sheet format', step2:'Upload logos', step3:'Edit logos', step4:'Edit logos',
     sheetFormat:'Sheet format',
-    dropTitle:'Click or drop files', dropHint:'SVG, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
-    uploadTip:'Use vector files (SVG, AI, PDF) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
+    dropTitle:'Click or drop files', dropHint:'SVG, AI, PDF, EPS, PNG, JPG', dropMax:'Max. 50 MB',
+    epsConverting:'Converting EPS to SVG…',
+    epsConvertOk:'EPS converted — SVG loaded',
+    epsConvertFail:'EPS conversion failed',
+    epsNotice:'EPS files are converted to SVG for editing. Some complex effects (like gradients) may be simplified.',
+    uploadTip:'Use vector files (SVG, AI, PDF, EPS) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
     uploadTipLink:'View our tips',
     loadingVector:'Processing vector file…', logoAdded:'added',
     unsupportedFile:'File type not supported',
@@ -307,8 +320,9 @@ const MM_PER_INCH = 25.4;
 let displayPxPerMm = 1.6;
 let idCounter = 0;
 
-// Store original PDF/AI ArrayBuffers for vector embedding in PDF export.
-// Key = logo _originalId, Value = ArrayBuffer (clone of uploaded file).
+// Stores cloned ArrayBuffers of uploaded AI/PDF files keyed by logo _originalId.
+// Used by the PDF export to embed the original PDF page via pdf-lib's embedPdf,
+// preserving 100% of vector content including gradients, patterns, and text.
 const pdfSourceBuffers = new Map();
 
 const state = {
@@ -432,7 +446,7 @@ const canvas = new fabric.Canvas('canvas', {
 const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
-  '_embeddedRasterW','_embeddedRasterH','_vectorOrigin'
+  '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients'
 ];
 
 /* Capture state BEFORE any interactive transform starts.
@@ -953,6 +967,9 @@ function handleFiles(files){
         }
       };
       reader.readAsText(file);
+    } else if(ext==='eps'){
+      // EPS: convert to SVG via CloudConvert proxy, then load as SVG
+      loadEpsAsConverted(file);
     } else if(type==='application/pdf' || ext==='pdf'){
       const reader = new FileReader();
       reader.onload = ev=>loadPdfAsImage(ev.target.result, file.name);
@@ -977,31 +994,328 @@ function loadRaster(dataUrl, name){
   }, { crossOrigin:'anonymous' });
 }
 
-// Render the first page of a PDF/AI file at 300 DPI equivalent using pdf.js,
-// strip the white page background to transparent, then place on the canvas.
+/* ============================================================
+   EPS LOADING (via CloudConvert proxy → SVG → existing pipeline)
+   ============================================================ */
+async function loadEpsAsConverted(file){
+  const name = file.name;
+  toast(t('epsConverting'), 'info', 0, 'eps-convert');
+  toast(t('epsNotice'), 'info', 8000);
+  console.log(`[GSB] EPS upload "${name}": sending to CloudConvert proxy…`);
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(EPS_CONVERT_URL, {
+      method: 'POST',
+      body: formData,
+    });
+
+    // Dismiss the "converting…" toast
+    dismissToast('eps-convert');
+
+    if(!response.ok){
+      let detail = '';
+      try { const err = await response.json(); detail = err.error || err.detail || ''; } catch(e){}
+      console.error(`[GSB] EPS conversion failed (${response.status}):`, detail);
+      toast(`${t('epsConvertFail')}: ${detail || response.statusText}`, 'error');
+      return;
+    }
+
+    const svgText = await response.text();
+    if(!svgText || svgText.indexOf('<svg') === -1){
+      console.error('[GSB] EPS conversion returned invalid SVG');
+      toast(t('epsConvertFail'), 'error');
+      return;
+    }
+
+    console.log(`[GSB] EPS "${name}" converted to SVG (${svgText.length} chars), loading into SVG pipeline`);
+    toast(t('epsConvertOk'), 'success');
+
+    // Feed into existing SVG pipeline — full recolor + gradient detection support
+    loadSvg(svgText, name);
+
+  } catch(err){
+    dismissToast('eps-convert');
+    console.error('[GSB] EPS conversion error:', err);
+    toast(`${t('epsConvertFail')}: ${err.message}`, 'error');
+  }
+}
+
+/* ============================================================
+   PDF/AI LOADING
+   ============================================================ */
+
+/* ---------------------------------------------------------
+   pdfToSvg — convert PDF/AI operator list to SVG paths.
+   Used to create editable sub-paths for color extraction and
+   recoloring. Gradient shading is NOT extracted (shapes get
+   their current flat fill). The original PDF binary is stored
+   separately for lossless export via pdf-lib embedPdf.
+   --------------------------------------------------------- */
+async function pdfToSvg(arrayBuffer){
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const opList = await page.getOperatorList();
+  const OPS = pdfjsLib.OPS;
+  const W = viewport.width, H = viewport.height;
+
+  // Color helpers
+  function toHex(r,g,b){
+    const h=v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0');
+    return '#'+h(r)+h(g)+h(b);
+  }
+  function cmykToHex(c,m,y,k){ return toHex(255*(1-c)*(1-k),255*(1-m)*(1-k),255*(1-y)*(1-k)); }
+  function grayToHex(g){ const v=Math.round(g*255); return toHex(v,v,v); }
+  function rgbArgsToHex(a){
+    if(a instanceof Uint8ClampedArray) return toHex(a[0],a[1],a[2]);
+    if(a[0]>1||a[1]>1||a[2]>1) return toHex(a[0],a[1],a[2]);
+    return toHex(a[0]*255,a[1]*255,a[2]*255);
+  }
+  function fmtN(n){ return Math.round(n*1000)/1000; }
+
+  // Gradient detection flag — set when gradient operators are encountered
+  let hasGradients = false;
+
+  // Graphics state
+  let fillColor='#000000', strokeColor='#000000';
+  let lineWidth=1, lineCap=0, lineJoin=0, miterLimit=10;
+  let pathD='';
+  const elements=[];
+  let pathCount=0;
+  const stateStack=[];
+  const transformCountStack=[0];
+
+  function pushGState(){
+    stateStack.push({fillColor,strokeColor,lineWidth,lineCap,lineJoin,miterLimit});
+    transformCountStack.push(0);
+  }
+  function popGState(){
+    if(stateStack.length){
+      const s=stateStack.pop();
+      fillColor=s.fillColor; strokeColor=s.strokeColor;
+      lineWidth=s.lineWidth; lineCap=s.lineCap;
+      lineJoin=s.lineJoin; miterLimit=s.miterLimit;
+    }
+    const n=transformCountStack.pop()||0;
+    for(let j=0;j<n;j++) elements.push('</g>');
+  }
+
+  function emitPath(doFill,doStroke,rule){
+    if(!pathD.trim()){ pathD=''; return; }
+    const attrs=[`d="${pathD.trim()}"`];
+    if(doFill){
+      attrs.push(`fill="${fillColor}"`);
+      if(rule==='evenodd') attrs.push(`fill-rule="evenodd"`);
+    } else { attrs.push(`fill="none"`); }
+    if(doStroke){
+      attrs.push(`stroke="${strokeColor}"`);
+      attrs.push(`stroke-width="${fmtN(lineWidth)}"`);
+      const capMap=['butt','round','square'];
+      const joinMap=['miter','round','bevel'];
+      if(lineCap) attrs.push(`stroke-linecap="${capMap[lineCap]}"`);
+      if(lineJoin) attrs.push(`stroke-linejoin="${joinMap[lineJoin]}"`);
+      if(miterLimit!==10) attrs.push(`stroke-miterlimit="${fmtN(miterLimit)}"`);
+    }
+    elements.push(`<path ${attrs.join(' ')}/>`);
+    pathCount++; pathD='';
+  }
+
+  let firstFillSeen=false, clipCount=0;
+
+  // Expand pdf.js 3.x batched constructPath operator
+  function expandConstructPath(ops,coords){
+    let ci=0, d='';
+    for(let j=0;j<ops.length;j++){
+      const sub=ops[j];
+      switch(sub){
+        case OPS.moveTo: d+=`M${fmtN(coords[ci])} ${fmtN(coords[ci+1])} `; ci+=2; break;
+        case OPS.lineTo: d+=`L${fmtN(coords[ci])} ${fmtN(coords[ci+1])} `; ci+=2; break;
+        case OPS.curveTo: d+=`C${fmtN(coords[ci])} ${fmtN(coords[ci+1])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} ${fmtN(coords[ci+4])} ${fmtN(coords[ci+5])} `; ci+=6; break;
+        case OPS.curveTo2: d+=`S${fmtN(coords[ci])} ${fmtN(coords[ci+1])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} `; ci+=4; break;
+        case OPS.curveTo3: d+=`C${fmtN(coords[ci])} ${fmtN(coords[ci+1])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} `; ci+=4; break;
+        case OPS.closePath: d+='Z '; break;
+        case OPS.rectangle: {
+          const rx=coords[ci],ry=coords[ci+1],rw=coords[ci+2],rh=coords[ci+3];
+          d+=`M${fmtN(rx)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry+rh)} L${fmtN(rx)} ${fmtN(ry+rh)} Z `;
+          ci+=4; break;
+        }
+        default: break;
+      }
+    }
+    return d;
+  }
+
+  // Process operator list
+  for(let i=0;i<opList.fnArray.length;i++){
+    const fn=opList.fnArray[i], args=opList.argsArray[i];
+    switch(fn){
+      case OPS.save: pushGState(); elements.push('<g>'); break;
+      case OPS.restore: popGState(); elements.push('</g>'); break;
+      case OPS.transform: {
+        const[a,b,c,d,e,f]=args;
+        elements.push(`<g transform="matrix(${fmtN(a)},${fmtN(b)},${fmtN(c)},${fmtN(d)},${fmtN(e)},${fmtN(f)})">`);
+        if(transformCountStack.length) transformCountStack[transformCountStack.length-1]++;
+        break;
+      }
+      case OPS.constructPath: pathD+=expandConstructPath(args[0],args[1]); break;
+      case OPS.moveTo: pathD+=`M${fmtN(args[0])} ${fmtN(args[1])} `; break;
+      case OPS.lineTo: pathD+=`L${fmtN(args[0])} ${fmtN(args[1])} `; break;
+      case OPS.curveTo: pathD+=`C${fmtN(args[0])} ${fmtN(args[1])} ${fmtN(args[2])} ${fmtN(args[3])} ${fmtN(args[4])} ${fmtN(args[5])} `; break;
+      case OPS.curveTo2: pathD+=`S${fmtN(args[0])} ${fmtN(args[1])} ${fmtN(args[2])} ${fmtN(args[3])} `; break;
+      case OPS.curveTo3: pathD+=`C${fmtN(args[0])} ${fmtN(args[1])} ${fmtN(args[2])} ${fmtN(args[3])} ${fmtN(args[2])} ${fmtN(args[3])} `; break;
+      case OPS.closePath: pathD+='Z '; break;
+      case OPS.rectangle: {
+        const[rx,ry,rw,rh]=args;
+        pathD+=`M${fmtN(rx)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry+rh)} L${fmtN(rx)} ${fmtN(ry+rh)} Z `;
+        break;
+      }
+      // Colors
+      case OPS.setFillRGBColor: fillColor=rgbArgsToHex(args); break;
+      case OPS.setStrokeRGBColor: strokeColor=rgbArgsToHex(args); break;
+      case OPS.setFillCMYKColor: fillColor=cmykToHex(args[0],args[1],args[2],args[3]); break;
+      case OPS.setStrokeCMYKColor: strokeColor=cmykToHex(args[0],args[1],args[2],args[3]); break;
+      case OPS.setFillGray: fillColor=grayToHex(args[0]); break;
+      case OPS.setStrokeGray: strokeColor=grayToHex(args[0]); break;
+      case OPS.setFillColor:
+        if(args.length>=4) fillColor=cmykToHex(args[0],args[1],args[2],args[3]);
+        else if(args.length>=3) fillColor=rgbArgsToHex(args);
+        else if(args.length===1) fillColor=grayToHex(args[0]);
+        break;
+      case OPS.setStrokeColor:
+        if(args.length>=4) strokeColor=cmykToHex(args[0],args[1],args[2],args[3]);
+        else if(args.length>=3) strokeColor=rgbArgsToHex(args);
+        else if(args.length===1) strokeColor=grayToHex(args[0]);
+        break;
+      case OPS.setFillColorN:
+        if(args.length>=4&&typeof args[0]==='number') fillColor=cmykToHex(args[0],args[1],args[2],args[3]);
+        else if(args.length>=3&&typeof args[0]==='number') fillColor=rgbArgsToHex(args);
+        else if(args.length===1&&typeof args[0]==='number') fillColor=grayToHex(args[0]);
+        else hasGradients=true; // non-numeric args = gradient/pattern reference
+        break;
+      case OPS.setStrokeColorN:
+        if(args.length>=4&&typeof args[0]==='number') strokeColor=cmykToHex(args[0],args[1],args[2],args[3]);
+        else if(args.length>=3&&typeof args[0]==='number') strokeColor=rgbArgsToHex(args);
+        else if(args.length===1&&typeof args[0]==='number') strokeColor=grayToHex(args[0]);
+        else hasGradients=true;
+        break;
+      // Line properties
+      case OPS.setLineWidth: lineWidth=args[0]; break;
+      case OPS.setLineCap: lineCap=args[0]; break;
+      case OPS.setLineJoin: lineJoin=args[0]; break;
+      case OPS.setMiterLimit: miterLimit=args[0]; break;
+      // Path painting
+      case OPS.fill: {
+        if(!firstFillSeen && fillColor==='#ffffff'){
+          const m=pathD.trim().match(/^M([\d.-]+)\s+([\d.-]+)\s+L([\d.-]+)\s+([\d.-]+)\s+L([\d.-]+)\s+([\d.-]+)\s+L([\d.-]+)\s+([\d.-]+)\s+Z$/);
+          if(m){
+            const xs=[+m[1],+m[3],+m[5],+m[7]], ys=[+m[2],+m[4],+m[6],+m[8]];
+            if((Math.max(...xs)-Math.min(...xs))>=W*0.95 && (Math.max(...ys)-Math.min(...ys))>=H*0.95){
+              pathD=''; firstFillSeen=true; break;
+            }
+          }
+        }
+        firstFillSeen=true; emitPath(true,false,'nonzero'); break;
+      }
+      case OPS.eoFill: firstFillSeen=true; emitPath(true,false,'evenodd'); break;
+      case OPS.stroke: emitPath(false,true,null); break;
+      case OPS.fillStroke: firstFillSeen=true; emitPath(true,true,'nonzero'); break;
+      case OPS.eoFillStroke: firstFillSeen=true; emitPath(true,true,'evenodd'); break;
+      case OPS.endPath: pathD=''; break;
+      case OPS.closeStroke: pathD+='Z '; emitPath(false,true,null); break;
+      // Clipping
+      case OPS.clip: case OPS.eoClip:
+        if(pathD.trim()){
+          const clipId='clip'+(++clipCount);
+          const rule=fn===OPS.eoClip?' clip-rule="evenodd"':'';
+          elements.push(`<clipPath id="${clipId}"><path d="${pathD.trim()}"${rule}/></clipPath>`);
+          elements.push(`<g clip-path="url(#${clipId})">`);
+          if(transformCountStack.length) transformCountStack[transformCountStack.length-1]++;
+          pathD='';
+        }
+        break;
+      // Gradient shading fill — just flag it, don't try to extract colors
+      case OPS.shadingFill:
+        hasGradients=true;
+        break;
+      default: break;
+    }
+  }
+
+  // Build SVG with Y-axis flip
+  const svgText=[
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmtN(W)} ${fmtN(H)}" width="${fmtN(W)}" height="${fmtN(H)}">`,
+    `<g transform="translate(0,${fmtN(H)}) scale(1,-1)">`,
+    ...elements,
+    '</g>','</svg>'
+  ].join('\n');
+
+  console.log(`[GSB] pdfToSvg: ${pathCount} paths, hasGradients=${hasGradients}, SVG ${svgText.length} chars`);
+  return { svgText, pathCount, hasGradients };
+}
+
+// Load a PDF/AI file — simple rules:
+//   1. Convert to SVG via pdfToSvg
+//   2. Detect gradients
+//   3. NO gradients → load as editable SVG group (recolor enabled)
+//   4. HAS gradients → render via pdf.js canvas (display only, recolor disabled)
+//   5. Always store original buffer for lossless PDF export via embedPdf
 async function loadPdfAsImage(arrayBuffer, name){
   if(!window.pdfjsLib){
     toast('PDF.js niet geladen — kan PDF/AI niet openen.', 'error');
     throw new Error('pdf.js not loaded');
   }
-  // Clone the buffer BEFORE pdf.js reads it (buffers can be transferred/detached)
-  const bufferClone = arrayBuffer.slice(0);
+
+  // Clone buffers BEFORE any pdf.js call — getDocument detaches the ArrayBuffer
+  const bufferForExport = arrayBuffer.slice(0);
+  const bufferForSvg = arrayBuffer.slice(0);
+  const bufferForRaster = arrayBuffer.slice(0);
+
   toast(t('loadingVector'), 'info', 3000);
+
+  // --- Step 1: Convert to SVG and detect gradients ---
+  let svgText = null, pdfHasGradients = false, svgPathCount = 0;
   try {
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const result = await pdfToSvg(bufferForSvg);
+    svgText = result.svgText;
+    svgPathCount = result.pathCount;
+    pdfHasGradients = result.hasGradients;
+    console.log(`[GSB] pdfToSvg "${name}": ${svgPathCount} paths, gradients=${pdfHasGradients}`);
+  } catch(err){
+    console.warn(`[GSB] pdfToSvg failed for "${name}":`, err);
+  }
+
+  // --- PATH A: No gradients + valid SVG → editable SVG group ---
+  if(svgPathCount > 0 && !pdfHasGradients){
+    console.log(`[GSB] "${name}": no gradients, loading as editable SVG`);
+    loadSvg(svgText, name);
+    // Store export buffer after loadSvg places the object
+    setTimeout(()=>{
+      const objs = canvas.getObjects();
+      for(let i = objs.length - 1; i >= 0; i--){
+        if(objs[i]._name === name && objs[i]._originalId){
+          pdfSourceBuffers.set(objs[i]._originalId, bufferForExport);
+          console.log(`[GSB] Stored PDF buffer for "${name}" (oid=${objs[i]._originalId})`);
+          break;
+        }
+      }
+    }, 500);
+    return;
+  }
+
+  // --- PATH B: Has gradients OR conversion failed → pdf.js canvas render (display only) ---
+  console.log(`[GSB] "${name}": ${pdfHasGradients ? 'gradients detected' : 'conversion failed'}, loading as display-only raster`);
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: bufferForRaster }).promise;
     const page = await pdf.getPage(1);
-    // Render at a scale that produces ~300 DPI output.
-    // PDF default = 72 units/inch. Scale 300/72 ≈ 4.17.
     const scale = 300 / 72;
     const viewport = page.getViewport({ scale });
     const ow = Math.round(viewport.width);
     const oh = Math.round(viewport.height);
 
-    // --- Dual-render technique to isolate page background from design ---
-    // pdf.js paints a page background before drawing content. We render twice
-    // with different background colors (passed via the `background` param so
-    // pdf.js itself uses them). Pixels that change between the two renders
-    // are page background; pixels that stay the same are actual design.
+    // Dual-render to isolate page background from design
     const off1 = document.createElement('canvas');
     off1.width = ow; off1.height = oh;
     const ctx1 = off1.getContext('2d');
@@ -1012,92 +1326,51 @@ async function loadPdfAsImage(arrayBuffer, name){
     const ctx2 = off2.getContext('2d');
     await page.render({ canvasContext: ctx2, viewport, background: 'rgb(255,0,255)' }).promise;
 
-    // Compare: where both renders differ, it's page background → make transparent
     const d1 = ctx1.getImageData(0, 0, ow, oh);
     const d2 = ctx2.getImageData(0, 0, ow, oh);
-    const px1 = d1.data;
-    const px2 = d2.data;
+    const px1 = d1.data, px2 = d2.data;
     let bgPixels = 0;
     for(let i = 0; i < px1.length; i += 4){
       const dr = Math.abs(px1[i] - px2[i]);
       const dg = Math.abs(px1[i+1] - px2[i+1]);
       const db = Math.abs(px1[i+2] - px2[i+2]);
-      // If the pixel changes between white bg and magenta bg,
-      // it's page background (not part of the design)
-      if(dr + dg + db > 10){
-        px1[i+3] = 0; // make transparent
-        bgPixels++;
-      }
+      if(dr + dg + db > 10){ px1[i+3] = 0; bgPixels++; }
     }
     ctx1.putImageData(d1, 0, 0);
 
-    // Fallback: if dual-render found no background (pdf.js version doesn't
-    // support the background param), try edge-based detection instead.
     if(bgPixels === 0){
       const imgData = ctx1.getImageData(0, 0, ow, oh);
       const px = imgData.data;
       const BG_THRESH = 250;
-      // Check if all 4 corners are near-white
       const corners = [0, (ow-1)*4, ((oh-1)*ow)*4, ((oh-1)*ow+ow-1)*4];
       const allWhite = corners.every(i => px[i]>=BG_THRESH && px[i+1]>=BG_THRESH && px[i+2]>=BG_THRESH);
       if(allWhite){
-        // Only remove the outermost contiguous white border (1 pass inward from each edge)
-        // Top edge
-        for(let x=0; x<ow; x++){
-          for(let y=0; y<oh; y++){
-            const i=(y*ow+x)*4;
-            if(px[i]>=BG_THRESH && px[i+1]>=BG_THRESH && px[i+2]>=BG_THRESH) px[i+3]=0;
-            else break;
-          }
-        }
-        // Bottom edge
-        for(let x=0; x<ow; x++){
-          for(let y=oh-1; y>=0; y--){
-            const i=(y*ow+x)*4;
-            if(px[i]>=BG_THRESH && px[i+1]>=BG_THRESH && px[i+2]>=BG_THRESH) px[i+3]=0;
-            else break;
-          }
-        }
-        // Left edge
-        for(let y=0; y<oh; y++){
-          for(let x=0; x<ow; x++){
-            const i=(y*ow+x)*4;
-            if(px[i]>=BG_THRESH && px[i+1]>=BG_THRESH && px[i+2]>=BG_THRESH) px[i+3]=0;
-            else break;
-          }
-        }
-        // Right edge
-        for(let y=0; y<oh; y++){
-          for(let x=ow-1; x>=0; x--){
-            const i=(y*ow+x)*4;
-            if(px[i]>=BG_THRESH && px[i+1]>=BG_THRESH && px[i+2]>=BG_THRESH) px[i+3]=0;
-            else break;
-          }
-        }
+        for(let x=0;x<ow;x++) for(let y=0;y<oh;y++){ const i=(y*ow+x)*4; if(px[i]>=BG_THRESH&&px[i+1]>=BG_THRESH&&px[i+2]>=BG_THRESH) px[i+3]=0; else break; }
+        for(let x=0;x<ow;x++) for(let y=oh-1;y>=0;y--){ const i=(y*ow+x)*4; if(px[i]>=BG_THRESH&&px[i+1]>=BG_THRESH&&px[i+2]>=BG_THRESH) px[i+3]=0; else break; }
+        for(let y=0;y<oh;y++) for(let x=0;x<ow;x++){ const i=(y*ow+x)*4; if(px[i]>=BG_THRESH&&px[i+1]>=BG_THRESH&&px[i+2]>=BG_THRESH) px[i+3]=0; else break; }
+        for(let y=0;y<oh;y++) for(let x=ow-1;x>=0;x--){ const i=(y*ow+x)*4; if(px[i]>=BG_THRESH&&px[i+1]>=BG_THRESH&&px[i+2]>=BG_THRESH) px[i+3]=0; else break; }
         ctx1.putImageData(imgData, 0, 0);
       }
     }
-    const offscreen = off1;
 
-    const dataUrl = offscreen.toDataURL('image/png');
-    const naturalW = offscreen.width;
-    const naturalH = offscreen.height;
+    const dataUrl = off1.toDataURL('image/png');
     fabric.Image.fromURL(dataUrl, img=>{
-      // Mark as vector-origin file so the panel shows context.
-      img._vectorOrigin = true;
+      img._vectorOrigin = 'pdf';
+      img._hasGradients = true;
       autoCropRaster(img, (cropped, cw, ch)=>{
-        cropped._vectorOrigin = true;
+        cropped._vectorOrigin = 'pdf';
+        cropped._hasGradients = true;
         const targetMmW = state.sheet.w * 0.25;
         const ratio = ch / cw;
         placeImage(cropped, name, targetMmW, targetMmW * ratio, cw, ch);
-        // Store original PDF/AI buffer for vector embedding during export
-        pdfSourceBuffers.set(cropped._originalId, bufferClone);
+        pdfSourceBuffers.set(cropped._originalId, bufferForExport);
+        console.log(`[GSB] PDF/AI "${name}" loaded as display-only (gradient), buffer stored`);
       });
     }, { crossOrigin:'anonymous' });
-  } catch(err){
-    console.error('PDF load error:', err);
-    toast(`⚠️ "${name}": kon bestand niet openen. Probeer het om te zetten naar SVG of PNG.`, 'error', 6000);
-    throw err;
+    /* gradient toast removed — color editor shows inline hint instead */
+  } catch(err2){
+    console.error('PDF/AI load failed:', err2);
+    toast(`⚠️ "${name}": kon bestand niet openen.`, 'error', 6000);
   }
 }
 
@@ -1746,50 +2019,122 @@ function cmykToRgb(c,m,y,k){
   };
 }
 
-// Extract unique fill/stroke colors from an SVG fabric group.
+// Extract unique fill/stroke colors from an SVG fabric group or a fabric.Image with _svgSource.
 function extractSvgColors(group){
   const colors = new Map(); // normalized hex → count
   if(!group || !group._objects) return colors;
+
+  // Helper: normalize any color value to lowercase 6-digit hex, or null
+  const toNormHex = (v)=>{
+    if(!v || v === 'none' || v === 'transparent') return null;
+    if(typeof v === 'string'){
+      if(v.startsWith('#')){
+        return v.length===4 ? '#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3] : v.toLowerCase();
+      }
+      if(v.startsWith('rgb')){
+        const m = v.match(/(\d+)/g);
+        if(m && m.length>=3) return rgbToHex(+m[0],+m[1],+m[2]);
+      }
+    }
+    return null;
+  };
+
+  const addColor = (hex)=>{
+    if(hex) colors.set(hex, (colors.get(hex)||0)+1);
+  };
+
+  // Extract colors from a fabric.Gradient's colorStops
+  const extractGradientColors = (grad)=>{
+    if(!grad || !grad.colorStops) return;
+    grad.colorStops.forEach(stop=>{
+      const c = stop.color || stop.color;
+      addColor(toNormHex(c));
+    });
+  };
+
+  // Walk fabric sub-objects if available (fabric.Group)
+  if(group._objects){
+    const walk = (objs)=>{
+      objs.forEach(o=>{
+        if(o._objects) walk(o._objects);
+        ['fill','stroke'].forEach(prop=>{
+          const v = o[prop];
+          if(!v || v === 'none' || v === 'transparent') return;
+          // Fabric.Gradient object (from SVG <linearGradient>/<radialGradient>)
+          if(typeof v === 'object' && v.colorStops){
+            extractGradientColors(v);
+            return;
+          }
+          addColor(toNormHex(v));
+        });
+      });
+    };
+    walk(group._objects);
+  }
+
+  // Also scan _svgSource for gradient stop-colors (catches defs not on fabric objects)
+  if(group._svgSource){
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(group._svgSource, 'image/svg+xml');
+      doc.querySelectorAll('stop').forEach(stop=>{
+        const sc = stop.getAttribute('stop-color');
+        addColor(toNormHex(sc));
+        const style = stop.getAttribute('style');
+        if(style){
+          const m = style.match(/stop-color\s*:\s*([^;]+)/i);
+          if(m) addColor(toNormHex(m[1].trim()));
+        }
+      });
+    } catch(e){ /* ignore parse errors */ }
+  }
+
+  return colors;
+}
+
+// Replace a specific color in all paths of an SVG fabric group.
+// Handles both direct fill/stroke colors AND gradient stop-colors.
+// Also updates _svgSource so preview and export stay in sync.
+function recolorSvgPaths(group, oldHex, newHex){
+  if(!group || !group._objects) return;
+  const old = oldHex.toLowerCase();
+
+  const normHex = (v)=>{
+    if(!v || typeof v !== 'string') return null;
+    if(v.startsWith('#')){
+      return v.length===4 ? '#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3] : v.toLowerCase();
+    }
+    if(v.startsWith('rgb')){
+      const m = v.match(/(\d+)/g);
+      if(m && m.length>=3) return rgbToHex(+m[0],+m[1],+m[2]);
+    }
+    return null;
+  };
+
+  // Recolor gradient stop-colors on a fabric.Gradient object
+  const recolorGradient = (grad)=>{
+    if(!grad || !grad.colorStops) return false;
+    let changed = false;
+    grad.colorStops.forEach(stop=>{
+      const hex = normHex(stop.color);
+      if(hex === old){ stop.color = newHex; changed = true; }
+    });
+    return changed;
+  };
+
   const walk = (objs)=>{
     objs.forEach(o=>{
       if(o._objects) walk(o._objects);
       ['fill','stroke'].forEach(prop=>{
         const v = o[prop];
         if(!v || v === 'none' || v === 'transparent') return;
-        let hex;
-        if(typeof v === 'string' && v.startsWith('#')){
-          hex = v.length===4 ? '#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3] : v.toLowerCase();
-        } else if(typeof v === 'string' && v.startsWith('rgb')){
-          const m = v.match(/(\d+)/g);
-          if(m && m.length>=3) hex = rgbToHex(+m[0],+m[1],+m[2]);
-        } else return;
-        if(hex){
-          colors.set(hex, (colors.get(hex)||0)+1);
+        // Fabric.Gradient — update stop colors
+        if(typeof v === 'object' && v.colorStops){
+          if(recolorGradient(v)) o.dirty = true;
+          return;
         }
-      });
-    });
-  };
-  walk(group._objects);
-  return colors;
-}
-
-// Replace a specific color in all paths of an SVG fabric group.
-function recolorSvgPaths(group, oldHex, newHex){
-  if(!group || !group._objects) return;
-  const old = oldHex.toLowerCase();
-  const walk = (objs)=>{
-    objs.forEach(o=>{
-      if(o._objects) walk(o._objects);
-      ['fill','stroke'].forEach(prop=>{
-        const v = o[prop];
-        if(!v || typeof v !== 'string') return;
-        let hex;
-        if(v.startsWith('#')){
-          hex = v.length===4 ? '#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3] : v.toLowerCase();
-        } else if(v.startsWith('rgb')){
-          const m = v.match(/(\d+)/g);
-          if(m && m.length>=3) hex = rgbToHex(+m[0],+m[1],+m[2]);
-        }
+        // Direct color string
+        const hex = normHex(v);
         if(hex === old) o.set(prop, newHex);
       });
     });
@@ -1797,6 +2142,61 @@ function recolorSvgPaths(group, oldHex, newHex){
   walk(group._objects);
   group.dirty = true;
   canvas.requestRenderAll();
+
+  // --- Keep _svgSource in sync (single source of truth for export) ---
+  if(group._svgSource){
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(group._svgSource, 'image/svg+xml');
+
+      // 1. Update fill/stroke attributes on all elements
+      doc.querySelectorAll('*').forEach(el=>{
+        ['fill','stroke'].forEach(attr=>{
+          const val = el.getAttribute(attr);
+          // Skip gradient references like url(#id)
+          if(val && !val.startsWith('url') && normHex(val) === old){
+            el.setAttribute(attr, newHex);
+          }
+        });
+        // Inline style fill/stroke
+        const style = el.getAttribute('style');
+        if(style){
+          let changed = false;
+          const newStyle = style.replace(/(fill|stroke)\s*:\s*([^;]+)/gi, (match, prop, val)=>{
+            const trimmed = val.trim();
+            if(!trimmed.startsWith('url') && normHex(trimmed) === old){
+              changed = true; return prop + ':' + newHex;
+            }
+            return match;
+          });
+          if(changed) el.setAttribute('style', newStyle);
+        }
+      });
+
+      // 2. Update gradient <stop> elements (stop-color attribute + inline style)
+      doc.querySelectorAll('stop').forEach(stop=>{
+        // stop-color as attribute
+        const sc = stop.getAttribute('stop-color');
+        if(sc && normHex(sc) === old) stop.setAttribute('stop-color', newHex);
+        // stop-color in inline style
+        const style = stop.getAttribute('style');
+        if(style){
+          const newStyle = style.replace(/stop-color\s*:\s*([^;]+)/gi, (match, val)=>{
+            if(normHex(val.trim()) === old) return 'stop-color:' + newHex;
+            return match;
+          });
+          if(newStyle !== style) stop.setAttribute('style', newStyle);
+        }
+      });
+
+      group._svgSource = new XMLSerializer().serializeToString(doc.documentElement);
+    } catch(e){
+      console.warn('[GSB] Failed to update _svgSource colors:', e);
+    }
+  }
+
+  // Mark as recolored — export will use SVG track instead of embedPdf
+  group._recolored = true;
 }
 
 // ---- Raster color detection & replacement ----
@@ -1961,6 +2361,11 @@ function recolorRaster(obj, oldHex, newHex){
     newImg._mmLeft = obj._mmLeft;
     newImg._mmTop = obj._mmTop;
     newImg._vectorOrigin = obj._vectorOrigin;
+    if(obj._svgSource) newImg._svgSource = obj._svgSource;
+    if(obj._embeddedRasterW) newImg._embeddedRasterW = obj._embeddedRasterW;
+    if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
+    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
+
     attachObjListeners(newImg);
     // Suppress panel rebuild so the color picker stays open
     _suppressPanelRebuild = true;
@@ -2184,6 +2589,12 @@ function renderSelectedPanel(){
 function buildColorEditor(obj, isVector){
   const section = document.getElementById('colorSection');
   if(!section) return;
+
+  // Gradient files (AI/PDF with gradients): disable recolor — show hint in color section
+  if(obj._hasGradients){
+    section.innerHTML = `<p class="color-hint" style="color:#b45309">Dit bestand bevat kleurverlopen (gradients). Kleuren in dit bestand kunnen daarom niet aangepast worden. Upload een versie zonder gradient of als SVG voor volledige bewerking.</p>`;
+    return;
+  }
 
   if(isVector){
     // SVG: extract colors and show swatches
@@ -2783,6 +3194,7 @@ function changeGroupCount(originalId, targetCount){
     _originalId: liveSample._originalId, _name: liveSample._name,
     _naturalW: liveSample._naturalW, _naturalH: liveSample._naturalH,
     _svgSource: liveSample._svgSource,
+    _hasGradients: liveSample._hasGradients,
     _embeddedRasterW: liveSample._embeddedRasterW,
     _embeddedRasterH: liveSample._embeddedRasterH,
     _vectorOrigin: liveSample._vectorOrigin,
@@ -2843,6 +3255,7 @@ function changeGroupCount(originalId, targetCount){
             img._naturalW = srcProps._naturalW;
             img._naturalH = srcProps._naturalH;
             if(srcProps._svgSource) img._svgSource = srcProps._svgSource;
+            if(srcProps._hasGradients) img._hasGradients = srcProps._hasGradients;
             if(srcProps._embeddedRasterW) img._embeddedRasterW = srcProps._embeddedRasterW;
             if(srcProps._embeddedRasterH) img._embeddedRasterH = srcProps._embeddedRasterH;
             if(srcProps._vectorOrigin) img._vectorOrigin = srcProps._vectorOrigin;
@@ -2874,6 +3287,12 @@ function changeGroupCount(originalId, targetCount){
           obj._naturalW = srcProps._naturalW;
           obj._naturalH = srcProps._naturalH;
           fabric.util.enlivenObjects([obj], ([clone]) => {
+            // Explicitly preserve vector properties — enlivenObjects may drop custom _ props
+            if(srcProps._svgSource) clone._svgSource = srcProps._svgSource;
+            if(srcProps._hasGradients) clone._hasGradients = srcProps._hasGradients;
+            if(srcProps._vectorOrigin) clone._vectorOrigin = srcProps._vectorOrigin;
+            if(srcProps._embeddedRasterW) clone._embeddedRasterW = srcProps._embeddedRasterW;
+            if(srcProps._embeddedRasterH) clone._embeddedRasterH = srcProps._embeddedRasterH;
             attachObjListeners(clone);
             canvas.add(clone);
             resolve();
@@ -3024,8 +3443,9 @@ function removeWhiteBg(obj, threshold){
     newImg._mmLeft = obj._mmLeft;
     newImg._mmTop = obj._mmTop;
     // Preserve vector-origin flag so DPI stays correct after bg removal
-    if(obj._vectorOrigin) newImg._vectorOrigin = true;
+    if(obj._vectorOrigin) newImg._vectorOrigin = obj._vectorOrigin;
     if(obj._svgSource) newImg._svgSource = obj._svgSource;
+    if(obj._hasGradients) newImg._hasGradients = obj._hasGradients;
     if(obj._embeddedRasterW) newImg._embeddedRasterW = obj._embeddedRasterW;
     if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
     if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
@@ -3277,6 +3697,7 @@ function tileSheet(){
             img._naturalH = ft.naturalH;
             img._isFillTile = true;
             if(sample._svgSource) img._svgSource = sample._svgSource;
+            if(sample._hasGradients) img._hasGradients = sample._hasGradients;
             if(sample._vectorOrigin) img._vectorOrigin = sample._vectorOrigin;
             placeAt(img, p);
             attachObjListeners(img);
@@ -3330,6 +3751,12 @@ function tileSheet(){
         clone._naturalW = ft.naturalW;
         clone._naturalH = ft.naturalH;
         clone._isFillTile = true;
+        // Explicitly preserve vector properties — enlivenObjects may drop custom _ props
+        if(sample._svgSource) clone._svgSource = sample._svgSource;
+        if(sample._hasGradients) clone._hasGradients = sample._hasGradients;
+        if(sample._vectorOrigin) clone._vectorOrigin = sample._vectorOrigin;
+        if(sample._embeddedRasterW) clone._embeddedRasterW = sample._embeddedRasterW;
+        if(sample._embeddedRasterH) clone._embeddedRasterH = sample._embeddedRasterH;
         placeAt(clone, layout[idx]);
         attachObjListeners(clone);
         canvas.add(clone);
@@ -3480,23 +3907,27 @@ exportBtn.onclick = async ()=>{
     }
 
     // --- Classify into three tracks ---
-    // Rotated tiles stay in their vector track — drawAtTile handles rotation via
-    // pdf-lib transformation matrices, preserving vector data even when rotated.
+    // Track 1: SVG vector (svg2pdf.js) — for pure SVG uploads with _svgSource
+    // Track 2: PDF embed (pdf-lib embedPdf) — for AI/PDF uploads with pdfSourceBuffers entry
+    //          Preserves 100% of original vector content including gradients, patterns, text.
+    // Track 3: Raster (300 DPI PNG) — for images and anything else
     const vectorSvgIds = new Set();
-    const vectorPdfIds = new Set();
+    const pdfEmbedIds = new Set();
     const rasterIds = new Set();
 
     for(const [oid, grp] of uniqueLogos){
       const s = grp.sample;
-      if(canDoSvgVector && s._svgSource && !s._embeddedRasterW){
+      if(pdfSourceBuffers.has(oid) && !s._recolored){
+        // AI/PDF upload, colors NOT changed → embed original PDF (lossless, gradients perfect)
+        pdfEmbedIds.add(oid);
+      } else if(canDoSvgVector && s._svgSource && !s._embeddedRasterW){
+        // SVG upload, OR AI/PDF that was recolored → use modified _svgSource
         vectorSvgIds.add(oid);
-      } else if(s._vectorOrigin && pdfSourceBuffers.has(s._originalId || oid)){
-        vectorPdfIds.add(oid);
       } else {
         rasterIds.add(oid);
       }
     }
-    console.log(`[GSB Export] Classification: ${vectorSvgIds.size} SVG vector, ${vectorPdfIds.size} PDF/AI vector, ${rasterIds.size} raster`);
+    console.log(`[GSB Export] Classification: ${vectorSvgIds.size} SVG vector, ${pdfEmbedIds.size} PDF embed (lossless), ${rasterIds.size} raster`);
 
     // --- Helper: call svg2pdf with correct API ---
     async function callSvg2pdf(svgEl, targetJsPdf, opts){
@@ -3594,7 +4025,7 @@ exportBtn.onclick = async ()=>{
       }
     }
 
-    let vectorOk = 0, vectorFail = 0, pdfVectorOk = 0;
+    let vectorOk = 0, vectorFail = 0;
 
     // ===========================================================
     // TRACK 1: SVG VECTOR — svg2pdf.js → intermediate jsPDF → embed as PDF page in pdf-lib
@@ -3775,39 +4206,46 @@ exportBtn.onclick = async ()=>{
     }
 
     // ===========================================================
-    // TRACK 2: AI/PDF VECTOR — embed original PDF page via pdf-lib
+    // TRACK 2: PDF EMBED — original AI/PDF via pdf-lib embedPdf
     // ===========================================================
-    for(const oid of vectorPdfIds){
-      const grp = uniqueLogos.get(oid);
-      const srcId = grp.sample._originalId || oid;
-      const srcBuffer = pdfSourceBuffers.get(srcId);
-      if(!srcBuffer){
-        console.warn('[GSB] No source buffer for PDF/AI logo', oid, '— falling back to raster');
-        rasterIds.add(oid);
-        continue;
-      }
+    // Embeds the ORIGINAL PDF binary — preserves 100% of vector content
+    // including gradients, patterns, shadings, text, and complex artwork.
+    // No conversion, no parsing, no quality loss.
+    if(pdfEmbedIds.size > 0){
+      const pdfEmbedCache = new Map(); // oid → embeddedPage
+      for(const oid of pdfEmbedIds){
+        const grp = uniqueLogos.get(oid);
+        if(!grp) continue;
 
-      let embeddedPage = null;
-      try {
-        const srcDoc = await PDFDocument.load(srcBuffer, { ignoreEncryption: true });
-        const [ep] = await finalDoc.embedPdf(srcDoc, [0]);
-        embeddedPage = ep;
-        console.log(`[GSB] PDF/AI vector embed OK: ${grp.sample._name || oid}`);
-      } catch(e){
-        console.error('[GSB] pdf-lib embed failed for', oid, ':', e);
-        rasterIds.add(oid);
-        continue;
-      }
-
-      for(const tile of grp.tiles){
-        try {
-          drawAtTile(embeddedPage, tile, true);
-          pdfVectorOk++;
-        } catch(e){
-          console.error('[GSB] drawPage failed for PDF/AI tile:', e);
+        let embeddedPage = pdfEmbedCache.get(oid);
+        if(!embeddedPage){
+          try {
+            const srcBuffer = pdfSourceBuffers.get(oid);
+            if(!srcBuffer) throw new Error('No source buffer for ' + oid);
+            const srcDoc = await PDFDocument.load(srcBuffer);
+            const [ep] = await finalDoc.embedPdf(srcDoc, [0]);
+            embeddedPage = ep;
+            pdfEmbedCache.set(oid, embeddedPage);
+            console.log(`[GSB] PDF embed OK: ${grp.sample._name || oid} (${srcBuffer.byteLength} bytes)`);
+          } catch(e){
+            console.error('[GSB] PDF embed FAILED for', oid, ':', e);
+            // Fallback to raster
+            rasterIds.add(oid);
+            continue;
+          }
         }
+
+        for(const tile of grp.tiles){
+          try {
+            drawAtTile(embeddedPage, tile, true);
+            vectorOk++;
+          } catch(e){
+            console.error('[GSB] drawPage failed for PDF tile:', e);
+            vectorFail++;
+          }
+        }
+        await yieldFrame();
       }
-      await yieldFrame();
     }
 
     // ===========================================================
@@ -3866,11 +4304,11 @@ exportBtn.onclick = async ()=>{
 
     // --- Report results ---
     const totalTiles = [...uniqueLogos.values()].reduce((s, g) => s + g.tiles.length, 0);
-    const rasterTiles = totalTiles - vectorOk - pdfVectorOk;
-    console.log(`[GSB Export] Done: ${vectorOk} SVG vector, ${pdfVectorOk} PDF/AI vector, ${rasterTiles} raster, ${vectorFail} fallbacks`);
+    const rasterTiles = totalTiles - vectorOk;
+    console.log(`[GSB Export] Done: ${vectorOk} vector, ${rasterTiles} raster, ${vectorFail} fallbacks`);
 
-    if(vectorOk > 0 || pdfVectorOk > 0){
-      toast(`PDF opgeslagen: ${vectorOk + pdfVectorOk} vector, ${rasterTiles} raster (300 DPI)`, 'success', 5000);
+    if(vectorOk > 0){
+      toast(`PDF opgeslagen: ${vectorOk} vector, ${rasterTiles} raster (300 DPI)`, 'success', 5000);
     } else if(vectorFail > 0){
       toast('PDF opgeslagen als 300 DPI raster (vector embedding mislukt — zie console)', 'warn', 5000);
     } else {
@@ -3917,9 +4355,10 @@ function updatePdfProgress(current, total){
    TOAST + MODAL
    ========================================================= */
 const toastWrap = document.getElementById('toastWrap');
-function toast(msg, type='info', ms=3000, onClose, dismissLabel){
+function toast(msg, type='info', ms=3000, toastId, dismissLabel){
   const el = document.createElement('div');
   el.className = 'toast ' + type + (ms === 0 ? ' sticky' : '');
+  if(toastId) el.dataset.toastId = toastId;
   const text = document.createElement('span');
   text.className = 'toast-text';
   text.textContent = msg;
@@ -3939,14 +4378,23 @@ function toast(msg, type='info', ms=3000, onClose, dismissLabel){
     close.onclick = ()=>{
       el.style.opacity = '0';
       el.style.transform = 'translateY(-6px)';
-      setTimeout(()=>{ el.remove(); if(onClose) onClose(); }, 300);
+      setTimeout(()=>el.remove(), 300);
     };
     el.appendChild(close);
   } else {
     setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(-6px)'; }, ms);
-    setTimeout(()=>{ el.remove(); if(onClose) onClose(); }, ms+400);
+    setTimeout(()=>el.remove(), ms+400);
   }
   toastWrap.appendChild(el);
+}
+
+function dismissToast(id){
+  const el = toastWrap.querySelector(`[data-toast-id="${id}"]`);
+  if(el){
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-6px)';
+    setTimeout(()=>el.remove(), 300);
+  }
 }
 
 const modal = document.getElementById('modal');
