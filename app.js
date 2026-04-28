@@ -151,6 +151,11 @@ const I18N = {
     shortcutsBody:'Ctrl+Z: Ongedaan · Ctrl+Shift+Z: Herhalen · Ctrl+D: Dupliceer · Delete: Verwijder · Pijltoetsen: Verschuif · +/−: Zoom · 0: Passend · Ctrl+A: Alle selecteren',
     optimizeLayout:'Optimaliseer indeling', optimizeDone:'Indeling geoptimaliseerd',
     selectMultiple:'Meerdere geselecteerd', deleteMultiple:'Verwijder alles', duplicateMultiple:'Dupliceer alles', rotateMultiple:'Roteer alles 90°',
+    alignLeft:'Links', alignCenterH:'Centreer H', alignRight:'Rechts',
+    alignTop:'Boven', alignCenterV:'Centreer V', alignBottom:'Onder',
+    distributeH:'Verdeel H', distributeV:'Verdeel V',
+    alignLabel:'Uitlijnen t.o.v. selectie',
+    alignCanvasLabel:'Uitlijnen op vel',
     printPreview:'Preview', previewTitle:'Print preview',
   },
   en: {
@@ -287,6 +292,11 @@ const I18N = {
     shortcutsBody:'Ctrl+Z: Undo · Ctrl+Shift+Z: Redo · Ctrl+D: Duplicate · Delete: Remove · Arrow keys: Move · +/−: Zoom · 0: Fit · Ctrl+A: Select all',
     optimizeLayout:'Optimize layout', optimizeDone:'Layout optimized',
     selectMultiple:'Multiple selected', deleteMultiple:'Delete all', duplicateMultiple:'Duplicate all', rotateMultiple:'Rotate all 90°',
+    alignLeft:'Left', alignCenterH:'Center H', alignRight:'Right',
+    alignTop:'Top', alignCenterV:'Center V', alignBottom:'Bottom',
+    distributeH:'Distribute H', distributeV:'Distribute V',
+    alignLabel:'Align to selection',
+    alignCanvasLabel:'Align to sheet',
     printPreview:'Preview', previewTitle:'Print preview',
   }
 };
@@ -313,7 +323,7 @@ const SHEET_FORMATS = {
 const ROLL_WIDTH_MM = 550;      // 55 cm wide
 const DEFAULT_LENGTH_MM = 1000;  // Default 1 meter
 const MIN_LENGTH_MM = 1000;      // Minimum 1 meter
-const MAX_LENGTH_MM = 5000;      // Maximum 5 meters
+const MAX_LENGTH_MM = 50000;     // Maximum 50 meters
 
 const DPI_TARGET = 300;
 const MM_PER_INCH = 25.4;
@@ -459,7 +469,7 @@ canvas.on('before:transform', () => {
 
 function attachObjListeners(o){
   o.on('modified', ()=>{
-    clampObjToSheet(o); syncMmFromPx(o);
+    clampObjToSheet(o); preventOverlap(o); syncMmFromPx(o);
     // Push the PRE-transform snapshot (state before drag/scale/rotate)
     if(_preTransformSnap && !_isLoadingState){
       undoRedoStack.undo.push(_preTransformSnap);
@@ -576,6 +586,48 @@ function clampObjToSheet(obj){
     obj.left += dx;
     obj.top  += dy;
     obj.setCoords();
+  }
+}
+
+/* Prevent overlap: push a moving object away from others, respecting gap.
+   Uses axis-aligned bounding rects for speed. Finds the smallest push
+   direction (left, right, up, down) to resolve each collision. */
+function preventOverlap(moving){
+  if(!moving || !moving.setCoords) return;
+  const gapPx = (state.gapMm || 0) * displayPxPerMm;
+  const objs = canvas.getObjects();
+  moving.setCoords();
+  const mr = moving.getBoundingRect(true, true);
+
+  for(const other of objs){
+    if(other === moving || !other._mmW) continue;
+    // Skip objects that are part of an activeSelection (multi-drag)
+    if(moving.type === 'activeSelection' && moving._objects?.includes(other)) continue;
+    other.setCoords();
+    const or = other.getBoundingRect(true, true);
+
+    // Check overlap with gap
+    const overlapX = (mr.left < or.left + or.width + gapPx) && (mr.left + mr.width + gapPx > or.left);
+    const overlapY = (mr.top < or.top + or.height + gapPx) && (mr.top + mr.height + gapPx > or.top);
+
+    if(overlapX && overlapY){
+      // Calculate push distances for each direction
+      const pushRight = (or.left + or.width + gapPx) - mr.left;
+      const pushLeft  = mr.left + mr.width + gapPx - or.left;
+      const pushDown  = (or.top + or.height + gapPx) - mr.top;
+      const pushUp    = mr.top + mr.height + gapPx - or.top;
+
+      // Pick the smallest push
+      const min = Math.min(pushRight, pushLeft, pushDown, pushUp);
+      if(min === pushRight)     moving.left += pushRight;
+      else if(min === pushLeft) moving.left -= pushLeft;
+      else if(min === pushDown) moving.top  += pushDown;
+      else                      moving.top  -= pushUp;
+
+      moving.setCoords();
+      // Re-clamp to sheet after push
+      clampObjToSheet(moving);
+    }
   }
 }
 
@@ -1054,6 +1106,9 @@ async function loadEpsAsConverted(file){
    their current flat fill). The original PDF binary is stored
    separately for lossless export via pdf-lib embedPdf.
    --------------------------------------------------------- */
+// Max paths before we bail out to raster — keeps import snappy
+const PDF_MAX_SVG_PATHS = 200;
+
 async function pdfToSvg(arrayBuffer){
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const page = await pdf.getPage(1);
@@ -1103,8 +1158,11 @@ async function pdfToSvg(arrayBuffer){
     for(let j=0;j<n;j++) elements.push('</g>');
   }
 
+  let tooManyPaths = false;
+
   function emitPath(doFill,doStroke,rule){
     if(!pathD.trim()){ pathD=''; return; }
+    if(tooManyPaths){ pathD=''; return; } // bail-out: skip remaining paths
     const attrs=[`d="${pathD.trim()}"`];
     if(doFill){
       attrs.push(`fill="${fillColor}"`);
@@ -1121,6 +1179,7 @@ async function pdfToSvg(arrayBuffer){
     }
     elements.push(`<path ${attrs.join(' ')}/>`);
     pathCount++; pathD='';
+    if(pathCount >= PDF_MAX_SVG_PATHS){ tooManyPaths = true; }
   }
 
   let firstFillSeen=false, clipCount=0;
@@ -1148,8 +1207,9 @@ async function pdfToSvg(arrayBuffer){
     return d;
   }
 
-  // Process operator list
+  // Process operator list — bail out early if too many paths
   for(let i=0;i<opList.fnArray.length;i++){
+    if(tooManyPaths) break; // early exit: skip remaining operators entirely
     const fn=opList.fnArray[i], args=opList.argsArray[i];
     switch(fn){
       case OPS.save: pushGState(); elements.push('<g>'); break;
@@ -1252,8 +1312,8 @@ async function pdfToSvg(arrayBuffer){
     '</g>','</svg>'
   ].join('\n');
 
-  console.log(`[GSB] pdfToSvg: ${pathCount} paths, hasGradients=${hasGradients}, SVG ${svgText.length} chars`);
-  return { svgText, pathCount, hasGradients };
+  console.log(`[GSB] pdfToSvg: ${pathCount} paths, hasGradients=${hasGradients}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
+  return { svgText, pathCount, hasGradients, tooManyPaths };
 }
 
 // Load a PDF/AI file — simple rules:
@@ -1276,19 +1336,21 @@ async function loadPdfAsImage(arrayBuffer, name){
   toast(t('loadingVector'), 'info', 3000);
 
   // --- Step 1: Convert to SVG and detect gradients ---
-  let svgText = null, pdfHasGradients = false, svgPathCount = 0;
+  let svgText = null, pdfHasGradients = false, svgPathCount = 0, pdfTooManyPaths = false;
   try {
+    const t0 = performance.now();
     const result = await pdfToSvg(bufferForSvg);
     svgText = result.svgText;
     svgPathCount = result.pathCount;
     pdfHasGradients = result.hasGradients;
-    console.log(`[GSB] pdfToSvg "${name}": ${svgPathCount} paths, gradients=${pdfHasGradients}`);
+    pdfTooManyPaths = result.tooManyPaths;
+    console.log(`[GSB] pdfToSvg "${name}": ${svgPathCount} paths, gradients=${pdfHasGradients}, tooMany=${pdfTooManyPaths}, ${(performance.now()-t0).toFixed(0)}ms`);
   } catch(err){
     console.warn(`[GSB] pdfToSvg failed for "${name}":`, err);
   }
 
-  // --- PATH A: No gradients + valid SVG → editable SVG group ---
-  if(svgPathCount > 0 && !pdfHasGradients){
+  // --- PATH A: No gradients, not too many paths, valid SVG → editable SVG group ---
+  if(svgPathCount > 0 && !pdfHasGradients && !pdfTooManyPaths){
     console.log(`[GSB] "${name}": no gradients, loading as editable SVG`);
     loadSvg(svgText, name);
     // Store export buffer after loadSvg places the object
@@ -1306,7 +1368,8 @@ async function loadPdfAsImage(arrayBuffer, name){
   }
 
   // --- PATH B: Has gradients OR conversion failed → pdf.js canvas render (display only) ---
-  console.log(`[GSB] "${name}": ${pdfHasGradients ? 'gradients detected' : 'conversion failed'}, loading as display-only raster`);
+  const reason = pdfTooManyPaths ? `too many paths (${svgPathCount}≥${PDF_MAX_SVG_PATHS})` : pdfHasGradients ? 'gradients detected' : 'conversion failed';
+  console.log(`[GSB] "${name}": ${reason}, loading as display-only raster`);
   try {
     const pdf = await pdfjsLib.getDocument({ data: bufferForRaster }).promise;
     const page = await pdf.getPage(1);
@@ -2402,12 +2465,44 @@ function renderSelectedPanel(){
       <div style="padding:12px;background:var(--bg-light);border-radius:8px;text-align:center;margin-bottom:12px">
         <p style="margin:0;font-size:0.9rem;color:var(--text);font-weight:700">${count} ${t('selectMultiple')}</p>
       </div>
-      <div class="toolbar" style="margin-bottom:14px">
+      <div class="toolbar" style="margin-bottom:8px">
         <button class="tool-btn" data-act="multi-rot" style="flex:1">${t('rotateMultiple')}</button>
         <button class="tool-btn" data-act="multi-dup" style="flex:1">${t('duplicateMultiple')}</button>
         <button class="tool-btn" data-act="multi-del" style="flex:1;background:#fee2e2;color:#dc2626">${t('deleteMultiple')}</button>
       </div>
+      <div class="panel-group" style="margin-bottom:8px">
+        <div class="panel-group-title">${t('alignLabel')}</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:4px">
+          <button class="tool-btn align-icon-btn" data-act="align-left" title="${t('alignLeft')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="3" width="10" height="4" rx=".5" fill="currentColor" opacity=".5"/><rect x="4" y="9" width="6" height="4" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="align-center-h" title="${t('alignCenterH')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="7.25" y="1" width="1.5" height="14" fill="currentColor"/><rect x="2" y="3" width="12" height="4" rx=".5" fill="currentColor" opacity=".5"/><rect x="4" y="9" width="8" height="4" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="align-right" title="${t('alignRight')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="13.5" y="1" width="1.5" height="14" fill="currentColor"/><rect x="2" y="3" width="10" height="4" rx=".5" fill="currentColor" opacity=".5"/><rect x="6" y="9" width="6" height="4" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="distribute-h" title="${t('distributeH')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="1" width="1" height="14" fill="currentColor" opacity=".4"/><rect x="14" y="1" width="1" height="14" fill="currentColor" opacity=".4"/><rect x="3.5" y="4" width="3" height="8" rx=".5" fill="currentColor" opacity=".5"/><rect x="9.5" y="4" width="3" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px">
+          <button class="tool-btn align-icon-btn" data-act="align-top" title="${t('alignTop')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="1" width="14" height="1.5" fill="currentColor"/><rect x="3" y="4" width="4" height="10" rx=".5" fill="currentColor" opacity=".5"/><rect x="9" y="4" width="4" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="align-center-v" title="${t('alignCenterV')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="7.25" width="14" height="1.5" fill="currentColor"/><rect x="3" y="2" width="4" height="12" rx=".5" fill="currentColor" opacity=".5"/><rect x="9" y="4" width="4" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="align-bottom" title="${t('alignBottom')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="13.5" width="14" height="1.5" fill="currentColor"/><rect x="3" y="3" width="4" height="10" rx=".5" fill="currentColor" opacity=".5"/><rect x="9" y="7" width="4" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="distribute-v" title="${t('distributeV')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="1" y="1" width="14" height="1" fill="currentColor" opacity=".4"/><rect x="1" y="14" width="14" height="1" fill="currentColor" opacity=".4"/><rect x="4" y="3.5" width="8" height="3" rx=".5" fill="currentColor" opacity=".5"/><rect x="4" y="9.5" width="8" height="3" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        </div>
+      </div>
+      <div class="panel-group" style="margin-bottom:8px">
+        <div class="panel-group-title">${t('alignCanvasLabel')}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:4px">
+          <button class="tool-btn align-icon-btn" data-act="canvas-align-left" title="${t('alignLeft')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="5" width="8" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="canvas-align-center-h" title="${t('alignCenterH')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="7.25" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="5" width="8" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="canvas-align-right" title="${t('alignRight')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="13.5" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="5" width="8" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">
+          <button class="tool-btn align-icon-btn" data-act="canvas-align-top" title="${t('alignTop')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="1" width="14" height="1.5" fill="currentColor"/><rect x="5" y="4" width="6" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="canvas-align-center-v" title="${t('alignCenterV')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="7.25" width="14" height="1.5" fill="currentColor"/><rect x="5" y="4" width="6" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+          <button class="tool-btn align-icon-btn" data-act="canvas-align-bottom" title="${t('alignBottom')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="13.5" width="14" height="1.5" fill="currentColor"/><rect x="5" y="4" width="6" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        </div>
+      </div>
     `;
+    // Wire up ALL buttons with data-act in the multi-select panel
+    panel.querySelectorAll('[data-act]').forEach(b=>{
+      b.onclick = ()=>actOnSelected(b.dataset.act);
+    });
     if(section) section.classList.add('highlight');
     return;
   }
@@ -2479,6 +2574,21 @@ function renderSelectedPanel(){
       </div>
     </div>
 
+    <!-- ── ALIGN TO SHEET group ── -->
+    <div class="panel-group">
+      <div class="panel-group-title">${t('alignCanvasLabel')}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:4px">
+        <button class="tool-btn align-icon-btn" data-act="canvas-align-left" title="${t('alignLeft')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="5" width="8" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        <button class="tool-btn align-icon-btn" data-act="canvas-align-center-h" title="${t('alignCenterH')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="7.25" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="5" width="8" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        <button class="tool-btn align-icon-btn" data-act="canvas-align-right" title="${t('alignRight')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="13.5" y="1" width="1.5" height="14" fill="currentColor"/><rect x="4" y="5" width="8" height="6" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">
+        <button class="tool-btn align-icon-btn" data-act="canvas-align-top" title="${t('alignTop')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="1" width="14" height="1.5" fill="currentColor"/><rect x="5" y="4" width="6" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        <button class="tool-btn align-icon-btn" data-act="canvas-align-center-v" title="${t('alignCenterV')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="7.25" width="14" height="1.5" fill="currentColor"/><rect x="5" y="4" width="6" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+        <button class="tool-btn align-icon-btn" data-act="canvas-align-bottom" title="${t('alignBottom')}"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="0" y="0" width="16" height="16" fill="currentColor" opacity=".07" rx="1"/><rect x="1" y="13.5" width="14" height="1.5" fill="currentColor"/><rect x="5" y="4" width="6" height="8" rx=".5" fill="currentColor" opacity=".5"/></svg></button>
+      </div>
+    </div>
+
     <!-- ── APPEARANCE group ── -->
     <div class="panel-group">
       <div class="panel-group-title">${t('sectionAppearance')}</div>
@@ -2512,7 +2622,7 @@ function renderSelectedPanel(){
   `;
 
   /* ── Wiring ── */
-  panel.querySelectorAll('.toolbar [data-act]').forEach(b=>{
+  panel.querySelectorAll('[data-act]').forEach(b=>{
     b.onclick = ()=>actOnSelected(b.dataset.act);
   });
   document.getElementById('inpW').onchange = e=>setSizeMm('w', parseFloat(e.target.value));
@@ -2789,6 +2899,122 @@ function setSizeMm(dim, val){
   pushUndo();
 }
 
+/* Align/distribute objects — called from multi-select panel.
+   Breaks the activeSelection to work in canvas coordinates,
+   then re-selects the objects afterward. */
+function alignObjects(targets, action){
+  if(!targets.length) return;
+  pushUndo();
+  // Break activeSelection so objects have canvas-absolute coords
+  canvas.discardActiveObject();
+  canvas.requestRenderAll();
+
+  // Get bounding rects in canvas coords
+  const items = targets.map(o => {
+    o.setCoords();
+    const br = o.getBoundingRect(true, true);
+    return { o, br };
+  });
+
+  switch(action){
+    case 'align-left': {
+      const ref = Math.min(...items.map(i=>i.br.left));
+      items.forEach(({o,br}) => { o.left += ref - br.left; o.setCoords(); });
+      break;
+    }
+    case 'align-right': {
+      const ref = Math.max(...items.map(i=>i.br.left+i.br.width));
+      items.forEach(({o,br}) => { o.left += ref - (br.left+br.width); o.setCoords(); });
+      break;
+    }
+    case 'align-top': {
+      const ref = Math.min(...items.map(i=>i.br.top));
+      items.forEach(({o,br}) => { o.top += ref - br.top; o.setCoords(); });
+      break;
+    }
+    case 'align-bottom': {
+      const ref = Math.max(...items.map(i=>i.br.top+i.br.height));
+      items.forEach(({o,br}) => { o.top += ref - (br.top+br.height); o.setCoords(); });
+      break;
+    }
+    case 'align-center-h': {
+      const minL = Math.min(...items.map(i=>i.br.left));
+      const maxR = Math.max(...items.map(i=>i.br.left+i.br.width));
+      const cx = (minL+maxR)/2;
+      items.forEach(({o,br}) => { o.left += cx - (br.left+br.width/2); o.setCoords(); });
+      break;
+    }
+    case 'align-center-v': {
+      const minT = Math.min(...items.map(i=>i.br.top));
+      const maxB = Math.max(...items.map(i=>i.br.top+i.br.height));
+      const cy = (minT+maxB)/2;
+      items.forEach(({o,br}) => { o.top += cy - (br.top+br.height/2); o.setCoords(); });
+      break;
+    }
+    case 'distribute-h': {
+      if(items.length < 3) break;
+      items.sort((a,b) => a.br.left - b.br.left);
+      const totalW = items.reduce((s,i)=>s+i.br.width, 0);
+      const minL = items[0].br.left;
+      const maxR = items[items.length-1].br.left + items[items.length-1].br.width;
+      const space = (maxR - minL - totalW) / (items.length - 1);
+      let x = minL;
+      items.forEach(({o,br}) => { o.left += x - br.left; x += br.width + space; o.setCoords(); });
+      break;
+    }
+    case 'distribute-v': {
+      if(items.length < 3) break;
+      items.sort((a,b) => a.br.top - b.br.top);
+      const totalH = items.reduce((s,i)=>s+i.br.height, 0);
+      const minT = items[0].br.top;
+      const maxB = items[items.length-1].br.top + items[items.length-1].br.height;
+      const space = (maxB - minT - totalH) / (items.length - 1);
+      let y = minT;
+      items.forEach(({o,br}) => { o.top += y - br.top; y += br.height + space; o.setCoords(); });
+      break;
+    }
+
+    // ── Canvas-level alignment (align to sheet) ──
+    case 'canvas-align-left': {
+      items.forEach(({o,br}) => { o.left += 0 - br.left; o.setCoords(); });
+      break;
+    }
+    case 'canvas-align-right': {
+      const cw = canvas.getWidth();
+      items.forEach(({o,br}) => { o.left += cw - (br.left+br.width); o.setCoords(); });
+      break;
+    }
+    case 'canvas-align-top': {
+      items.forEach(({o,br}) => { o.top += 0 - br.top; o.setCoords(); });
+      break;
+    }
+    case 'canvas-align-bottom': {
+      const ch = canvas.getHeight();
+      items.forEach(({o,br}) => { o.top += ch - (br.top+br.height); o.setCoords(); });
+      break;
+    }
+    case 'canvas-align-center-h': {
+      const cx = canvas.getWidth()/2;
+      items.forEach(({o,br}) => { o.left += cx - (br.left+br.width/2); o.setCoords(); });
+      break;
+    }
+    case 'canvas-align-center-v': {
+      const cy = canvas.getHeight()/2;
+      items.forEach(({o,br}) => { o.top += cy - (br.top+br.height/2); o.setCoords(); });
+      break;
+    }
+  }
+
+  // Sync mm values
+  targets.forEach(o => syncMmFromPx(o));
+
+  // Re-select the same objects
+  const sel = new fabric.ActiveSelection(targets, { canvas });
+  canvas.setActiveObject(sel);
+  canvas.requestRenderAll();
+  renderSelectedPanel();
+}
+
 function actOnSelected(act){
   const obj = getSelectedObj();
   if(!obj) return;
@@ -2815,6 +3041,27 @@ function actOnSelected(act){
         updateSummary();
         pushUndo();
         break;
+
+      // ── Alignment actions ──
+      // IMPORTANT: activeSelection objects have coords relative to group center.
+      // We must break the selection, move objects on canvas, then re-select.
+      case 'align-left':
+      case 'align-right':
+      case 'align-top':
+      case 'align-bottom':
+      case 'align-center-h':
+      case 'align-center-v':
+      case 'distribute-h':
+      case 'distribute-v':
+      case 'canvas-align-left':
+      case 'canvas-align-right':
+      case 'canvas-align-top':
+      case 'canvas-align-bottom':
+      case 'canvas-align-center-h':
+      case 'canvas-align-center-v': {
+        alignObjects(objs.slice(), act);
+        break;
+      }
     }
     return;
   }
@@ -2824,6 +3071,15 @@ function actOnSelected(act){
     case 'rot90': obj.rotate(((obj.angle||0)+90)%360); canvas.requestRenderAll(); syncMmFromPx(obj); pushUndo(); break;
     case 'dup':   duplicate(obj); break;
     case 'del':   removeObj(obj); break;
+    case 'canvas-align-left':
+    case 'canvas-align-right':
+    case 'canvas-align-top':
+    case 'canvas-align-bottom':
+    case 'canvas-align-center-h':
+    case 'canvas-align-center-v': {
+      alignObjects([obj], act);
+      break;
+    }
   }
 }
 
@@ -4434,34 +4690,32 @@ function repackAll(){
   const objs = canvas.getObjects().filter(o=>o._mmW && o._mmH && !o._isFillTile);
   if(objs.length === 0) return;
 
+  canvas.discardActiveObject();
+
   const gap = state.gapMm || 0;
   const sheetW = state.sheet.w;
   let sheetH = state.sheet.h;
   const isDTF = !!SHEET_FORMATS[state.sheetFormat]?.isDTF;
 
-  // Build items with both orientations considered — shorter side up = less height waste
+  // Use bounding-rect dimensions (respects existing rotation/scale)
   const items = objs.map(o => {
-    let w = o._mmW, h = o._mmH;
-    let needsRotate = false;
-    // Rotate landscape if it saves height AND fits the width
-    if(h > w && w <= sheetW && h <= sheetW){
-      [w, h] = [h, w];
-      needsRotate = true;
-    }
-    return { obj: o, w, h, needsRotate, area: w * h };
+    o.setCoords();
+    const br = o.getBoundingRect(true, true);
+    const w = br.width / displayPxPerMm;
+    const h = br.height / displayPxPerMm;
+    return { obj: o, w, h, area: w * h };
   });
 
-  // Sort by area descending — big items first gives tighter packing
-  items.sort((a,b) => b.area - a.area);
+  // Sort by height descending — taller items first gives tighter shelf packing
+  items.sort((a,b) => b.h - a.h);
 
   // Shelf packing with best-fit: each shelf has a Y, height, and next free X.
   const shelves = [];
   const overflow = [];
 
   items.forEach(item => {
-    if(item.w > sheetW){ overflow.push(item.obj); return; }
+    if(item.w > sheetW + 0.01){ overflow.push(item.obj); return; }
 
-    let placed = false;
     // Try to fit in an existing shelf with the least wasted height
     let bestShelf = -1, bestWaste = Infinity;
     for(let s = 0; s < shelves.length; s++){
@@ -4473,55 +4727,44 @@ function repackAll(){
     }
     if(bestShelf >= 0){
       const shelf = shelves[bestShelf];
-      item.px = shelf.x; item.py = shelf.y;
+      item.targetX = shelf.x;
+      item.targetY = shelf.y;
       shelf.x += item.w + gap;
-      placed = true;
+      return;
     }
 
-    if(!placed){
-      // New shelf
-      const shelfY = shelves.length === 0 ? 0 : shelves[shelves.length-1].y + shelves[shelves.length-1].height + gap;
-      // Auto-extend DTF if needed
-      if(shelfY + item.h > sheetH){
-        if(isDTF && shelfY + item.h <= MAX_LENGTH_MM){
-          sheetH = Math.ceil((shelfY + item.h + gap) / 1000) * 1000;
-          state.sheet.h = sheetH;
-          state.rollLengthM = sheetH / 1000;
-          resizeSheet();
-          const inp = document.getElementById('rollLengthInput');
-          if(inp) inp.value = state.rollLengthM;
-        } else {
-          overflow.push(item.obj);
-          return;
-        }
+    // New shelf
+    const shelfY = shelves.length === 0 ? 0 : shelves[shelves.length-1].y + shelves[shelves.length-1].height + gap;
+
+    // Auto-extend DTF if needed
+    if(shelfY + item.h > sheetH){
+      if(isDTF && shelfY + item.h <= MAX_LENGTH_MM){
+        sheetH = Math.ceil((shelfY + item.h + gap) / 1000) * 1000;
+        state.sheet.h = sheetH;
+        state.rollLengthM = sheetH / 1000;
+        resizeSheet();
+        const inp = document.getElementById('rollLengthInput');
+        if(inp) inp.value = state.rollLengthM;
+      } else {
+        overflow.push(item.obj);
+        return;
       }
-      shelves.push({ y: shelfY, height: item.h, x: item.w + gap });
-      item.px = 0; item.py = shelfY;
-      placed = true;
     }
+    shelves.push({ y: shelfY, height: item.h, x: item.w + gap });
+    item.targetX = 0;
+    item.targetY = shelfY;
+  });
 
-    // Apply position
+  // Apply positions via bounding-rect offset — works with any rotation/origin
+  items.forEach(item => {
+    if(item.targetX == null) return; // overflow item
     const o = item.obj;
-    o._mmLeft = item.px;
-    o._mmTop  = item.py;
-    o._mmW = item.w;
-    o._mmH = item.h;
-    if(item.needsRotate){
-      o.set({
-        angle: 90,
-        originX:'center', originY:'center',
-        left: (item.px + item.w/2) * displayPxPerMm,
-        top:  (item.py + item.h/2) * displayPxPerMm,
-      });
-    } else {
-      o.set({
-        angle: 0,
-        originX:'left', originY:'top',
-        left: item.px * displayPxPerMm,
-        top:  item.py * displayPxPerMm,
-      });
-    }
     o.setCoords();
+    const br = o.getBoundingRect(true, true);
+    o.left += (item.targetX * displayPxPerMm) - br.left;
+    o.top  += (item.targetY * displayPxPerMm) - br.top;
+    o.setCoords();
+    syncMmFromPx(o);
   });
 
   canvas.requestRenderAll();

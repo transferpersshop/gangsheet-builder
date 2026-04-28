@@ -164,7 +164,7 @@ window.addEventListener('load', ()=>{
   .gap-unit{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 16px;white-space:nowrap;flex-shrink:0}
 
 
-  .zoom-bar{display:flex;align-items:center;gap:6px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--muted)}
+  .zoom-bar{display:flex;align-items:center;gap:6px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--muted);flex-wrap:wrap}
   .zoom-bar button.zoom-btn{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:.8rem;color:var(--text);font-weight:700;cursor:pointer}
   .zoom-bar button.zoom-btn:hover{border-color:var(--primary);color:var(--primary)}
   .zoom-bar button.zoom-btn.undo-redo-btn{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px}
@@ -257,6 +257,8 @@ window.addEventListener('load', ()=>{
   .toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
   .tool-btn{padding:7px 10px;border-radius:8px;background:var(--bg-subtle);border:1px solid var(--border);font-size:.78rem;color:var(--text)}
   .tool-btn:hover{background:var(--bg-light);border-color:var(--primary)}
+  .align-icon-btn{display:flex;align-items:center;justify-content:center;padding:6px 4px;min-width:0}
+  .align-icon-btn svg{flex-shrink:0}
 
   /* ---- Color editing ---- */
   .color-swatches{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
@@ -386,6 +388,17 @@ window.addEventListener('load', ()=>{
   .tour-tooltip .tour-skip:hover{color:var(--text)}
   .tour-tooltip .tour-next{background:var(--gradient);color:#fff}
   .tour-tooltip .tour-next:hover{filter:brightness(1.05)}
+
+  /* Responsive toolbar above canvas */
+  @media (max-width: 900px){
+    .zoom-bar{gap:4px;padding:6px 10px}
+    .zoom-bar .zoom-sep{display:none}
+    .zoom-bar .clear-btn-center{flex:1 1 auto;min-width:0;padding:7px 8px;font-size:.75rem;white-space:nowrap}
+    .zoom-bar .toolbar-info{width:100%;order:99;justify-content:center;margin-top:4px;padding-top:6px;border-top:1px solid var(--border)}
+  }
+  @media (max-width: 600px){
+    .zoom-bar .clear-btn-center{flex:1 1 100%;text-align:center}
+  }
 </style>
 </head>
 <body>
@@ -471,6 +484,7 @@ window.addEventListener('load', ()=>{
         <button class="zoom-btn" id="zoomOneBtn" title="2×">2×</button>
         <div class="zoom-sep"></div>
         <button class="clear-btn-center" id="fillSheetBtn" disabled data-i18n="fillSheet">Vel vullen met logo</button>
+        <button class="clear-btn-center" id="optimizeBtn" disabled data-i18n="optimizeLayout">Optimaliseer indeling</button>
         <button class="clear-btn-center" id="clearBtn" disabled data-i18n="clearSheet">Vel leegmaken</button>
         <div style="flex:1"></div>
         <div class="toolbar-info">
@@ -608,7 +622,7 @@ window.addEventListener('load', ()=>{
         <tr><td style="padding:3px 8px 3px 0;color:var(--muted)">0</td><td style="padding:3px 0" data-i18n="zoomFit">Passend</td></tr>
       </table>
     </div>
-    <p class="version-tag">v2.1.0 · 27-04-2026 · EPS support via CloudConvert</p>
+    <p class="version-tag">v2.3.0 · 28-04-2026</p>
   </div>
 </div>
 
