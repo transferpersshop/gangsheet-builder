@@ -9,11 +9,6 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* =========================================================
-   EPS CONVERSION ENDPOINT
-   ========================================================= */
-const EPS_CONVERT_URL = 'https://eps-to-svg-converter.YOUR-ACCOUNT.workers.dev/convert';
-
-/* =========================================================
    I18N
    ========================================================= */
 const I18N = {
@@ -23,12 +18,8 @@ const I18N = {
     clear:'Leegmaken', clearSheet:'Vel leegmaken',
     step1:'Kies vel formaat', step2:"Upload logo's", step3:"Logo's bewerken", step4:"Logo's bewerken",
     sheetFormat:'Vel formaat',
-    dropTitle:'Klik of sleep hier', dropHint:'SVG, AI, PDF, EPS, PNG, JPG', dropMax:'Max. 50 MB',
-    epsConverting:'EPS wordt geconverteerd naar SVG…',
-    epsConvertOk:'EPS geconverteerd — SVG geladen',
-    epsConvertFail:'EPS conversie mislukt',
-    epsNotice:'EPS bestanden worden geconverteerd naar SVG voor bewerking. Sommige complexe effecten (zoals gradients) kunnen mogelijk worden vereenvoudigd.',
-    uploadTip:'Gebruik vectorbestanden (SVG, AI, PDF, EPS) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
+    dropTitle:'Klik of sleep hier', dropHint:'SVG, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
+    uploadTip:'Gebruik vectorbestanden (SVG, AI, PDF) of PNGs met transparante achtergrond van minimaal 300 dpi voor de scherpste prints.',
     uploadTipLink:'Bekijk onze tips',
     loadingVector:'Vector wordt verwerkt…', logoAdded:'toegevoegd',
     unsupportedFile:'Bestandstype niet ondersteund',
@@ -164,12 +155,8 @@ const I18N = {
     clear:'Clear', clearSheet:'Clear sheet',
     step1:'Choose sheet format', step2:'Upload logos', step3:'Edit logos', step4:'Edit logos',
     sheetFormat:'Sheet format',
-    dropTitle:'Click or drop files', dropHint:'SVG, AI, PDF, EPS, PNG, JPG', dropMax:'Max. 50 MB',
-    epsConverting:'Converting EPS to SVG…',
-    epsConvertOk:'EPS converted — SVG loaded',
-    epsConvertFail:'EPS conversion failed',
-    epsNotice:'EPS files are converted to SVG for editing. Some complex effects (like gradients) may be simplified.',
-    uploadTip:'Use vector files (SVG, AI, PDF, EPS) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
+    dropTitle:'Click or drop files', dropHint:'SVG, AI, PDF, PNG, JPG', dropMax:'Max. 50 MB',
+    uploadTip:'Use vector files (SVG, AI, PDF) or PNGs with transparent background of at least 300 dpi for the sharpest prints.',
     uploadTipLink:'View our tips',
     loadingVector:'Processing vector file…', logoAdded:'added',
     unsupportedFile:'File type not supported',
@@ -1019,9 +1006,6 @@ function handleFiles(files){
         }
       };
       reader.readAsText(file);
-    } else if(ext==='eps'){
-      // EPS: convert to SVG via CloudConvert proxy, then load as SVG
-      loadEpsAsConverted(file);
     } else if(type==='application/pdf' || ext==='pdf'){
       const reader = new FileReader();
       reader.onload = ev=>loadPdfAsImage(ev.target.result, file.name);
@@ -1044,55 +1028,6 @@ function loadRaster(dataUrl, name){
       placeImage(cropped, name, targetMmW, targetMmW * ratio, cw, ch);
     });
   }, { crossOrigin:'anonymous' });
-}
-
-/* ============================================================
-   EPS LOADING (via CloudConvert proxy → SVG → existing pipeline)
-   ============================================================ */
-async function loadEpsAsConverted(file){
-  const name = file.name;
-  toast(t('epsConverting'), 'info', 0, 'eps-convert');
-  toast(t('epsNotice'), 'info', 8000);
-  console.log(`[GSB] EPS upload "${name}": sending to CloudConvert proxy…`);
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch(EPS_CONVERT_URL, {
-      method: 'POST',
-      body: formData,
-    });
-
-    // Dismiss the "converting…" toast
-    dismissToast('eps-convert');
-
-    if(!response.ok){
-      let detail = '';
-      try { const err = await response.json(); detail = err.error || err.detail || ''; } catch(e){}
-      console.error(`[GSB] EPS conversion failed (${response.status}):`, detail);
-      toast(`${t('epsConvertFail')}: ${detail || response.statusText}`, 'error');
-      return;
-    }
-
-    const svgText = await response.text();
-    if(!svgText || svgText.indexOf('<svg') === -1){
-      console.error('[GSB] EPS conversion returned invalid SVG');
-      toast(t('epsConvertFail'), 'error');
-      return;
-    }
-
-    console.log(`[GSB] EPS "${name}" converted to SVG (${svgText.length} chars), loading into SVG pipeline`);
-    toast(t('epsConvertOk'), 'success');
-
-    // Feed into existing SVG pipeline — full recolor + gradient detection support
-    loadSvg(svgText, name);
-
-  } catch(err){
-    dismissToast('eps-convert');
-    console.error('[GSB] EPS conversion error:', err);
-    toast(`${t('epsConvertFail')}: ${err.message}`, 'error');
-  }
 }
 
 /* ============================================================
@@ -1183,6 +1118,7 @@ async function pdfToSvg(arrayBuffer){
   }
 
   let firstFillSeen=false, clipCount=0;
+  const textFillColors=[]; // capture fill color at each showText call
 
   // Expand pdf.js 3.x batched constructPath operator
   function expandConstructPath(ops,coords){
@@ -1300,8 +1236,45 @@ async function pdfToSvg(arrayBuffer){
       case OPS.shadingFill:
         hasGradients=true;
         break;
+      // Track fill color at text rendering points
+      case OPS.showText: case OPS.showSpacedText:
+      case OPS.nextLineShowText: case OPS.nextLineSetSpacingShowText:
+        textFillColors.push(fillColor);
+        break;
       default: break;
     }
+  }
+
+  // ── Extract text content (catches glyphs not converted to outlines) ──
+  let textElements = [];
+  try {
+    const textContent = await page.getTextContent();
+    let textIdx = 0;
+    for(const item of textContent.items){
+      if(!item.str || !item.str.trim()){ continue; }
+      // item.transform = [scaleX, skewY, skewX, scaleY, tx, ty] in PDF coords (origin bottom-left, Y up)
+      const [a, b, c, d, tx, ty] = item.transform;
+      const fontSize = Math.sqrt(a*a + b*b);
+      if(fontSize < 0.5){ textIdx++; continue; } // skip invisible text
+      // Use tracked fill color from operator list (matches showText call order)
+      const color = textFillColors[textIdx] || fillColor;
+      textIdx++;
+      // Approximate font-weight from font name
+      const fontWeight = (item.fontName && /bold/i.test(item.fontName)) ? ' font-weight="700"' : '';
+      // In the PDF coord system (Y-up), ty is the baseline Y from bottom.
+      // Our SVG wrapper has transform="translate(0,H) scale(1,-1)" which flips Y.
+      // SVG text inside that wrapper renders upside-down, so un-flip per element.
+      const escaped = item.str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      textElements.push(
+        `<text transform="translate(${fmtN(tx)},${fmtN(ty)}) scale(1,-1)"` +
+        ` font-size="${fmtN(fontSize)}"${fontWeight}` +
+        ` fill="${color}"` +
+        ` font-family="sans-serif"` +
+        `>${escaped}</text>`
+      );
+    }
+  } catch(e){
+    console.warn('[GSB] pdfToSvg: text extraction failed:', e);
   }
 
   // Build SVG with Y-axis flip
@@ -1309,10 +1282,11 @@ async function pdfToSvg(arrayBuffer){
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmtN(W)} ${fmtN(H)}" width="${fmtN(W)}" height="${fmtN(H)}">`,
     `<g transform="translate(0,${fmtN(H)}) scale(1,-1)">`,
     ...elements,
+    ...textElements,
     '</g>','</svg>'
   ].join('\n');
 
-  console.log(`[GSB] pdfToSvg: ${pathCount} paths, hasGradients=${hasGradients}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
+  console.log(`[GSB] pdfToSvg: ${pathCount} paths, ${textElements.length} text items, hasGradients=${hasGradients}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
   return { svgText, pathCount, hasGradients, tooManyPaths };
 }
 
@@ -1741,11 +1715,37 @@ function syncMmFromPx(obj){
 
 function findFreeSpotOrNull(mmW, mmH){
   if(mmW > state.sheet.w || mmH > state.sheet.h) return null;
-  // Dynamic step: fine enough to find tight gaps, coarse enough that
-  // scanning a full 55×100 sheet stays under a few ms even with many items.
-  const step = Math.max(2, Math.floor(Math.min(mmW, mmH) / 4) || 2);
-  const maxY = state.sheet.h - mmH;
-  const maxX = state.sheet.w - mmW;
+  const gap = state.gapMm || 0;
+  const sheetW = state.sheet.w, sheetH = state.sheet.h;
+
+  // Collect candidate positions: edges of existing objects + gap.
+  // This finds gaps efficiently even with mixed sizes.
+  const xCandidates = new Set([0]);
+  const yCandidates = new Set([0]);
+  const objs = canvas.getObjects();
+  for(const o of objs){
+    if(!o._mmW) continue;
+    xCandidates.add(Math.round((o._mmLeft + o._mmW + gap) * 10) / 10);
+    xCandidates.add(Math.round(o._mmLeft * 10) / 10);
+    yCandidates.add(Math.round((o._mmTop + o._mmH + gap) * 10) / 10);
+    yCandidates.add(Math.round(o._mmTop * 10) / 10);
+  }
+
+  // Sort candidates
+  const xs = [...xCandidates].filter(x => x + mmW <= sheetW + 0.01).sort((a,b) => a-b);
+  const ys = [...yCandidates].filter(y => y + mmH <= sheetH + 0.01).sort((a,b) => a-b);
+
+  // Scan top-to-bottom, left-to-right on candidate positions
+  for(const y of ys){
+    for(const x of xs){
+      if(!overlapsAny(x, y, mmW, mmH)) return {x, y};
+    }
+  }
+
+  // Fallback: fine grid scan (catches positions between object edges)
+  const step = Math.max(2, Math.floor(Math.min(mmW, mmH) / 3) || 2);
+  const maxY = sheetH - mmH;
+  const maxX = sheetW - mmW;
   for(let y=0; y<=maxY; y+=step){
     for(let x=0; x<=maxX; x+=step){
       if(!overlapsAny(x,y,mmW,mmH)) return {x,y};
@@ -4229,42 +4229,41 @@ exportBtn.onclick = async ()=>{
       return bytes;
     }
 
-    // --- Helper: draw embedded content at tile position, handling rotation ---
-    // For rotated tiles (angle≈90), _mmW/_mmH are the bounding box (swapped
-    // relative to source). We draw at the SOURCE's natural aspect and rotate.
-    function drawAtTile(embeddedObj, tile, isPage){
-      const isRotated = Math.abs(tile.angle % 360) > 0.1;
+    // --- Helper: does this angle swap bounding-box dimensions? ---
+    // Only 90° and 270° swap width↔height. 0° and 180° do NOT.
+    function isDimSwapped(angle){
+      const a = ((angle % 360) + 360) % 360;
+      return (a > 45 && a < 135) || (a > 225 && a < 315);
+    }
 
-      if(!isRotated){
-        // Simple case: draw directly at bounding box position
+    // --- Helper: draw embedded content at tile position, handling rotation ---
+    function drawAtTile(embeddedObj, tile, isPage){
+      const angle = ((tile.angle % 360) + 360) % 360;
+      const hasRotation = angle > 0.1 && angle < 359.9;
+      const swapped = isDimSwapped(angle);
+
+      // Source natural dimensions (before rotation was applied)
+      const srcWPt = (swapped ? tile.mmH : tile.mmW) * MM_TO_PT;
+      const srcHPt = (swapped ? tile.mmW : tile.mmH) * MM_TO_PT;
+      // Bounding box dimensions (what's on canvas, after rotation)
+      const bboxWPt = tile.mmW * MM_TO_PT;
+      const bboxHPt = tile.mmH * MM_TO_PT;
+
+      if(!hasRotation){
+        // 0°: draw directly at bounding box position
         const xPt = tile.mmLeft * MM_TO_PT;
-        const wPt = tile.mmW * MM_TO_PT;
-        const hPt = tile.mmH * MM_TO_PT;
         const yPt = pageHPt - (tile.mmTop + tile.mmH) * MM_TO_PT;
-        const drawOpts = { x: xPt, y: yPt, width: wPt, height: hPt };
+        const drawOpts = { x: xPt, y: yPt, width: bboxWPt, height: bboxHPt };
         if(isPage) page.drawPage(embeddedObj, drawOpts);
         else page.drawImage(embeddedObj, drawOpts);
       } else {
-        // Rotated: _mmW = bounding width (source's height), _mmH = bounding height (source's width)
-        // Source natural dims when un-rotated: srcW = _mmH, srcH = _mmW
-        const bboxW = tile.mmW * MM_TO_PT;
-        const bboxH = tile.mmH * MM_TO_PT;
-        const srcW = bboxH;  // source width  = bounding height (since 90° rotation)
-        const srcH = bboxW;  // source height = bounding width
+        // Any rotation: use affine transform around bounding-box center
+        const cx = tile.mmLeft * MM_TO_PT + bboxWPt / 2;
+        const cy = pageHPt - (tile.mmTop * MM_TO_PT + bboxHPt / 2);
 
-        // Center of the bounding box in pdf-lib coords
-        const cx = tile.mmLeft * MM_TO_PT + bboxW / 2;
-        const cy = pageHPt - (tile.mmTop * MM_TO_PT + bboxH / 2);
-
-        const rad = -(tile.angle * Math.PI / 180);
+        const rad = -(angle * Math.PI / 180);
         const cos = Math.cos(rad), sin = Math.sin(rad);
 
-        // Affine transform: rotate around center
-        // T = translate(cx,cy) · rotate(rad) · translate(-cx,-cy)
-        // The 6 params of concatTransformationMatrix are [a,b,c,d,e,f]
-        // corresponding to the matrix | a c e |
-        //                             | b d f |
-        //                             | 0 0 1 |
         page.pushOperators(
           window.PDFLib.pushGraphicsState(),
           window.PDFLib.concatTransformationMatrix(
@@ -4273,8 +4272,8 @@ exportBtn.onclick = async ()=>{
             cy - sin*cx - cos*cy
           ),
         );
-        // Draw at center minus half source dims (in un-rotated space)
-        const drawOpts = { x: cx - srcW/2, y: cy - srcH/2, width: srcW, height: srcH };
+        // Draw at source's natural dims, centered on the bounding-box center
+        const drawOpts = { x: cx - srcWPt/2, y: cy - srcHPt/2, width: srcWPt, height: srcHPt };
         if(isPage) page.drawPage(embeddedObj, drawOpts);
         else page.drawImage(embeddedObj, drawOpts);
         page.pushOperators(window.PDFLib.popGraphicsState());
@@ -4338,9 +4337,9 @@ exportBtn.onclick = async ()=>{
           // 1. Determine the logo's physical mm dimensions (un-rotated).
           //    These are the GROUND TRUTH for how big this logo should be.
           const refTile = grp.tiles.find(t => Math.abs(t.angle % 360) <= 0.1) || grp.tiles[0];
-          const isRefRot = Math.abs(refTile.angle % 360) > 0.1;
-          const srcMmW = isRefRot ? refTile.mmH : refTile.mmW;
-          const srcMmH = isRefRot ? refTile.mmW : refTile.mmH;
+          const refSwapped = isDimSwapped(refTile.angle);
+          const srcMmW = refSwapped ? refTile.mmH : refTile.mmW;
+          const srcMmH = refSwapped ? refTile.mmW : refTile.mmH;
 
           // 2. Parse SVG into DOM element
           const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -4520,9 +4519,9 @@ exportBtn.onclick = async ()=>{
         try {
           // Find a non-rotated tile's dimensions, or un-swap from a rotated tile
           const refTile = grp.tiles.find(t => Math.abs(t.angle % 360) <= 0.1) || grp.tiles[0];
-          const isRefRotated = Math.abs(refTile.angle % 360) > 0.1;
-          const srcMmW = isRefRotated ? refTile.mmH : refTile.mmW;
-          const srcMmH = isRefRotated ? refTile.mmW : refTile.mmH;
+          const refSwapped = isDimSwapped(refTile.angle);
+          const srcMmW = refSwapped ? refTile.mmH : refTile.mmW;
+          const srcMmH = refSwapped ? refTile.mmW : refTile.mmH;
           const pngBytes = await rasterizeLogo(sample, srcMmW, srcMmH);
           embeddedImg = await finalDoc.embedPng(pngBytes);
           rasterEmbedCache.set(oid, embeddedImg);
@@ -4697,75 +4696,213 @@ function repackAll(){
   let sheetH = state.sheet.h;
   const isDTF = !!SHEET_FORMATS[state.sheetFormat]?.isDTF;
 
-  // Use bounding-rect dimensions (respects existing rotation/scale)
+  /* ── Skyline bottom-left packer ──
+     Tracks the "skyline" — the top edge of occupied space at each x position.
+     For every item we try both orientations (normal + rotated 90°) and pick
+     the placement that adds the least height. This fills side-gaps naturally
+     because smaller items slide into lower parts of the skyline. */
+
+  // Gather items with their ORIGINAL (un-rotated) mm dimensions
   const items = objs.map(o => {
-    o.setCoords();
-    const br = o.getBoundingRect(true, true);
-    const w = br.width / displayPxPerMm;
-    const h = br.height / displayPxPerMm;
-    return { obj: o, w, h, area: w * h };
+    // Use _mmW/_mmH which are the logical dimensions
+    return { obj: o, origW: o._mmW, origH: o._mmH, area: o._mmW * o._mmH };
   });
 
-  // Sort by height descending — taller items first gives tighter shelf packing
-  items.sort((a,b) => b.h - a.h);
+  // Sort by height descending for better skyline packing
+  items.sort((a,b) => b.origH - a.origH || b.area - a.area);
 
-  // Shelf packing with best-fit: each shelf has a Y, height, and next free X.
-  const shelves = [];
+  // Skyline: array of {x, y, width} segments, initially one segment spanning full width at y=0
+  let skyline = [{ x: 0, y: 0, width: sheetW }];
   const overflow = [];
+  const placements = []; // {item, x, y, w, h, rotated}
 
-  items.forEach(item => {
-    if(item.w > sheetW + 0.01){ overflow.push(item.obj); return; }
+  // Find the skyline segment index that covers position x
+  const segAt = (sx) => {
+    for(let i = 0; i < skyline.length; i++){
+      if(sx >= skyline[i].x && sx < skyline[i].x + skyline[i].width) return i;
+    }
+    return -1;
+  };
 
-    // Try to fit in an existing shelf with the least wasted height
-    let bestShelf = -1, bestWaste = Infinity;
-    for(let s = 0; s < shelves.length; s++){
-      const shelf = shelves[s];
-      if(shelf.x + item.w <= sheetW + 0.01 && item.h <= shelf.height + 0.01){
-        const waste = shelf.height - item.h;
-        if(waste < bestWaste){ bestWaste = waste; bestShelf = s; }
+  // Get the max skyline height under a rectangle [rx, rx+rw]
+  const maxSkylineUnder = (rx, rw) => {
+    let maxY = 0;
+    for(let i = 0; i < skyline.length; i++){
+      const s = skyline[i];
+      const sx1 = s.x, sx2 = s.x + s.width;
+      // Check overlap
+      if(sx2 > rx + 0.01 && sx1 < rx + rw - 0.01){
+        if(s.y > maxY) maxY = s.y;
       }
     }
-    if(bestShelf >= 0){
-      const shelf = shelves[bestShelf];
-      item.targetX = shelf.x;
-      item.targetY = shelf.y;
-      shelf.x += item.w + gap;
-      return;
+    return maxY;
+  };
+
+  // Place a rectangle: update skyline by raising segments under [rx, rx+rw] to newTop
+  const placeSkyline = (rx, rw, newTop) => {
+    const newSkyline = [];
+    for(let i = 0; i < skyline.length; i++){
+      const s = skyline[i];
+      const sx1 = s.x, sx2 = s.x + s.width;
+      // Fully outside the placed rect — keep as-is
+      if(sx2 <= rx + 0.01 || sx1 >= rx + rw - 0.01){
+        newSkyline.push(s);
+        continue;
+      }
+      // Partially or fully covered
+      // Left portion outside rect
+      if(sx1 < rx - 0.01){
+        newSkyline.push({ x: sx1, y: s.y, width: rx - sx1 });
+      }
+      // Right portion outside rect
+      if(sx2 > rx + rw + 0.01){
+        newSkyline.push({ x: rx + rw, y: s.y, width: sx2 - (rx + rw) });
+      }
+    }
+    // Add the placed segment
+    newSkyline.push({ x: rx, y: newTop, width: rw });
+    // Sort by x
+    newSkyline.sort((a,b) => a.x - b.x);
+    // Merge adjacent segments with same y
+    const merged = [newSkyline[0]];
+    for(let i = 1; i < newSkyline.length; i++){
+      const prev = merged[merged.length - 1];
+      const cur = newSkyline[i];
+      if(Math.abs(prev.x + prev.width - cur.x) < 0.01 && Math.abs(prev.y - cur.y) < 0.01){
+        prev.width += cur.width;
+      } else {
+        merged.push(cur);
+      }
+    }
+    skyline = merged;
+  };
+
+  // Try to place a block of dimensions bw×bh on the skyline.
+  // Returns {x, y, waste} of best position, or null if doesn't fit.
+  const findBestPos = (bw, bh, maxH) => {
+    let bestX = -1, bestY = Infinity, bestWaste = Infinity;
+    // Try every skyline segment as a left edge
+    for(let i = 0; i < skyline.length; i++){
+      const sx = skyline[i].x;
+      if(sx + bw > sheetW + 0.01) continue;
+      const baseY = maxSkylineUnder(sx, bw);
+      if(baseY + bh > maxH + 0.01) continue;
+      // "waste" = how high this placement sits. Lower is better.
+      // Tiebreak: prefer leftmost position.
+      if(baseY < bestY || (baseY === bestY && sx < bestX)){
+        bestY = baseY;
+        bestX = sx;
+        bestWaste = baseY + bh;
+      }
+    }
+    // Also try aligned to right edges of skyline segments
+    for(let i = 0; i < skyline.length; i++){
+      const sx = skyline[i].x + skyline[i].width - bw;
+      if(sx < -0.01 || sx + bw > sheetW + 0.01) continue;
+      const baseY = maxSkylineUnder(sx, bw);
+      if(baseY + bh > maxH + 0.01) continue;
+      if(baseY < bestY || (baseY === bestY && sx < bestX)){
+        bestY = baseY;
+        bestX = sx;
+        bestWaste = baseY + bh;
+      }
+    }
+    if(bestX < 0) return null;
+    return { x: bestX, y: bestY, waste: bestWaste };
+  };
+
+  items.forEach(item => {
+    const w = item.origW, h = item.origH;
+    const fitsNormal  = w <= sheetW + 0.01;
+    const fitsRotated = h <= sheetW + 0.01;
+    if(!fitsNormal && !fitsRotated){ overflow.push(item); return; }
+
+    // Add gap to dimensions for packing, but place at position without gap
+    const gw = w + gap, gh = h + gap;
+    const grw = h + gap, grh = w + gap;
+
+    let bestPlacement = null;
+
+    // Try normal orientation
+    if(fitsNormal){
+      const pos = findBestPos(gw, gh, sheetH + gap);
+      if(pos) bestPlacement = { x: pos.x, y: pos.y, w, h, gw, gh, rotated: false, waste: pos.waste };
+    }
+    // Try rotated
+    if(fitsRotated){
+      const pos = findBestPos(grw, grh, sheetH + gap);
+      if(pos){
+        if(!bestPlacement || pos.waste < bestPlacement.waste){
+          bestPlacement = { x: pos.x, y: pos.y, w: h, h: w, gw: grw, gh: grh, rotated: true, waste: pos.waste };
+        }
+      }
     }
 
-    // New shelf
-    const shelfY = shelves.length === 0 ? 0 : shelves[shelves.length-1].y + shelves[shelves.length-1].height + gap;
-
-    // Auto-extend DTF if needed
-    if(shelfY + item.h > sheetH){
-      if(isDTF && shelfY + item.h <= MAX_LENGTH_MM){
-        sheetH = Math.ceil((shelfY + item.h + gap) / 1000) * 1000;
+    // Auto-extend DTF roll if neither orientation fits
+    if(!bestPlacement && isDTF){
+      for(let ext = 0; ext < 20 && !bestPlacement; ext++){
+        sheetH = Math.min(MAX_LENGTH_MM, sheetH + 500);
+        if(fitsNormal){
+          const pos = findBestPos(gw, gh, sheetH + gap);
+          if(pos) bestPlacement = { x: pos.x, y: pos.y, w, h, gw, gh, rotated: false, waste: pos.waste };
+        }
+        if(!bestPlacement && fitsRotated){
+          const pos = findBestPos(grw, grh, sheetH + gap);
+          if(pos) bestPlacement = { x: pos.x, y: pos.y, w: h, h: w, gw: grw, gh: grh, rotated: true, waste: pos.waste };
+        }
+      }
+      if(bestPlacement){
         state.sheet.h = sheetH;
         state.rollLengthM = sheetH / 1000;
         resizeSheet();
         const inp = document.getElementById('rollLengthInput');
         if(inp) inp.value = state.rollLengthM;
-      } else {
-        overflow.push(item.obj);
-        return;
       }
     }
-    shelves.push({ y: shelfY, height: item.h, x: item.w + gap });
-    item.targetX = 0;
-    item.targetY = shelfY;
+
+    if(!bestPlacement){ overflow.push(item); return; }
+
+    // Update skyline with placed rectangle (including gap)
+    placeSkyline(bestPlacement.x, bestPlacement.gw, bestPlacement.y + bestPlacement.gh);
+    placements.push(bestPlacement);
+    item.placement = bestPlacement;
   });
 
-  // Apply positions via bounding-rect offset — works with any rotation/origin
-  items.forEach(item => {
-    if(item.targetX == null) return; // overflow item
+  // Apply placements to canvas objects
+  placements.forEach((p, idx) => {
+    const item = items.find(it => it.placement === p);
+    if(!item) return;
     const o = item.obj;
+
+    // If packer chose rotated orientation, ADD 90° to current angle.
+    // This swaps the bounding-box dimensions regardless of current angle.
+    if(p.rotated){
+      o.rotate(((o.angle || 0) + 90) % 360);
+    }
+
+    // Position via bounding-rect offset — works with any rotation/origin
     o.setCoords();
     const br = o.getBoundingRect(true, true);
-    o.left += (item.targetX * displayPxPerMm) - br.left;
-    o.top  += (item.targetY * displayPxPerMm) - br.top;
+    o.left += (p.x * displayPxPerMm) - br.left;
+    o.top  += (p.y * displayPxPerMm) - br.top;
     o.setCoords();
+
+    // Sync mm values from the actual canvas position
     syncMmFromPx(o);
   });
+
+  // Shrink DTF roll to fit content tightly
+  if(isDTF){
+    const maxBottom = placements.reduce((m, p) => Math.max(m, p.y + p.h), 0);
+    const newH = Math.max(1000, Math.ceil((maxBottom + gap) / 100) * 100);
+    if(newH < state.sheet.h){
+      state.sheet.h = newH;
+      state.rollLengthM = newH / 1000;
+      resizeSheet();
+      const inp = document.getElementById('rollLengthInput');
+      if(inp) inp.value = state.rollLengthM;
+    }
+  }
 
   canvas.requestRenderAll();
   renderItemList();
