@@ -443,7 +443,8 @@ const canvas = new fabric.Canvas('canvas', {
 const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
-  '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients'
+  '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients',
+  '_pdfPageW','_pdfPageH'
 ];
 
 /* Capture state BEFORE any interactive transform starts.
@@ -467,7 +468,7 @@ function attachObjListeners(o){
       updateUndoRedoButtons();
     }
   });
-  o.on('moving',   ()=>{ clampObjToSheet(o); syncMmFromPx(o); drawAlignmentGuides(o); });
+  o.on('moving',   ()=>{ clampObjToSheet(o); preventOverlap(o); syncMmFromPx(o); drawAlignmentGuides(o); });
   o.on('scaling',  ()=>{ clampObjToSheet(o); syncMmFromPx(o); });
   o.on('rotating', ()=>{ clampObjToSheet(o); syncMmFromPx(o); });
   o.set({
@@ -583,38 +584,42 @@ function preventOverlap(moving){
   if(!moving || !moving.setCoords) return;
   const gapPx = (state.gapMm || 0) * displayPxPerMm;
   const objs = canvas.getObjects();
-  moving.setCoords();
-  const mr = moving.getBoundingRect(true, true);
 
-  for(const other of objs){
-    if(other === moving || !other._mmW) continue;
-    // Skip objects that are part of an activeSelection (multi-drag)
-    if(moving.type === 'activeSelection' && moving._objects?.includes(other)) continue;
-    other.setCoords();
-    const or = other.getBoundingRect(true, true);
+  // Multiple passes to resolve cascade overlaps (max 5)
+  for(let pass = 0; pass < 5; pass++){
+    let anyPushed = false;
+    moving.setCoords();
+    const mr = moving.getBoundingRect(true, true);
 
-    // Check overlap with gap
-    const overlapX = (mr.left < or.left + or.width + gapPx) && (mr.left + mr.width + gapPx > or.left);
-    const overlapY = (mr.top < or.top + or.height + gapPx) && (mr.top + mr.height + gapPx > or.top);
+    for(const other of objs){
+      if(other === moving || !other._mmW) continue;
+      if(moving.type === 'activeSelection' && moving._objects?.includes(other)) continue;
+      other.setCoords();
+      const or = other.getBoundingRect(true, true);
 
-    if(overlapX && overlapY){
-      // Calculate push distances for each direction
-      const pushRight = (or.left + or.width + gapPx) - mr.left;
-      const pushLeft  = mr.left + mr.width + gapPx - or.left;
-      const pushDown  = (or.top + or.height + gapPx) - mr.top;
-      const pushUp    = mr.top + mr.height + gapPx - or.top;
+      const overlapX = (mr.left < or.left + or.width + gapPx) && (mr.left + mr.width + gapPx > or.left);
+      const overlapY = (mr.top < or.top + or.height + gapPx) && (mr.top + mr.height + gapPx > or.top);
 
-      // Pick the smallest push
-      const min = Math.min(pushRight, pushLeft, pushDown, pushUp);
-      if(min === pushRight)     moving.left += pushRight;
-      else if(min === pushLeft) moving.left -= pushLeft;
-      else if(min === pushDown) moving.top  += pushDown;
-      else                      moving.top  -= pushUp;
+      if(overlapX && overlapY){
+        const pushRight = (or.left + or.width + gapPx) - mr.left;
+        const pushLeft  = mr.left + mr.width + gapPx - or.left;
+        const pushDown  = (or.top + or.height + gapPx) - mr.top;
+        const pushUp    = mr.top + mr.height + gapPx - or.top;
 
-      moving.setCoords();
-      // Re-clamp to sheet after push
-      clampObjToSheet(moving);
+        const min = Math.min(pushRight, pushLeft, pushDown, pushUp);
+        if(min === pushRight)     moving.left += pushRight;
+        else if(min === pushLeft) moving.left -= pushLeft;
+        else if(min === pushDown) moving.top  += pushDown;
+        else                      moving.top  -= pushUp;
+
+        moving.setCoords();
+        clampObjToSheet(moving);
+        anyPushed = true;
+        // Re-get mr for next iteration within this pass
+        break; // restart inner loop with updated position
+      }
     }
+    if(!anyPushed) break;
   }
 }
 
@@ -646,24 +651,18 @@ function resizeSheet(){
   shadow.style.height = pxH+'px';
   canvas.getObjects().forEach(o=>{
     if(o._mmW && o._mmH){
-      // Keep visual mm dimensions constant regardless of current scale/rotation state.
-      // We rescale keeping the existing scaleX/scaleY ratio + angle.
-      const isRotated = Math.abs(((o.angle||0)%180)) > 0.1;
-      const natW = o.width, natH = o.height;
-      if(isRotated){
-        o.scaleY = (o._mmW * displayPxPerMm) / natH;
-        o.scaleX = (o._mmH * displayPxPerMm) / natW;
-      } else {
-        o.scaleX = (o._mmW * displayPxPerMm) / natW;
-        o.scaleY = (o._mmH * displayPxPerMm) / natH;
-      }
-      if(o.originX === 'center' && o.originY === 'center'){
-        o.left = (o._mmLeft + o._mmW/2) * displayPxPerMm;
-        o.top  = (o._mmTop  + o._mmH/2) * displayPxPerMm;
-      } else {
-        o.left = o._mmLeft * displayPxPerMm;
-        o.top  = o._mmTop  * displayPxPerMm;
-      }
+      // _mmW/_mmH are ALWAYS LOGICAL (unrotated) dimensions.
+      // Scales always map logical dims to fabric dims — NO swap for rotation.
+      // Fabric's rotation transform handles the visual swap automatically.
+      o.scaleX = (o._mmW * displayPxPerMm) / o.width;
+      o.scaleY = (o._mmH * displayPxPerMm) / o.height;
+      o.setCoords();
+      // Position via bounding-rect offset — works for any origin and any angle.
+      const br = o.getBoundingRect(true, true);
+      const targetLeft = o._mmLeft * displayPxPerMm;
+      const targetTop  = o._mmTop  * displayPxPerMm;
+      o.left += targetLeft - br.left;
+      o.top  += targetTop  - br.top;
       o.setCoords();
     }
   });
@@ -772,7 +771,7 @@ function getContentBottomMm(){
   let maxY = 0;
   canvas.getObjects().forEach(o=>{
     if(o._mmTop != null && o._mmH != null){
-      maxY = Math.max(maxY, o._mmTop + o._mmH);
+      maxY = Math.max(maxY, o._mmTop + visMmH(o));
     }
   });
   return maxY;
@@ -853,7 +852,7 @@ function getContentRightMm(){
   let maxX = 0;
   canvas.getObjects().forEach(o=>{
     if(o._mmLeft != null && o._mmW != null){
-      maxX = Math.max(maxX, o._mmLeft + o._mmW);
+      maxX = Math.max(maxX, o._mmLeft + visMmW(o));
     }
   });
   return maxX;
@@ -1287,7 +1286,7 @@ async function pdfToSvg(arrayBuffer){
   ].join('\n');
 
   console.log(`[GSB] pdfToSvg: ${pathCount} paths, ${textElements.length} text items, hasGradients=${hasGradients}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
-  return { svgText, pathCount, hasGradients, tooManyPaths };
+  return { svgText, pathCount, hasGradients, tooManyPaths, pageW: W, pageH: H };
 }
 
 // Load a PDF/AI file — simple rules:
@@ -1311,6 +1310,7 @@ async function loadPdfAsImage(arrayBuffer, name){
 
   // --- Step 1: Convert to SVG and detect gradients ---
   let svgText = null, pdfHasGradients = false, svgPathCount = 0, pdfTooManyPaths = false;
+  let pdfPageW = 0, pdfPageH = 0;
   try {
     const t0 = performance.now();
     const result = await pdfToSvg(bufferForSvg);
@@ -1318,7 +1318,9 @@ async function loadPdfAsImage(arrayBuffer, name){
     svgPathCount = result.pathCount;
     pdfHasGradients = result.hasGradients;
     pdfTooManyPaths = result.tooManyPaths;
-    console.log(`[GSB] pdfToSvg "${name}": ${svgPathCount} paths, gradients=${pdfHasGradients}, tooMany=${pdfTooManyPaths}, ${(performance.now()-t0).toFixed(0)}ms`);
+    pdfPageW = result.pageW;
+    pdfPageH = result.pageH;
+    console.log(`[GSB] pdfToSvg "${name}": ${svgPathCount} paths, gradients=${pdfHasGradients}, tooMany=${pdfTooManyPaths}, page=${pdfPageW}×${pdfPageH}, ${(performance.now()-t0).toFixed(0)}ms`);
   } catch(err){
     console.warn(`[GSB] pdfToSvg failed for "${name}":`, err);
   }
@@ -1327,13 +1329,16 @@ async function loadPdfAsImage(arrayBuffer, name){
   if(svgPathCount > 0 && !pdfHasGradients && !pdfTooManyPaths){
     console.log(`[GSB] "${name}": no gradients, loading as editable SVG`);
     loadSvg(svgText, name);
-    // Store export buffer after loadSvg places the object
+    // Store export buffer + original page dims after loadSvg places the object
+    const _pdfPW = pdfPageW, _pdfPH = pdfPageH;
     setTimeout(()=>{
       const objs = canvas.getObjects();
       for(let i = objs.length - 1; i >= 0; i--){
         if(objs[i]._name === name && objs[i]._originalId){
           pdfSourceBuffers.set(objs[i]._originalId, bufferForExport);
-          console.log(`[GSB] Stored PDF buffer for "${name}" (oid=${objs[i]._originalId})`);
+          objs[i]._pdfPageW = _pdfPW;
+          objs[i]._pdfPageH = _pdfPH;
+          console.log(`[GSB] Stored PDF buffer for "${name}" (oid=${objs[i]._originalId}, page=${_pdfPW}×${_pdfPH})`);
           break;
         }
       }
@@ -1401,7 +1406,9 @@ async function loadPdfAsImage(arrayBuffer, name){
         const ratio = ch / cw;
         placeImage(cropped, name, targetMmW, targetMmW * ratio, cw, ch);
         pdfSourceBuffers.set(cropped._originalId, bufferForExport);
-        console.log(`[GSB] PDF/AI "${name}" loaded as display-only (gradient), buffer stored`);
+        cropped._pdfPageW = pdfPageW;
+        cropped._pdfPageH = pdfPageH;
+        console.log(`[GSB] PDF/AI "${name}" loaded as display-only (gradient), buffer stored, page=${pdfPageW}×${pdfPageH}`);
       });
     }, { crossOrigin:'anonymous' });
     /* gradient toast removed — color editor shows inline hint instead */
@@ -1642,16 +1649,21 @@ function autoCropSvg(svgText, callback){
     }
 
     const croppedSvg = new XMLSerializer().serializeToString(svgEl);
-    callback(croppedSvg);
+    // Pass crop bounds as fraction of original viewBox (for PDF export clipping)
+    const cropFracs = { x: cropVbX / vbW, y: cropVbY / vbH, w: cropVbW / vbW, h: cropVbH / vbH };
+    callback(croppedSvg, cropFracs);
   };
   img.onerror = ()=>{
     URL.revokeObjectURL(url);
-    callback(svgText);
+    callback(svgText, null);
   };
   img.src = url;
 }
 
 function placeImage(obj, name, mmW, mmH, naturalW, naturalH){
+  // Never auto-rotate on upload — the user expects to see their logo
+  // in its natural orientation. Auto-rotation only happens in batch
+  // operations (changeGroupCount, repackAll, tileSheet).
   const spot = ensureSpotOnAnySheet(mmW, mmH);
   if(!spot) return;
   const id = ++idCounter;
@@ -1700,13 +1712,22 @@ function _debouncedUiRebuild(){
   _syncUiTimer = setTimeout(()=>{ renderItemList(); }, 200);
 }
 
+/* Visual mm dimensions: at 90°/270° these are swapped vs logical _mmW/_mmH.
+   Use whenever you need the axis-aligned bounding box in mm (e.g. extent calcs). */
+function visMmW(o){ const a=((o.angle||0)%360+360)%360; return (a>45&&a<135)||(a>225&&a<315)?o._mmH:o._mmW; }
+function visMmH(o){ const a=((o.angle||0)%360+360)%360; return (a>45&&a<135)||(a>225&&a<315)?o._mmW:o._mmH; }
+
 function syncMmFromPx(obj){
-  // Use axis-aligned bounding rect so center-origin and rotated tiles stay consistent.
+  // Use axis-aligned bounding rect for position.
   const r = obj.getBoundingRect(true, true);
   obj._mmLeft = r.left / displayPxPerMm;
   obj._mmTop  = r.top  / displayPxPerMm;
-  obj._mmW    = r.width  / displayPxPerMm;
-  obj._mmH    = r.height / displayPxPerMm;
+  // Bounding rect gives VISUAL (axis-aligned) dims. At 90°/270° these are
+  // swapped vs logical dims. _mmW/_mmH must always be LOGICAL (unrotated).
+  const a = ((obj.angle || 0) % 360 + 360) % 360;
+  const swapped = (a > 45 && a < 135) || (a > 225 && a < 315);
+  obj._mmW = (swapped ? r.height : r.width)  / displayPxPerMm;
+  obj._mmH = (swapped ? r.width  : r.height) / displayPxPerMm;
   autoExtendIfNeeded();
   _debouncedUiRebuild();
   // NB: checkDpi is fired from placeImage and setSizeMm, not here — moving
@@ -1725,9 +1746,9 @@ function findFreeSpotOrNull(mmW, mmH){
   const objs = canvas.getObjects();
   for(const o of objs){
     if(!o._mmW) continue;
-    xCandidates.add(Math.round((o._mmLeft + o._mmW + gap) * 10) / 10);
+    xCandidates.add(Math.round((o._mmLeft + visMmW(o) + gap) * 10) / 10);
     xCandidates.add(Math.round(o._mmLeft * 10) / 10);
-    yCandidates.add(Math.round((o._mmTop + o._mmH + gap) * 10) / 10);
+    yCandidates.add(Math.round((o._mmTop + visMmH(o) + gap) * 10) / 10);
     yCandidates.add(Math.round(o._mmTop * 10) / 10);
   }
 
@@ -1787,9 +1808,15 @@ function packSpotsSmart(mmW, mmH, count, existingBoxes){
     for(let i=0; i<objs.length; i++){
       const o = objs[i];
       if(!o._mmW) continue;
+      // _mmW/_mmH are LOGICAL; _mmLeft/_mmTop are VISUAL (from getBoundingRect).
+      // Obstacle boxes need VISUAL dimensions.
+      const oa = ((o.angle || 0) % 360 + 360) % 360;
+      const oSwapped = (oa > 45 && oa < 135) || (oa > 225 && oa < 315);
+      const visW = oSwapped ? o._mmH : o._mmW;
+      const visH = oSwapped ? o._mmW : o._mmH;
       obstacles.push({
         x1: o._mmLeft, y1: o._mmTop,
-        x2: o._mmLeft + o._mmW, y2: o._mmTop + o._mmH,
+        x2: o._mmLeft + visW, y2: o._mmTop + visH,
       });
     }
   }
@@ -1983,11 +2010,11 @@ function growRoll(deltaMm){
 function hasOverlap(obj){
   const gap = state.gapMm || 0;
   const ax1 = obj._mmLeft - gap, ay1 = obj._mmTop - gap;
-  const ax2 = obj._mmLeft + obj._mmW + gap, ay2 = obj._mmTop + obj._mmH + gap;
+  const ax2 = obj._mmLeft + visMmW(obj) + gap, ay2 = obj._mmTop + visMmH(obj) + gap;
   return canvas.getObjects().some(o=>{
     if(o === obj || !o._mmW) return false;
     const bx1 = o._mmLeft, by1 = o._mmTop;
-    const bx2 = o._mmLeft + o._mmW, by2 = o._mmTop + o._mmH;
+    const bx2 = o._mmLeft + visMmW(o), by2 = o._mmTop + visMmH(o);
     return !(ax2 <= bx1 || ax1 >= bx2 || ay2 <= by1 || ay1 >= by2);
   });
 }
@@ -1998,8 +2025,8 @@ function overlapsAny(x,y,w,h){
     if(!o._mmW) return false;
     const ox1 = o._mmLeft - gap;
     const oy1 = o._mmTop - gap;
-    const ox2 = o._mmLeft + o._mmW + gap;
-    const oy2 = o._mmTop + o._mmH + gap;
+    const ox2 = o._mmLeft + visMmW(o) + gap;
+    const oy2 = o._mmTop + visMmH(o) + gap;
     return !(x+w <= ox1 || x >= ox2 || y+h <= oy1 || y >= oy2);
   });
 }
@@ -2158,6 +2185,66 @@ function extractSvgColors(group){
 // Replace a specific color in all paths of an SVG fabric group.
 // Handles both direct fill/stroke colors AND gradient stop-colors.
 // Also updates _svgSource so preview and export stay in sync.
+/* Recolor an SVG source string: replace all occurrences of oldHex in
+   fill, stroke, and stop-color attributes/styles. Returns updated SVG string.
+   Used by recolorRaster and propagateRecolorToSiblings to keep _svgSource
+   in sync for correct PDF export. */
+function recolorSvgSourceString(svgStr, oldHex, newHex){
+  if(!svgStr) return svgStr;
+  const old = oldHex.toLowerCase();
+  const normHex = (v)=>{
+    if(!v || typeof v !== 'string') return null;
+    if(v.startsWith('#')){
+      return v.length===4 ? '#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3] : v.toLowerCase();
+    }
+    if(v.startsWith('rgb')){
+      const m = v.match(/(\d+)/g);
+      if(m && m.length>=3) return rgbToHex(+m[0],+m[1],+m[2]);
+    }
+    return null;
+  };
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgStr, 'image/svg+xml');
+    doc.querySelectorAll('*').forEach(el=>{
+      ['fill','stroke'].forEach(attr=>{
+        const val = el.getAttribute(attr);
+        if(val && !val.startsWith('url') && normHex(val) === old){
+          el.setAttribute(attr, newHex);
+        }
+      });
+      const style = el.getAttribute('style');
+      if(style){
+        let changed = false;
+        const newStyle = style.replace(/(fill|stroke)\s*:\s*([^;]+)/gi, (match, prop, val)=>{
+          const trimmed = val.trim();
+          if(!trimmed.startsWith('url') && normHex(trimmed) === old){
+            changed = true; return prop + ':' + newHex;
+          }
+          return match;
+        });
+        if(changed) el.setAttribute('style', newStyle);
+      }
+    });
+    doc.querySelectorAll('stop').forEach(stop=>{
+      const sc = stop.getAttribute('stop-color');
+      if(sc && normHex(sc) === old) stop.setAttribute('stop-color', newHex);
+      const style = stop.getAttribute('style');
+      if(style){
+        const newStyle = style.replace(/stop-color\s*:\s*([^;]+)/gi, (match, val)=>{
+          if(normHex(val.trim()) === old) return 'stop-color:' + newHex;
+          return match;
+        });
+        if(newStyle !== style) stop.setAttribute('style', newStyle);
+      }
+    });
+    return new XMLSerializer().serializeToString(doc.documentElement);
+  } catch(e){
+    console.warn('[GSB] Failed to recolor SVG source string:', e);
+    return svgStr;
+  }
+}
+
 function recolorSvgPaths(group, oldHex, newHex){
   if(!group || !group._objects) return;
   const old = oldHex.toLowerCase();
@@ -2260,6 +2347,142 @@ function recolorSvgPaths(group, oldHex, newHex){
 
   // Mark as recolored — export will use SVG track instead of embedPdf
   group._recolored = true;
+}
+
+/* Propagate a color change from the primary object to all its copies.
+   CRITICAL: must NOT change positions, must NOT show extra toasts,
+   must NOT call setActiveObject on siblings.
+   Handles three cases:
+   1. SVG group siblings → call recolorSvgPaths directly
+   2. Rasterized PNG clones of SVG → update _svgSource + swap image element in-place
+   3. Raster image siblings → pixel-replace in-place (no remove/add)        */
+function propagateRecolorToSiblings(primaryObj, oldHex, newHex){
+  const oid = primaryObj._originalId || primaryObj._id;
+  const siblings = canvas.getObjects().filter(o =>
+    (o._originalId || o._id) === oid && o !== primaryObj && o._mmW
+  );
+  if(!siblings.length) return;
+
+  const isVector = primaryObj.type === 'group' && primaryObj._svgSource;
+
+  if(isVector){
+    // Separate SVG group clones from rasterized image clones
+    const groupSibs = siblings.filter(s => s.type === 'group' && s._objects);
+    const imageSibs = siblings.filter(s => s.type === 'image');
+
+    // SVG group siblings: recolor their paths directly (no UI side effects)
+    groupSibs.forEach(sib => {
+      recolorSvgPaths(sib, oldHex, newHex);
+    });
+
+    // Rasterized PNG siblings: render the recolored primary once, then swap
+    // each sibling's pixel data in-place. No position/scale changes.
+    if(imageSibs.length > 0){
+      const updatedSvg = primaryObj._svgSource;
+
+      // Render the recolored primary to a data URL at same resolution as clones
+      const rasterScale = 2;
+      const rW = Math.round(primaryObj.width * (primaryObj.scaleX || 1) * rasterScale);
+      const rH = Math.round(primaryObj.height * (primaryObj.scaleY || 1) * rasterScale);
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = rW;
+      tmpCanvas.height = rH;
+      const tmpFab = new fabric.StaticCanvas(tmpCanvas, {
+        width: rW, height: rH, backgroundColor: null, enableRetinaScaling: false,
+      });
+      primaryObj.clone(clone => {
+        clone.set({
+          originX: 'center', originY: 'center',
+          left: rW / 2, top: rH / 2,
+          scaleX: rW / clone.width,
+          scaleY: rH / clone.height,
+          angle: 0,
+        });
+        clone.setCoords();
+        tmpFab.add(clone);
+        tmpFab.renderAll();
+        const dataUrl = tmpCanvas.toDataURL('image/png');
+        tmpFab.dispose();
+
+        // Swap each sibling's image element — preserve ALL position/scale/angle
+        let done = 0;
+        imageSibs.forEach(sib => {
+          // Save all spatial properties before element swap
+          const saved = {
+            left: sib.left, top: sib.top,
+            scaleX: sib.scaleX, scaleY: sib.scaleY,
+            angle: sib.angle, originX: sib.originX, originY: sib.originY,
+          };
+          sib._svgSource = updatedSvg;
+          sib._recolored = true;
+          fabric.Image.fromURL(dataUrl, newImg => {
+            sib.setElement(newImg.getElement());
+            // Restore ALL spatial properties — setElement may change width/height
+            sib.set(saved);
+            // Recalculate scale for the new pixel dimensions
+            sib.scaleX = (sib._mmW * displayPxPerMm) / sib.width;
+            sib.scaleY = (sib._mmH * displayPxPerMm) / sib.height;
+            sib.dirty = true;
+            sib.setCoords();
+            done++;
+            if(done === imageSibs.length){
+              canvas.requestRenderAll();
+            }
+          }, { crossOrigin: 'anonymous' });
+        });
+      }, FABRIC_EXTRA_PROPS);
+    }
+  } else {
+    // All-raster copies: pixel-replace in-place without remove/add.
+    // Can't use recolorRaster() — it removes+adds objects, shows toasts,
+    // calls setActiveObject, and triggers renderItemList per sibling.
+    const oldRgb = hexToRgb(oldHex);
+    const newRgb = hexToRgb(newHex);
+    const tolSq = RASTER_COLOR_TOLERANCE * RASTER_COLOR_TOLERANCE;
+
+    siblings.forEach(sib => {
+      if(sib.type !== 'image') return;
+      const el = sib.getElement();
+      const tmp = document.createElement('canvas');
+      tmp.width = el.naturalWidth || el.width;
+      tmp.height = el.naturalHeight || el.height;
+      const ctx = tmp.getContext('2d');
+      ctx.drawImage(el, 0, 0);
+      const imgData = ctx.getImageData(0, 0, tmp.width, tmp.height);
+      const px = imgData.data;
+      for(let i = 0; i < px.length; i += 4){
+        if(px[i+3] < 30) continue;
+        const dr = px[i] - oldRgb.r, dg = px[i+1] - oldRgb.g, db = px[i+2] - oldRgb.b;
+        if(dr*dr + dg*dg + db*db <= tolSq){
+          px[i] = newRgb.r; px[i+1] = newRgb.g; px[i+2] = newRgb.b;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      // Swap image element in-place — NO remove/add, NO position changes
+      const saved = {
+        left: sib.left, top: sib.top,
+        scaleX: sib.scaleX, scaleY: sib.scaleY,
+        angle: sib.angle, originX: sib.originX, originY: sib.originY,
+      };
+      // Update _svgSource so PDF export reflects the color change
+      if(sib._svgSource){
+        sib._svgSource = recolorSvgSourceString(sib._svgSource, oldHex, newHex);
+        sib._recolored = true;
+      }
+
+      fabric.Image.fromURL(tmp.toDataURL('image/png'), newImg => {
+        sib.setElement(newImg.getElement());
+        sib.set(saved);
+        sib.scaleX = (sib._mmW * displayPxPerMm) / sib.width;
+        sib.scaleY = (sib._mmH * displayPxPerMm) / sib.height;
+        sib.dirty = true;
+        sib.setCoords();
+      }, { crossOrigin: 'anonymous' });
+    });
+    // Single render after all siblings processed
+    setTimeout(() => canvas.requestRenderAll(), 150);
+  }
 }
 
 // ---- Raster color detection & replacement ----
@@ -2413,6 +2636,7 @@ function recolorRaster(obj, oldHex, newHex){
     newImg.set({
       left: obj.left, top: obj.top, angle: obj.angle, flipX: obj.flipX, flipY: obj.flipY,
       scaleX: obj.scaleX, scaleY: obj.scaleY,
+      originX: obj.originX, originY: obj.originY,
     });
     newImg._id = obj._id;
     newImg._originalId = obj._originalId;
@@ -2424,10 +2648,17 @@ function recolorRaster(obj, oldHex, newHex){
     newImg._mmLeft = obj._mmLeft;
     newImg._mmTop = obj._mmTop;
     newImg._vectorOrigin = obj._vectorOrigin;
-    if(obj._svgSource) newImg._svgSource = obj._svgSource;
     if(obj._embeddedRasterW) newImg._embeddedRasterW = obj._embeddedRasterW;
     if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
+    if(obj._pdfPageW) newImg._pdfPageW = obj._pdfPageW;
+    if(obj._pdfPageH) newImg._pdfPageH = obj._pdfPageH;
     if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
+
+    // Update _svgSource with the new color so PDF export reflects the change
+    if(obj._svgSource){
+      newImg._svgSource = recolorSvgSourceString(obj._svgSource, oldHex, newHex);
+      newImg._recolored = true;
+    }
 
     attachObjListeners(newImg);
     // Suppress panel rebuild so the color picker stays open
@@ -2523,8 +2754,12 @@ function renderSelectedPanel(){
   const isPureVector = isVector && !hasEmbeddedRaster;
   const dpi = dpiStatus(calcEffectiveDpi(obj));
   const unit = state.unit;
-  const w = unit==='mm' ? obj._mmW.toFixed(1) : (obj._mmW/10).toFixed(2);
-  const h = unit==='mm' ? obj._mmH.toFixed(1) : (obj._mmH/10).toFixed(2);
+  // Show VISUAL dimensions — at 90°/270° these are swapped vs logical _mmW/_mmH.
+  // The user sees a visually wide/tall logo and expects breedte/hoogte to match.
+  const dispW = visMmW(obj);
+  const dispH = visMmH(obj);
+  const w = unit==='mm' ? dispW.toFixed(1) : (dispW/10).toFixed(2);
+  const h = unit==='mm' ? dispH.toFixed(1) : (dispH/10).toFixed(2);
   const curAngle = Math.round(((obj.angle||0)%360+360)%360);
   const isRaster = (obj.type === 'image') && !obj._vectorOrigin;
   const thrVal = document.getElementById('bgThreshold')?.value || 240;
@@ -2727,7 +2962,9 @@ function buildColorEditor(obj, isVector){
         sw.classList.add('active');
         showColorPicker(sw.dataset.hex, (newHex)=>{
           pushUndo();
-          recolorSvgPaths(obj, sw.dataset.hex, newHex);
+          const oldHex = sw.dataset.hex;
+          recolorSvgPaths(obj, oldHex, newHex);
+          propagateRecolorToSiblings(obj, oldHex, newHex);
           invalidateThumb(obj._originalId || obj._id);
           sw.style.background = newHex;
           sw.dataset.hex = newHex;
@@ -2756,10 +2993,17 @@ function buildColorEditor(obj, isVector){
         sw.classList.add('active');
         showColorPicker(sw.dataset.hex, (newHex)=>{
           pushUndo();
+          const oldHex = sw.dataset.hex;
           // Use getSelectedObj() — the fabric object changes after pixel replacement
           const current = getSelectedObj();
           if(current){
-            recolorRaster(current, sw.dataset.hex, newHex);
+            recolorRaster(current, oldHex, newHex);
+            // Wait a tick for recolorRaster to finish replacing the object,
+            // then propagate to siblings using the new object reference
+            setTimeout(()=>{
+              const updated = getSelectedObj();
+              if(updated) propagateRecolorToSiblings(updated, oldHex, newHex);
+            }, 100);
             invalidateThumb(current._originalId || current._id);
           }
           sw.style.background = newHex;
@@ -2880,17 +3124,39 @@ function setSizeMm(dim, val){
   const obj = getSelectedObj();
   if(!obj) return;
   if(state.unit==='cm') val *= 10;
+
+  // The UI shows VISUAL dimensions (visMmW/visMmH). At 90°/270° rotation,
+  // visual width = _mmH and visual height = _mmW. So when the user edits
+  // "breedte" (dim='w'), they're changing the VISUAL width — which maps to
+  // _mmH at 90°. We swap the dim parameter to target the correct logical dim.
+  const a = ((obj.angle || 0) % 360 + 360) % 360;
+  const isSwapped = (a > 45 && a < 135) || (a > 225 && a < 315);
+  if(isSwapped) dim = (dim === 'w') ? 'h' : 'w';
+
+  let newW, newH;
   if(_ratioLocked){
     const ratio = obj._mmW / obj._mmH;
-    if(dim==='w'){ obj._mmW = val; obj._mmH = val / ratio; }
-    else { obj._mmH = val; obj._mmW = val * ratio; }
+    if(dim==='w'){ newW = val; newH = val / ratio; }
+    else { newH = val; newW = val * ratio; }
   } else {
-    if(dim==='w') obj._mmW = val;
-    else obj._mmH = val;
+    newW = dim==='w' ? val : obj._mmW;
+    newH = dim==='h' ? val : obj._mmH;
   }
-  obj.scaleX = (obj._mmW * displayPxPerMm) / obj.width;
-  obj.scaleY = (obj._mmH * displayPxPerMm) / obj.height;
-  obj.setCoords();
+
+  // Apply to ALL copies of this logo (same _originalId)
+  const oid = obj._originalId || obj._id;
+  const siblings = canvas.getObjects().filter(o => (o._originalId || o._id) === oid);
+  siblings.forEach(o => {
+    o._mmW = newW;
+    o._mmH = newH;
+    o.scaleX = (newW * displayPxPerMm) / o.width;
+    o.scaleY = (newH * displayPxPerMm) / o.height;
+    o.setCoords();
+  });
+
+  // Auto-repack so copies fill the sheet optimally at new size
+  if(siblings.length > 1) repackAll();
+
   canvas.requestRenderAll();
   renderSelectedPanel();
   renderItemList();
@@ -3225,6 +3491,20 @@ function registerLogo(obj){
 
 function renderItemList(){
   const list = document.getElementById('itemList');
+
+  // If user is actively editing a stepper input inside the list, skip full rebuild
+  // to prevent losing focus. Still update the count header so it stays accurate.
+  const activeEl = document.activeElement;
+  if(activeEl && activeEl.tagName === 'INPUT' && activeEl.closest('#itemList .count-stepper')){
+    // Lightweight count update only
+    const uniqueIds = new Set();
+    let totalObjs = 0;
+    canvas.getObjects().forEach(o=>{ if(o._mmW){ uniqueIds.add(o._originalId ?? o._id); totalObjs++; } });
+    for(const [oid] of _logoRegistry) uniqueIds.add(oid);
+    document.getElementById('itemCount').textContent = `(${uniqueIds.size} ${uniqueIds.size===1?t('logo'):t('logos')} · ${totalObjs} ${t('copies')})`;
+    return;
+  }
+
   const groups = new Map();
   canvas.getObjects().forEach(o=>{
     if(!o._mmW) return;
@@ -3256,10 +3536,19 @@ function renderItemList(){
   }
 
   list.innerHTML = '';
-  groups.forEach(g=>{
+  // Sort groups by _logoRegistry insertion order (= upload order) for stable display
+  const registryOrder = [..._logoRegistry.keys()];
+  const sortedGroups = [...groups.values()].sort((a, b) => {
+    const ai = registryOrder.indexOf(a.originalId);
+    const bi = registryOrder.indexOf(b.originalId);
+    // Items not in registry go to the end
+    return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+  });
+  sortedGroups.forEach(g=>{
     const sample = g.sampleObj;
-    const mmW = sample ? sample._mmW : (g.regMmW || 0);
-    const mmH = sample ? sample._mmH : (g.regMmH || 0);
+    // Show VISUAL dimensions in the item list (consistent with selected panel)
+    const mmW = sample ? visMmW(sample) : (g.regMmW || 0);
+    const mmH = sample ? visMmH(sample) : (g.regMmH || 0);
     const dpi = sample ? dpiStatus(calcEffectiveDpi(sample)) : { cls:'ok', label:'—' };
     const wmm = mmW.toFixed(0), hmm = mmH.toFixed(0);
     const wcm = (mmW/10).toFixed(1), hcm = (mmH/10).toFixed(1);
@@ -3294,10 +3583,27 @@ function renderItemList(){
       renderItemList();
     });
     const stepper = row.querySelector('.count-stepper');
-    stepper.querySelector('[data-act="dec"]').onclick = ()=>changeGroupCount(g.originalId, Math.max(0, globalCount - 1));
-    stepper.querySelector('[data-act="inc"]').onclick = ()=>changeGroupCount(g.originalId, globalCount + 1);
     const inp = stepper.querySelector('input');
+    // +/- buttons read the current INPUT value (not stale globalCount)
+    stepper.querySelector('[data-act="dec"]').onclick = ()=>{
+      const cur = Math.max(0, parseInt(inp.value,10) || 0);
+      changeGroupCount(g.originalId, Math.max(0, cur - 1));
+    };
+    stepper.querySelector('[data-act="inc"]').onclick = ()=>{
+      const cur = Math.max(0, parseInt(inp.value,10) || 0);
+      changeGroupCount(g.originalId, cur + 1);
+    };
+    // Debounced oninput: typing a number applies it after a short delay
+    let _stepperTimer = null;
+    inp.oninput = ()=>{
+      clearTimeout(_stepperTimer);
+      _stepperTimer = setTimeout(()=>{
+        const v = Math.max(0, parseInt(inp.value,10) || 0);
+        changeGroupCount(g.originalId, v);
+      }, 600);
+    };
     inp.onchange = ()=>{
+      clearTimeout(_stepperTimer);
       const v = Math.max(0, parseInt(inp.value,10) || 0);
       changeGroupCount(g.originalId, v);
     };
@@ -3359,18 +3665,18 @@ function buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, baseAngle, new
   clone.angle   = slot.rotated ? 90 : (baseAngle || 0);
   clone.flipX   = false;
   clone.flipY   = false;
-  // When angle=90, fabric's visual axes swap: visual width = height*scaleY.
-  // Keep sx/sy = the original aspect ratio, but assign them so the visual
-  // result fills the slot correctly.
-  clone.scaleX  = slot.rotated ? sy : sx;
-  clone.scaleY  = slot.rotated ? sx : sy;
+  // Scales always based on LOGICAL (unrotated) dims — same formula for 0° and 90°.
+  // At 90°, fabric auto-swaps visual width↔height via the angle.
+  clone.scaleX  = sx;
+  clone.scaleY  = sy;
   clone.left    = (slot.x + slot.w/2) * displayPxPerMm;
   clone.top     = (slot.y + slot.h/2) * displayPxPerMm;
   clone._id     = newId;
   clone._mmLeft = slot.x;
   clone._mmTop  = slot.y;
-  clone._mmW    = slot.w;
-  clone._mmH    = slot.h;
+  // _mmW/_mmH = LOGICAL (unrotated) dims — slot.w/h are visual (possibly swapped)
+  clone._mmW    = slot.rotated ? slot.h : slot.w;
+  clone._mmH    = slot.rotated ? slot.w : slot.h;
   return clone;
 }
 
@@ -3394,6 +3700,19 @@ function changeGroupCount(originalId, targetCount){
     if(liveDoomed.some(o => o._id === state.selectedId)) state.selectedId = null;
     canvas.discardActiveObject();
     canvas.requestRenderAll();
+    // Shrink DTF roll after removing all copies
+    if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
+      const contentBottom = getContentBottomMm();
+      const shrinkGap = state.gapMm || 0;
+      const newH = Math.max(1000, Math.ceil((contentBottom + shrinkGap) / 100) * 100);
+      if(newH < state.sheet.h){
+        state.sheet.h = newH;
+        state.rollLengthM = newH / 1000;
+        resizeSheet();
+        const inp = document.getElementById('rollLengthInput');
+        if(inp) inp.value = state.rollLengthM;
+      }
+    }
     renderItemList();
     renderSelectedPanel();
     updateInfoBar();
@@ -3454,6 +3773,8 @@ function changeGroupCount(originalId, targetCount){
     _embeddedRasterW: liveSample._embeddedRasterW,
     _embeddedRasterH: liveSample._embeddedRasterH,
     _vectorOrigin: liveSample._vectorOrigin,
+    _pdfPageW: liveSample._pdfPageW,
+    _pdfPageH: liveSample._pdfPageH,
   };
 
   // Clear fill template if it was based on this group
@@ -3515,19 +3836,18 @@ function changeGroupCount(originalId, targetCount){
             if(srcProps._embeddedRasterW) img._embeddedRasterW = srcProps._embeddedRasterW;
             if(srcProps._embeddedRasterH) img._embeddedRasterH = srcProps._embeddedRasterH;
             if(srcProps._vectorOrigin) img._vectorOrigin = srcProps._vectorOrigin;
-            img._mmW = slot.w; img._mmH = slot.h;
+            if(srcProps._pdfPageW) img._pdfPageW = srcProps._pdfPageW;
+            if(srcProps._pdfPageH) img._pdfPageH = srcProps._pdfPageH;
+            // _mmW/_mmH = LOGICAL (unrotated) dims — never visual/rotated dims.
+            // At angle=90 fabric auto-swaps visual width↔height.
+            img._mmW = slot.rotated ? slot.h : slot.w;
+            img._mmH = slot.rotated ? slot.w : slot.h;
             img._mmLeft = slot.x; img._mmTop = slot.y;
             img.originX = 'center'; img.originY = 'center';
             img.angle = slot.rotated ? 90 : 0;
-            if(slot.rotated){
-              // When angle=90, fabric's X-axis points down: visual width = height*scaleY,
-              // visual height = width*scaleX. Swap scales to maintain aspect ratio.
-              img.scaleX = (slot.h * displayPxPerMm) / img.width;
-              img.scaleY = (slot.w * displayPxPerMm) / img.height;
-            } else {
-              img.scaleX = (slot.w * displayPxPerMm) / img.width;
-              img.scaleY = (slot.h * displayPxPerMm) / img.height;
-            }
+            // Scales always based on logical dims — same formula for 0° and 90°.
+            img.scaleX = (img._mmW * displayPxPerMm) / img.width;
+            img.scaleY = (img._mmH * displayPxPerMm) / img.height;
             img.left = (slot.x + slot.w/2) * displayPxPerMm;
             img.top  = (slot.y + slot.h/2) * displayPxPerMm;
             attachObjListeners(img);
@@ -3549,6 +3869,8 @@ function changeGroupCount(originalId, targetCount){
             if(srcProps._vectorOrigin) clone._vectorOrigin = srcProps._vectorOrigin;
             if(srcProps._embeddedRasterW) clone._embeddedRasterW = srcProps._embeddedRasterW;
             if(srcProps._embeddedRasterH) clone._embeddedRasterH = srcProps._embeddedRasterH;
+            if(srcProps._pdfPageW) clone._pdfPageW = srcProps._pdfPageW;
+            if(srcProps._pdfPageH) clone._pdfPageH = srcProps._pdfPageH;
             attachObjListeners(clone);
             canvas.add(clone);
             resolve();
@@ -3570,6 +3892,23 @@ function changeGroupCount(originalId, targetCount){
           // Done placing — update UI
           canvas.requestRenderAll();
           autoExtendIfNeeded();
+
+          // Shrink DTF roll to fit content tightly (mirrors repackAll logic).
+          // Without this, growRoll expansions leave the sheet at 2000mm+ even
+          // when content only needs 200mm, creating visual "huge gaps."
+          if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
+            const contentBottom = getContentBottomMm();
+            const shrinkGap = state.gapMm || 0;
+            const newH = Math.max(1000, Math.ceil((contentBottom + shrinkGap) / 100) * 100);
+            if(newH < state.sheet.h){
+              state.sheet.h = newH;
+              state.rollLengthM = newH / 1000;
+              resizeSheet();
+              const inp = document.getElementById('rollLengthInput');
+              if(inp) inp.value = state.rollLengthM;
+            }
+          }
+
           renderItemList();
           renderSelectedPanel();
           updateInfoBar();
@@ -3704,6 +4043,8 @@ function removeWhiteBg(obj, threshold){
     if(obj._hasGradients) newImg._hasGradients = obj._hasGradients;
     if(obj._embeddedRasterW) newImg._embeddedRasterW = obj._embeddedRasterW;
     if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
+    if(obj._pdfPageW) newImg._pdfPageW = obj._pdfPageW;
+    if(obj._pdfPageH) newImg._pdfPageH = obj._pdfPageH;
     if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
     attachObjListeners(newImg);
     canvas.remove(obj);
@@ -3890,17 +4231,13 @@ function tileSheet(){
   const placeAt = (target, p)=>{
     // Use the TARGET's own width/height for scale calculation.
     // For SVG groups, tw = SVG coordinate units; for raster PNG clones, tw = pixel width.
-    // This prevents size mismatch when rasterized clones have different .width than the SVG group.
     const tw = target.width;
     const th = target.height;
-    let sx, sy;
-    if(p.rotated){
-      sy = (p.w * displayPxPerMm) / th;
-      sx = (p.h * displayPxPerMm) / tw;
-    } else {
-      sx = (p.w * displayPxPerMm) / tw;
-      sy = (p.h * displayPxPerMm) / th;
-    }
+    // _mmW/_mmH = LOGICAL (unrotated) dims. Scales always same formula for 0° and 90°.
+    const logicalW = p.rotated ? p.h : p.w;
+    const logicalH = p.rotated ? p.w : p.h;
+    const sx = (logicalW * displayPxPerMm) / tw;
+    const sy = (logicalH * displayPxPerMm) / th;
     target.set({
       originX:'center', originY:'center',
       angle: p.rotated ? 90 : 0,
@@ -3910,8 +4247,8 @@ function tileSheet(){
     });
     target._mmLeft = p.x;
     target._mmTop  = p.y;
-    target._mmW = p.w;
-    target._mmH = p.h;
+    target._mmW = logicalW;
+    target._mmH = logicalH;
     target.setCoords();
   };
 
@@ -3927,6 +4264,21 @@ function tileSheet(){
   const finishTiling = ()=>{
     canvas.requestRenderAll();
     autoExtendIfNeeded();
+
+    // Shrink DTF roll to fit content tightly
+    if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
+      const contentBottom = getContentBottomMm();
+      const shrinkGap = state.gapMm || 0;
+      const newH = Math.max(1000, Math.ceil((contentBottom + shrinkGap) / 100) * 100);
+      if(newH < state.sheet.h){
+        state.sheet.h = newH;
+        state.rollLengthM = newH / 1000;
+        resizeSheet();
+        const inp = document.getElementById('rollLengthInput');
+        if(inp) inp.value = state.rollLengthM;
+      }
+    }
+
     renderItemList();
     updateInfoBar();
     updateSummary();
@@ -3955,6 +4307,10 @@ function tileSheet(){
             if(sample._svgSource) img._svgSource = sample._svgSource;
             if(sample._hasGradients) img._hasGradients = sample._hasGradients;
             if(sample._vectorOrigin) img._vectorOrigin = sample._vectorOrigin;
+            if(sample._pdfPageW) img._pdfPageW = sample._pdfPageW;
+            if(sample._pdfPageH) img._pdfPageH = sample._pdfPageH;
+            if(sample._embeddedRasterW) img._embeddedRasterW = sample._embeddedRasterW;
+            if(sample._embeddedRasterH) img._embeddedRasterH = sample._embeddedRasterH;
             placeAt(img, p);
             attachObjListeners(img);
             canvas.add(img);
@@ -4013,6 +4369,8 @@ function tileSheet(){
         if(sample._vectorOrigin) clone._vectorOrigin = sample._vectorOrigin;
         if(sample._embeddedRasterW) clone._embeddedRasterW = sample._embeddedRasterW;
         if(sample._embeddedRasterH) clone._embeddedRasterH = sample._embeddedRasterH;
+        if(sample._pdfPageW) clone._pdfPageW = sample._pdfPageW;
+        if(sample._pdfPageH) clone._pdfPageH = sample._pdfPageH;
         placeAt(clone, layout[idx]);
         attachObjListeners(clone);
         canvas.add(clone);
@@ -4173,12 +4531,38 @@ exportBtn.onclick = async ()=>{
 
     for(const [oid, grp] of uniqueLogos){
       const s = grp.sample;
-      if(pdfSourceBuffers.has(oid) && !s._recolored){
-        // AI/PDF upload, colors NOT changed → embed original PDF (lossless, gradients perfect)
-        pdfEmbedIds.add(oid);
-      } else if(canDoSvgVector && s._svgSource && !s._embeddedRasterW){
-        // SVG upload, OR AI/PDF that was recolored → use modified _svgSource
+
+      // PRIORITY: If the logo has _svgSource AND svg2pdf support, ALWAYS use Track 1.
+      // _svgSource is the auto-cropped SVG — it has exactly the right content area
+      // without artboard whitespace. This is true for:
+      //   - Pure SVG uploads
+      //   - AI/PDF PATH A (pdfToSvg → autoCropSvg, no gradients)
+      //   - Recolored AI/PDF logos
+      // Track 2 (embedPdf) embeds the ORIGINAL uncropped PDF page, which causes
+      // squished logos when the artboard is larger than the content.
+      if(canDoSvgVector && s._svgSource && !s._embeddedRasterW){
         vectorSvgIds.add(oid);
+      } else if(pdfSourceBuffers.has(oid) && !s._recolored && !s._svgSource){
+        // AI/PDF PATH B: gradient logo, no _svgSource available.
+        // embedPdf is the only way to preserve gradient/pattern fidelity.
+        // Check if content is significantly smaller than artboard → fall back to raster.
+        let useRaster = false;
+        if(s._pdfPageW && s._pdfPageH){
+          const refTile = grp.tiles.find(t => Math.abs(t.angle % 360) <= 0.1) || grp.tiles[0];
+          if(refTile){
+            const swp = isDimSwapped(refTile.angle);
+            const contentMmW = swp ? refTile.mmH : refTile.mmW;
+            const contentMmH = swp ? refTile.mmW : refTile.mmH;
+            const artboardMmW = s._pdfPageW * 25.4 / 72;
+            const artboardMmH = s._pdfPageH * 25.4 / 72;
+            if(contentMmW < artboardMmW * 0.8 || contentMmH < artboardMmH * 0.8){
+              useRaster = true;
+              console.log(`[GSB Export] ${s._name||oid}: gradient PDF, artboard >> content → Track 3 (raster)`);
+            }
+          }
+        }
+        if(useRaster) rasterIds.add(oid);
+        else pdfEmbedIds.add(oid);
       } else {
         rasterIds.add(oid);
       }
@@ -4242,12 +4626,13 @@ exportBtn.onclick = async ()=>{
       const hasRotation = angle > 0.1 && angle < 359.9;
       const swapped = isDimSwapped(angle);
 
-      // Source natural dimensions (before rotation was applied)
-      const srcWPt = (swapped ? tile.mmH : tile.mmW) * MM_TO_PT;
-      const srcHPt = (swapped ? tile.mmW : tile.mmH) * MM_TO_PT;
-      // Bounding box dimensions (what's on canvas, after rotation)
-      const bboxWPt = tile.mmW * MM_TO_PT;
-      const bboxHPt = tile.mmH * MM_TO_PT;
+      // _mmW/_mmH are ALWAYS LOGICAL (unrotated) dimensions.
+      // Source = logical = what pdf-lib should draw at (no swap).
+      const srcWPt = tile.mmW * MM_TO_PT;
+      const srcHPt = tile.mmH * MM_TO_PT;
+      // Visual bounding box (after rotation) — swap when rotated
+      const bboxWPt = (swapped ? tile.mmH : tile.mmW) * MM_TO_PT;
+      const bboxHPt = (swapped ? tile.mmW : tile.mmH) * MM_TO_PT;
 
       if(!hasRotation){
         // 0°: draw directly at bounding box position
@@ -4465,7 +4850,9 @@ exportBtn.onclick = async ()=>{
     // ===========================================================
     // Embeds the ORIGINAL PDF binary — preserves 100% of vector content
     // including gradients, patterns, shadings, text, and complex artwork.
-    // No conversion, no parsing, no quality loss.
+    // NOTE: Only files whose content matches the full artboard reach this track.
+    // Auto-cropped files (artboard >> content) are redirected to Track 1/3
+    // during classification above, because embedPdf always embeds the full page.
     if(pdfEmbedIds.size > 0){
       const pdfEmbedCache = new Map(); // oid → embeddedPage
       for(const oid of pdfEmbedIds){
@@ -4478,6 +4865,7 @@ exportBtn.onclick = async ()=>{
             const srcBuffer = pdfSourceBuffers.get(oid);
             if(!srcBuffer) throw new Error('No source buffer for ' + oid);
             const srcDoc = await PDFDocument.load(srcBuffer);
+
             const [ep] = await finalDoc.embedPdf(srcDoc, [0]);
             embeddedPage = ep;
             pdfEmbedCache.set(oid, embeddedPage);
@@ -4702,6 +5090,16 @@ function repackAll(){
      the placement that adds the least height. This fills side-gaps naturally
      because smaller items slide into lower parts of the skyline. */
 
+  // Reset all rotations to 0° before repacking — prevents accumulation
+  // (e.g. 90°+90°=180° upside down) and ensures the packer only applies 0° or 90°.
+  objs.forEach(o => {
+    o.rotate(0);
+    // Recalculate scales so visual size matches _mmW × _mmH at angle=0
+    o.scaleX = (o._mmW * displayPxPerMm) / o.width;
+    o.scaleY = (o._mmH * displayPxPerMm) / o.height;
+    o.setCoords();
+  });
+
   // Gather items with their ORIGINAL (un-rotated) mm dimensions
   const items = objs.map(o => {
     // Use _mmW/_mmH which are the logical dimensions
@@ -4874,14 +5272,14 @@ function repackAll(){
     if(!item) return;
     const o = item.obj;
 
-    // If packer chose rotated orientation, ADD 90° to current angle.
-    // This swaps the bounding-box dimensions regardless of current angle.
-    if(p.rotated){
-      o.rotate(((o.angle || 0) + 90) % 360);
-    }
+    // Set absolute rotation: 0° (normal) or 90° (rotated).
+    // Angles were reset to 0° above, so this is always a clean set.
+    // Scales are already correct for _mmW × _mmH from the reset step;
+    // fabric swaps visual width↔height automatically at 90°.
+    o.rotate(p.rotated ? 90 : 0);
+    o.setCoords();
 
     // Position via bounding-rect offset — works with any rotation/origin
-    o.setCoords();
     const br = o.getBoundingRect(true, true);
     o.left += (p.x * displayPxPerMm) - br.left;
     o.top  += (p.y * displayPxPerMm) - br.top;
@@ -5049,8 +5447,8 @@ document.addEventListener('keydown', e=>{
   if(e.key === 'ArrowDown')  dy =  nudge;
   if(dx || dy){
     e.preventDefault();
-    obj._mmLeft = Math.max(0, Math.min(state.sheet.w - obj._mmW, (obj._mmLeft||0) + dx));
-    obj._mmTop  = Math.max(0, Math.min(state.sheet.h - obj._mmH, (obj._mmTop||0)  + dy));
+    obj._mmLeft = Math.max(0, Math.min(state.sheet.w - visMmW(obj), (obj._mmLeft||0) + dx));
+    obj._mmTop  = Math.max(0, Math.min(state.sheet.h - visMmH(obj), (obj._mmTop||0)  + dy));
     obj.set({ left: obj._mmLeft * displayPxPerMm, top: obj._mmTop * displayPxPerMm });
     obj.setCoords();
     canvas.requestRenderAll();
@@ -5234,3 +5632,4 @@ tourSkipBtn.onclick = endTour;
 tourBackdrop.onclick = (e)=>{
   if(e.target === tourBackdrop) endTour();
 };
+
