@@ -271,9 +271,9 @@ window.addEventListener('load', ()=>{
   .color-mode-tabs{display:flex;gap:0;margin:4px 0 6px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
   .color-mode-tabs button{flex:1;padding:4px 8px;font-size:.72rem;font-weight:700;border:none;background:#fff;color:var(--muted);cursor:pointer;font-family:'Nunito',sans-serif}
   .color-mode-tabs button.active{background:var(--primary);color:#fff}
-  .color-input-group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
-  .color-input-group input{width:52px;padding:4px 5px;border:1px solid var(--border);border-radius:5px;font-size:.78rem;text-align:center;font-family:'Inter',sans-serif}
-  .color-input-group label{font-size:.68rem;color:var(--muted);font-weight:600;width:14px;text-align:center}
+  .color-input-group{display:flex;gap:3px;align-items:center;flex-wrap:nowrap}
+  .color-input-group input{width:40px;padding:4px 3px;border:1px solid var(--border);border-radius:5px;font-size:.78rem;text-align:center;font-family:'Inter',sans-serif}
+  .color-input-group label{font-size:.68rem;color:var(--muted);font-weight:600;min-width:10px;text-align:center}
   .color-input-group .hex-input{width:80px}
   .color-apply-btn{margin-top:6px;padding:5px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text);font-family:'Nunito',sans-serif}
   .color-apply-btn:hover{border-color:var(--primary);color:var(--primary)}
@@ -288,6 +288,8 @@ window.addEventListener('load', ()=>{
   .summary-row .val.good{color:var(--success)}
   .summary-row .val.warn{color:var(--warn)}
   .summary-row .val.bad{color:var(--error)}
+  .export-btn-bg{width:100%;justify-content:center;padding:8px 16px;font-size:.8rem;background:var(--surface);border:1px solid var(--border);color:var(--muted);cursor:pointer;margin-bottom:6px;transition:background .15s,color .15s}
+  .export-btn-bg:hover{background:var(--border);color:var(--text)}
   .export-btn-big{width:100%;justify-content:center;padding:14px 16px;font-size:.95rem}
 
   .toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:999;pointer-events:none}
@@ -553,6 +555,7 @@ window.addEventListener('load', ()=>{
       </div>
       <div class="right-footer">
         <div class="pdf-progress" id="pdfProgressWrap"></div>
+        <button class="btn export-btn-bg" id="exportBgBtn" data-i18n="exportBgBtn">Download drukproef</button>
         <button class="btn btn-grad-fill export-btn-big" id="exportBtn" data-i18n="exportBtn">Download print-ready PDF</button>
       </div>
     </aside>
@@ -622,7 +625,7 @@ window.addEventListener('load', ()=>{
         <tr><td style="padding:3px 8px 3px 0;color:var(--muted)">0</td><td style="padding:3px 0" data-i18n="zoomFit">Passend</td></tr>
       </table>
     </div>
-    <p class="version-tag">v1.3.5.2 · 11-05-2026</p>
+    <p class="version-tag">v1.3.6.2 · 12-05-2026</p>
   </div>
 </div>
 
