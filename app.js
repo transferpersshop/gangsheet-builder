@@ -3687,32 +3687,40 @@ function buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, baseAngle, new
 // removeGroupFromAllSavedTabs, cleanupEmptyOverflowTabs) — DTF roll is now a single continuous canvas
 
 /* changeGroupCount — global count editor for single canvas.
-   Strategy: Remove all existing copies and place new targetCount.
-   If not all fit on the canvas, show error. */
+   Strategy: INCREMENTAL — only add new copies or remove excess.
+   Existing copies keep their position so nothing "jumps." */
 function changeGroupCount(originalId, targetCount){
   targetCount = Math.max(0, targetCount);
 
-  // If target is 0, remove all from canvas (but keep in registry)
-  if(targetCount === 0){
-    const liveDoomed = canvas.getObjects().filter(o => o._originalId === originalId && o._mmW);
-    if(state.fillTemplate && state.fillTemplate.originalId === originalId) state.fillTemplate = null;
-    liveDoomed.forEach(o => canvas.remove(o));
-    if(liveDoomed.some(o => o._id === state.selectedId)) state.selectedId = null;
-    canvas.discardActiveObject();
-    canvas.requestRenderAll();
-    // Shrink DTF roll after removing all copies
-    if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
-      const contentBottom = getContentBottomMm();
-      const shrinkGap = state.gapMm || 0;
-      const newH = Math.max(1000, Math.ceil((contentBottom + shrinkGap) / 100) * 100);
-      if(newH < state.sheet.h){
-        state.sheet.h = newH;
-        state.rollLengthM = newH / 1000;
-        resizeSheet();
-        const inp = document.getElementById('rollLengthInput');
-        if(inp) inp.value = state.rollLengthM;
-      }
+  // Gather live copies sorted top→bottom, left→right (stable removal order)
+  const liveCopies = canvas.getObjects()
+    .filter(o => o._originalId === originalId && o._mmW)
+    .sort((a,b) => (a._mmTop - b._mmTop) || (a._mmLeft - b._mmLeft));
+  const currentCount = liveCopies.length;
+
+  // Helper: shrink DTF roll to fit content tightly
+  const shrinkDTF = () => {
+    if(!SHEET_FORMATS[state.sheetFormat]?.isDTF) return;
+    const contentBottom = getContentBottomMm();
+    const shrinkGap = state.gapMm || 0;
+    const newH = Math.max(1000, Math.ceil((contentBottom + shrinkGap) / 100) * 100);
+    if(newH < state.sheet.h){
+      state.sheet.h = newH;
+      state.rollLengthM = newH / 1000;
+      resizeSheet();
+      const inp = document.getElementById('rollLengthInput');
+      if(inp) inp.value = state.rollLengthM;
     }
+  };
+
+  // ── Target = 0: remove all from canvas (keep in registry) ──
+  if(targetCount === 0){
+    if(state.fillTemplate && state.fillTemplate.originalId === originalId) state.fillTemplate = null;
+    if(liveCopies.some(o => o._id === state.selectedId)) state.selectedId = null;
+    canvas.discardActiveObject();
+    liveCopies.forEach(o => canvas.remove(o));
+    canvas.requestRenderAll();
+    shrinkDTF();
     renderItemList();
     renderSelectedPanel();
     updateInfoBar();
@@ -3720,13 +3728,10 @@ function changeGroupCount(originalId, targetCount){
     return;
   }
 
-  // Find the template (prefer live sample, fall back to registry)
-  let liveSample = canvas.getObjects().find(o => o._originalId === originalId && o._mmW);
-  if(!liveSample){
-    // Re-create from registry
+  // ── No live copies: re-create from registry ──
+  if(currentCount === 0){
     const reg = _logoRegistry.get(originalId);
     if(!reg) return;
-    // Enliven the stored JSON and recurse
     fabric.util.enlivenObjects([reg.json], (objs)=>{
       if(!objs.length) return;
       const obj = objs[0];
@@ -3748,7 +3753,6 @@ function changeGroupCount(originalId, targetCount){
       canvas.add(obj);
       canvas.requestRenderAll();
       autoExtendIfNeeded();
-      // If more than 1 requested, recurse with the now-live sample
       if(targetCount > 1){
         changeGroupCount(originalId, targetCount);
       } else {
@@ -3761,10 +3765,35 @@ function changeGroupCount(originalId, targetCount){
     return;
   }
 
+  // ── No change ──
+  if(targetCount === currentCount) return;
+
+  // ── DECREASE: remove excess copies from end of sorted list ──
+  if(targetCount < currentCount){
+    const toRemove = liveCopies.slice(targetCount);
+    if(toRemove.some(o => o._id === state.selectedId)) state.selectedId = null;
+    canvas.discardActiveObject();
+    toRemove.forEach(o => canvas.remove(o));
+    canvas.requestRenderAll();
+    shrinkDTF();
+    renderItemList();
+    renderSelectedPanel();
+    updateInfoBar();
+    updateSummary();
+    pushUndo();
+    return;
+  }
+
+  // ── INCREASE: add only delta new copies, keep existing in place ──
+  const delta = targetCount - currentCount;
+  const liveSample = liveCopies[0];
+
+  // Use stored logical dims directly — always accurate regardless of rotation
+  const mmW = liveSample._mmW;
+  const mmH = liveSample._mmH;
   const natW = liveSample.width;
   const natH = liveSample.height;
-  const mmW = (natW * (liveSample.scaleX || 1)) / displayPxPerMm;
-  const mmH = (natH * (liveSample.scaleY || 1)) / displayPxPerMm;
+
   const srcProps = {
     _originalId: liveSample._originalId, _name: liveSample._name,
     _naturalW: liveSample._naturalW, _naturalH: liveSample._naturalH,
@@ -3777,12 +3806,10 @@ function changeGroupCount(originalId, targetCount){
     _pdfPageH: liveSample._pdfPageH,
   };
 
-  // Clear fill template if it was based on this group
   if(state.fillTemplate && state.fillTemplate.originalId === originalId){
     state.fillTemplate = null;
   }
 
-  // Check if logo fits on the sheet
   const nativeFits  = mmW <= state.sheet.w && mmH <= state.sheet.h;
   const rotatedFits = mmH <= state.sheet.w && mmW <= state.sheet.h;
   if(!nativeFits && !rotatedFits){
@@ -3790,17 +3817,14 @@ function changeGroupCount(originalId, targetCount){
     return;
   }
 
-  // Remove all existing copies
-  const liveDoomed = canvas.getObjects().filter(o => o._originalId === originalId && o._mmW);
-  liveDoomed.forEach(o => canvas.remove(o));
-
-  // Place new copies — grow the roll in 1m steps if they don't all fit (DTF only)
-  let slots = packSpotsSmart(mmW, mmH, targetCount);
+  // Find free spots for ONLY the delta new copies.
+  // All existing canvas objects (including this group's copies) are automatic obstacles.
+  let slots = packSpotsSmart(mmW, mmH, delta);
   if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
     let growTries = 0;
-    while(slots.length < targetCount && state.sheet.h + 1000 <= MAX_LENGTH_MM && growTries < 10){
+    while(slots.length < delta && state.sheet.h + 1000 <= MAX_LENGTH_MM && growTries < 10){
       growRoll(1000);
-      slots = packSpotsSmart(mmW, mmH, targetCount);
+      slots = packSpotsSmart(mmW, mmH, delta);
       growTries++;
     }
   }
@@ -3810,20 +3834,15 @@ function changeGroupCount(originalId, targetCount){
   }
 
   // --- Performance: rasterize SVG groups to PNG for fast cloning ---
-  // SVG groups contain hundreds of sub-paths. Cloning them 30+ times makes
-  // both the canvas rendering and the enlivenObjects call extremely slow.
-  // We render the sample to a PNG data URL at 2x display resolution and
-  // create lightweight fabric.Image clones instead.
   const isGroup = liveSample.type === 'group';
-  const rasterScale = 2; // 2x display resolution for sharp rendering
+  const rasterScale = 2;
   const rasterW = Math.round(natW * (liveSample.scaleX || 1) * rasterScale);
   const rasterH = Math.round(natH * (liveSample.scaleY || 1) * rasterScale);
 
-  const placeClones = (imgDataUrl) => {
-    const addClone = (slot, idx) => {
+  const placeNewClones = (imgDataUrl) => {
+    const addClone = (slot) => {
       return new Promise(resolve => {
         if(imgDataUrl){
-          // Create lightweight image clone from rasterized PNG
           fabric.Image.fromURL(imgDataUrl, img => {
             const newId = ++idCounter;
             img._id = newId;
@@ -3838,14 +3857,11 @@ function changeGroupCount(originalId, targetCount){
             if(srcProps._vectorOrigin) img._vectorOrigin = srcProps._vectorOrigin;
             if(srcProps._pdfPageW) img._pdfPageW = srcProps._pdfPageW;
             if(srcProps._pdfPageH) img._pdfPageH = srcProps._pdfPageH;
-            // _mmW/_mmH = LOGICAL (unrotated) dims — never visual/rotated dims.
-            // At angle=90 fabric auto-swaps visual width↔height.
             img._mmW = slot.rotated ? slot.h : slot.w;
             img._mmH = slot.rotated ? slot.w : slot.h;
             img._mmLeft = slot.x; img._mmTop = slot.y;
             img.originX = 'center'; img.originY = 'center';
             img.angle = slot.rotated ? 90 : 0;
-            // Scales always based on logical dims — same formula for 0° and 90°.
             img.scaleX = (img._mmW * displayPxPerMm) / img.width;
             img.scaleY = (img._mmH * displayPxPerMm) / img.height;
             img.left = (slot.x + slot.w/2) * displayPxPerMm;
@@ -3855,7 +3871,6 @@ function changeGroupCount(originalId, targetCount){
             resolve();
           }, { crossOrigin: 'anonymous' });
         } else {
-          // Fallback for non-group objects: use JSON serialization
           const tplObj = liveSample.toObject(FABRIC_EXTRA_PROPS);
           const obj = buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, 0, ++idCounter);
           obj._originalId = srcProps._originalId;
@@ -3863,7 +3878,6 @@ function changeGroupCount(originalId, targetCount){
           obj._naturalW = srcProps._naturalW;
           obj._naturalH = srcProps._naturalH;
           fabric.util.enlivenObjects([obj], ([clone]) => {
-            // Explicitly preserve vector properties — enlivenObjects may drop custom _ props
             if(srcProps._svgSource) clone._svgSource = srcProps._svgSource;
             if(srcProps._hasGradients) clone._hasGradients = srcProps._hasGradients;
             if(srcProps._vectorOrigin) clone._vectorOrigin = srcProps._vectorOrigin;
@@ -3879,42 +3893,24 @@ function changeGroupCount(originalId, targetCount){
       });
     };
 
-    // Add clones in batches for better UI responsiveness
     const BATCH = 8;
     let idx = 0;
     const nextBatch = () => {
       const batch = slots.slice(idx, idx + BATCH);
       idx += BATCH;
-      Promise.all(batch.map((slot, i) => addClone(slot, idx - BATCH + i))).then(() => {
+      Promise.all(batch.map(slot => addClone(slot))).then(() => {
         if(idx < slots.length){
           setTimeout(nextBatch, 0);
         } else {
-          // Done placing — update UI
           canvas.requestRenderAll();
           autoExtendIfNeeded();
-
-          // Shrink DTF roll to fit content tightly (mirrors repackAll logic).
-          // Without this, growRoll expansions leave the sheet at 2000mm+ even
-          // when content only needs 200mm, creating visual "huge gaps."
-          if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
-            const contentBottom = getContentBottomMm();
-            const shrinkGap = state.gapMm || 0;
-            const newH = Math.max(1000, Math.ceil((contentBottom + shrinkGap) / 100) * 100);
-            if(newH < state.sheet.h){
-              state.sheet.h = newH;
-              state.rollLengthM = newH / 1000;
-              resizeSheet();
-              const inp = document.getElementById('rollLengthInput');
-              if(inp) inp.value = state.rollLengthM;
-            }
-          }
-
+          shrinkDTF();
           renderItemList();
           renderSelectedPanel();
           updateInfoBar();
           updateSummary();
           pushUndo();
-          if(slots.length < targetCount){
+          if(slots.length < delta){
             toast(t('sizeTooLarge'), 'warn');
           }
         }
@@ -3924,7 +3920,7 @@ function changeGroupCount(originalId, targetCount){
   };
 
   if(isGroup){
-    // Rasterize the SVG group to PNG
+    // Rasterize the SVG group to PNG for fast image clones
     const tmpCanvas = document.createElement('canvas');
     tmpCanvas.width = rasterW;
     tmpCanvas.height = rasterH;
@@ -3945,10 +3941,19 @@ function changeGroupCount(originalId, targetCount){
       tmpFab.renderAll();
       const dataUrl = tmpCanvas.toDataURL('image/png');
       tmpFab.dispose();
-      placeClones(dataUrl);
+      placeNewClones(dataUrl);
     }, FABRIC_EXTRA_PROPS);
+  } else if(liveSample.type === 'image'){
+    // Already a rasterized image — reuse its element src for fast cloning
+    const el = liveSample.getElement();
+    const src = el && el.src ? el.src : null;
+    if(src){
+      placeNewClones(src);
+    } else {
+      placeNewClones(null);
+    }
   } else {
-    placeClones(null); // use JSON serialization for non-groups (images)
+    placeNewClones(null);
   }
 }
 
