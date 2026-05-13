@@ -481,7 +481,13 @@ function attachObjListeners(o){
   });
   o.on('moving',   ()=>{ clampObjToSheet(o); preventOverlap(o); syncMmFromPx(o); drawAlignmentGuides(o); });
   o.on('scaling',  ()=>{ clampObjToSheet(o); syncMmFromPx(o); });
-  o.on('rotating', ()=>{ clampObjToSheet(o); syncMmFromPx(o); });
+  o.on('rotating', ()=>{
+    // Snap to nearest 90° (0° or 90° only — never 180°/270° to prevent upside-down)
+    const raw = ((o.angle % 360) + 360) % 360;
+    const snapped = raw < 45 || raw >= 315 ? 0 : (raw < 135 ? 90 : (raw < 225 ? 0 : 90));
+    if(Math.abs(o.angle - snapped) > 0.1) o.rotate(snapped);
+    clampObjToSheet(o); syncMmFromPx(o);
+  });
   o.set({
     cornerColor:'#1d9aaf', cornerStrokeColor:'#1d9aaf', borderColor:'#1d9aaf',
     cornerSize:10, transparentCorners:false, hasRotatingPoint:true,
@@ -1131,20 +1137,23 @@ async function pdfToSvg(arrayBuffer){
   const textFillColors=[]; // capture fill color at each showText call
 
   // Expand pdf.js 3.x batched constructPath operator
+  // Y-flip helper: converts PDF Y-up to SVG Y-down coordinates
+  const yF = (y) => H - y;
+
   function expandConstructPath(ops,coords){
     let ci=0, d='';
     for(let j=0;j<ops.length;j++){
       const sub=ops[j];
       switch(sub){
-        case OPS.moveTo: d+=`M${fmtN(coords[ci])} ${fmtN(coords[ci+1])} `; ci+=2; break;
-        case OPS.lineTo: d+=`L${fmtN(coords[ci])} ${fmtN(coords[ci+1])} `; ci+=2; break;
-        case OPS.curveTo: d+=`C${fmtN(coords[ci])} ${fmtN(coords[ci+1])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} ${fmtN(coords[ci+4])} ${fmtN(coords[ci+5])} `; ci+=6; break;
-        case OPS.curveTo2: d+=`S${fmtN(coords[ci])} ${fmtN(coords[ci+1])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} `; ci+=4; break;
-        case OPS.curveTo3: d+=`C${fmtN(coords[ci])} ${fmtN(coords[ci+1])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} ${fmtN(coords[ci+2])} ${fmtN(coords[ci+3])} `; ci+=4; break;
+        case OPS.moveTo: d+=`M${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} `; ci+=2; break;
+        case OPS.lineTo: d+=`L${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} `; ci+=2; break;
+        case OPS.curveTo: d+=`C${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} ${fmtN(coords[ci+4])} ${fmtN(yF(coords[ci+5]))} `; ci+=6; break;
+        case OPS.curveTo2: d+=`S${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} `; ci+=4; break;
+        case OPS.curveTo3: d+=`C${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} `; ci+=4; break;
         case OPS.closePath: d+='Z '; break;
         case OPS.rectangle: {
           const rx=coords[ci],ry=coords[ci+1],rw=coords[ci+2],rh=coords[ci+3];
-          d+=`M${fmtN(rx)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry+rh)} L${fmtN(rx)} ${fmtN(ry+rh)} Z `;
+          d+=`M${fmtN(rx)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry+rh))} L${fmtN(rx)} ${fmtN(yF(ry+rh))} Z `;
           ci+=4; break;
         }
         default: break;
@@ -1162,20 +1171,24 @@ async function pdfToSvg(arrayBuffer){
       case OPS.restore: popGState(); elements.push('</g>'); break;
       case OPS.transform: {
         const[a,b,c,d,e,f]=args;
-        elements.push(`<g transform="matrix(${fmtN(a)},${fmtN(b)},${fmtN(c)},${fmtN(d)},${fmtN(e)},${fmtN(f)})">`);
+        // Convert PDF matrix to SVG coordinates: M_svg = F * M_pdf * F^-1
+        // where F = translate(0,H) scale(1,-1)
+        const a2=a, b2=-b, c2=-c, d2=d;
+        const e2=c*H+e, f2=-d*H+H-f;
+        elements.push(`<g transform="matrix(${fmtN(a2)},${fmtN(b2)},${fmtN(c2)},${fmtN(d2)},${fmtN(e2)},${fmtN(f2)})">`);
         if(transformCountStack.length) transformCountStack[transformCountStack.length-1]++;
         break;
       }
       case OPS.constructPath: pathD+=expandConstructPath(args[0],args[1]); break;
-      case OPS.moveTo: pathD+=`M${fmtN(args[0])} ${fmtN(args[1])} `; break;
-      case OPS.lineTo: pathD+=`L${fmtN(args[0])} ${fmtN(args[1])} `; break;
-      case OPS.curveTo: pathD+=`C${fmtN(args[0])} ${fmtN(args[1])} ${fmtN(args[2])} ${fmtN(args[3])} ${fmtN(args[4])} ${fmtN(args[5])} `; break;
-      case OPS.curveTo2: pathD+=`S${fmtN(args[0])} ${fmtN(args[1])} ${fmtN(args[2])} ${fmtN(args[3])} `; break;
-      case OPS.curveTo3: pathD+=`C${fmtN(args[0])} ${fmtN(args[1])} ${fmtN(args[2])} ${fmtN(args[3])} ${fmtN(args[2])} ${fmtN(args[3])} `; break;
+      case OPS.moveTo: pathD+=`M${fmtN(args[0])} ${fmtN(yF(args[1]))} `; break;
+      case OPS.lineTo: pathD+=`L${fmtN(args[0])} ${fmtN(yF(args[1]))} `; break;
+      case OPS.curveTo: pathD+=`C${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} ${fmtN(args[4])} ${fmtN(yF(args[5]))} `; break;
+      case OPS.curveTo2: pathD+=`S${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} `; break;
+      case OPS.curveTo3: pathD+=`C${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} `; break;
       case OPS.closePath: pathD+='Z '; break;
       case OPS.rectangle: {
         const[rx,ry,rw,rh]=args;
-        pathD+=`M${fmtN(rx)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry)} L${fmtN(rx+rw)} ${fmtN(ry+rh)} L${fmtN(rx)} ${fmtN(ry+rh)} Z `;
+        pathD+=`M${fmtN(rx)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry+rh))} L${fmtN(rx)} ${fmtN(yF(ry+rh))} Z `;
         break;
       }
       // Colors
@@ -1271,12 +1284,10 @@ async function pdfToSvg(arrayBuffer){
       textIdx++;
       // Approximate font-weight from font name
       const fontWeight = (item.fontName && /bold/i.test(item.fontName)) ? ' font-weight="700"' : '';
-      // In the PDF coord system (Y-up), ty is the baseline Y from bottom.
-      // Our SVG wrapper has transform="translate(0,H) scale(1,-1)" which flips Y.
-      // SVG text inside that wrapper renders upside-down, so un-flip per element.
+      // Convert text position from PDF (Y-up) to SVG (Y-down) coordinates
       const escaped = item.str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       textElements.push(
-        `<text transform="translate(${fmtN(tx)},${fmtN(ty)}) scale(1,-1)"` +
+        `<text transform="translate(${fmtN(tx)},${fmtN(yF(ty))})"` +
         ` font-size="${fmtN(fontSize)}"${fontWeight}` +
         ` fill="${color}"` +
         ` font-family="sans-serif"` +
@@ -1287,13 +1298,12 @@ async function pdfToSvg(arrayBuffer){
     console.warn('[GSB] pdfToSvg: text extraction failed:', e);
   }
 
-  // Build SVG with Y-axis flip
+  // Build SVG — coordinates are already converted from PDF (Y-up) to SVG (Y-down)
   const svgText=[
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmtN(W)} ${fmtN(H)}" width="${fmtN(W)}" height="${fmtN(H)}">`,
-    `<g transform="translate(0,${fmtN(H)}) scale(1,-1)">`,
     ...elements,
     ...textElements,
-    '</g>','</svg>'
+    '</svg>'
   ].join('\n');
 
   console.log(`[GSB] pdfToSvg: ${pathCount} paths, ${textElements.length} text items, hasGradients=${hasGradients}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
@@ -1844,17 +1854,62 @@ function packSpotsSmart(mmW, mmH, count, existingBoxes){
 
   const placed = []; // {x1,y1,x2,y2} of placed logos (with gap)
 
+  // Spatial grid for fast overlap detection — avoids O(n) scan per check
+  const GRID_CELL = 50; // mm per grid cell
+  const gridCols = Math.ceil(sheetW / GRID_CELL) + 1;
+  const gridRows = Math.ceil(sheetH / GRID_CELL) + 1;
+  const obstacleGrid = new Map();
+  const placedGrid = new Map();
+
+  const _gridKey = (col, row) => col * 10000 + row;
+  const _insertIntoGrid = (grid, box) => {
+    const c0 = Math.max(0, Math.floor(box.x1 / GRID_CELL));
+    const c1 = Math.min(gridCols - 1, Math.floor(box.x2 / GRID_CELL));
+    const r0 = Math.max(0, Math.floor(box.y1 / GRID_CELL));
+    const r1 = Math.min(gridRows - 1, Math.floor(box.y2 / GRID_CELL));
+    for(let c = c0; c <= c1; c++){
+      for(let r = r0; r <= r1; r++){
+        const k = _gridKey(c, r);
+        let arr = grid.get(k);
+        if(!arr){ arr = []; grid.set(k, arr); }
+        arr.push(box);
+      }
+    }
+  };
+
+  // Insert all obstacles into the spatial grid (expanded by gap)
+  for(const b of obstacles){
+    _insertIntoGrid(obstacleGrid, {
+      x1: b.x1 - gap, y1: b.y1 - gap,
+      x2: b.x2 + gap, y2: b.y2 + gap,
+      _orig: b,
+    });
+  }
+
   const overlaps = (x, y, w, h)=>{
     const bx1 = x, by1 = y, bx2 = x + w, by2 = y + h;
-    for(let i=0; i<obstacles.length; i++){
-      const b = obstacles[i];
-      // Check with gap spacing between obstacle and new logo
-      if(bx2 + gap > b.x1 && bx1 < b.x2 + gap &&
-         by2 + gap > b.y1 && by1 < b.y2 + gap) return true;
-    }
-    for(let i=0; i<placed.length; i++){
-      const b = placed[i];
-      if(bx2 > b.x1 && bx1 < b.x2 && by2 > b.y1 && by1 < b.y2) return true;
+    // Check obstacle grid
+    const c0 = Math.max(0, Math.floor(bx1 / GRID_CELL));
+    const c1 = Math.min(gridCols - 1, Math.floor(bx2 / GRID_CELL));
+    const r0 = Math.max(0, Math.floor(by1 / GRID_CELL));
+    const r1 = Math.min(gridRows - 1, Math.floor(by2 / GRID_CELL));
+    const checked = new Set();
+    for(let c = c0; c <= c1; c++){
+      for(let r = r0; r <= r1; r++){
+        const k = _gridKey(c, r);
+        const oArr = obstacleGrid.get(k);
+        if(oArr) for(const b of oArr){
+          if(checked.has(b)) continue;
+          checked.add(b);
+          if(bx2 > b.x1 && bx1 < b.x2 && by2 > b.y1 && by1 < b.y2) return true;
+        }
+        const pArr = placedGrid.get(k);
+        if(pArr) for(const b of pArr){
+          if(checked.has(b)) continue;
+          checked.add(b);
+          if(bx2 > b.x1 && bx1 < b.x2 && by2 > b.y1 && by1 < b.y2) return true;
+        }
+      }
     }
     return false;
   };
@@ -1878,6 +1933,12 @@ function packSpotsSmart(mmW, mmH, count, existingBoxes){
     return spots;
   };
 
+  const _addPlaced = (x, y, w, h) => {
+    const box = { x1: x - gap, y1: y - gap, x2: x + w + gap, y2: y + h + gap };
+    placed.push(box);
+    _insertIntoGrid(placedGrid, box);
+  };
+
   // bestLayout for empty-sheet baseline (fast grid, no obstacles).
   // We use this first for maximum density when no obstacles exist.
   const results = [];
@@ -1886,10 +1947,7 @@ function packSpotsSmart(mmW, mmH, count, existingBoxes){
     for(let i=0; i<layout.length && results.length < count; i++){
       const p = layout[i];
       results.push(p);
-      placed.push({
-        x1: p.x - gap, y1: p.y - gap,
-        x2: p.x + p.w + gap, y2: p.y + p.h + gap,
-      });
+      _addPlaced(p.x, p.y, p.w, p.h);
     }
     return results.slice(0, count);
   }
@@ -1938,28 +1996,24 @@ function packSpotsSmart(mmW, mmH, count, existingBoxes){
       // Double-check (placed array grew since scanRow ran)
       if(!overlaps(spot.x, spot.y, spot.w, spot.h)){
         results.push(spot);
-        placed.push({
-          x1: spot.x - gap, y1: spot.y - gap,
-          x2: spot.x + spot.w + gap, y2: spot.y + spot.h + gap,
-        });
+        _addPlaced(spot.x, spot.y, spot.w, spot.h);
       }
     }
   }
 
-  // Final sweep: try placing in any remaining gaps with 1mm precision.
-  // Uses both orientations in a single pass.
+  // Final sweep: try placing in any remaining gaps with 5mm step (was 1mm).
+  // Uses both orientations in a single pass. 5mm is a good balance between
+  // gap-filling precision and performance at high object counts.
   if(results.length < count){
+    const STEP = 5; // mm step for final sweep (was 1mm — too slow at 400+ items)
     const tryFill = (bw, bh, rotated)=>{
       if(bw > sheetW || bh > sheetH) return;
-      for(let y = 0; y + bh <= sheetH + 0.01 && results.length < count; y += 1){
-        for(let x = 0; x + bw <= sheetW + 0.01 && results.length < count; x += 1){
+      for(let y = 0; y + bh <= sheetH + 0.01 && results.length < count; y += STEP){
+        for(let x = 0; x + bw <= sheetW + 0.01 && results.length < count; x += STEP){
           if(!overlaps(x, y, bw, bh)){
             results.push({ x, y, w: bw, h: bh, rotated });
-            placed.push({
-              x1: x - gap, y1: y - gap,
-              x2: x + bw + gap, y2: y + bh + gap,
-            });
-            x += bw + gap - 1; // jump past placed logo
+            _addPlaced(x, y, bw, bh);
+            x += bw + gap - STEP; // jump past placed logo
           }
         }
       }
@@ -3502,7 +3556,7 @@ function actOnSelected(act){
     const objs = obj._objects || [];
     switch(act){
       case 'multi-rot':
-        objs.forEach(o => { o.rotate(((o.angle||0)+90)%360); syncMmFromPx(o); });
+        objs.forEach(o => { const cur = Math.round(((o.angle||0)%360+360)%360); o.rotate(cur===0?90:0); syncMmFromPx(o); });
         canvas.requestRenderAll();
         pushUndo();
         break;
@@ -3546,7 +3600,7 @@ function actOnSelected(act){
 
   // Single-select actions
   switch(act){
-    case 'rot90': obj.rotate(((obj.angle||0)+90)%360); canvas.requestRenderAll(); syncMmFromPx(obj); pushUndo(); break;
+    case 'rot90': { const cur = Math.round(((obj.angle||0)%360+360)%360); obj.rotate(cur===0?90:0); canvas.requestRenderAll(); syncMmFromPx(obj); pushUndo(); break; }
     case 'dup':   duplicate(obj); break;
     case 'del':   removeObj(obj); break;
     case 'canvas-align-left':
@@ -3901,8 +3955,25 @@ function buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, baseAngle, new
 /* changeGroupCount — global count editor for single canvas.
    Strategy: INCREMENTAL — only add new copies or remove excess.
    Existing copies keep their position so nothing "jumps." */
+let _changeGroupBusy = false;
+let _changeGroupQueued = null; // {originalId, targetCount} for queued call
 function changeGroupCount(originalId, targetCount){
   targetCount = Math.max(0, targetCount);
+
+  // Mutex: if already placing copies, queue the latest request
+  if(_changeGroupBusy){
+    _changeGroupQueued = { originalId, targetCount };
+    return;
+  }
+  _changeGroupBusy = true;
+  const _releaseMutex = () => {
+    _changeGroupBusy = false;
+    if(_changeGroupQueued){
+      const q = _changeGroupQueued;
+      _changeGroupQueued = null;
+      setTimeout(() => changeGroupCount(q.originalId, q.targetCount), 0);
+    }
+  };
 
   // Gather live copies sorted top→bottom, left→right (stable removal order)
   const liveCopies = canvas.getObjects()
@@ -3937,13 +4008,14 @@ function changeGroupCount(originalId, targetCount){
     renderSelectedPanel();
     updateInfoBar();
     updateSummary();
+    _releaseMutex();
     return;
   }
 
   // ── No live copies: re-create from registry ──
   if(currentCount === 0){
     const reg = _logoRegistry.get(originalId);
-    if(!reg) return;
+    if(!reg){ _releaseMutex(); return; }
     fabric.util.enlivenObjects([reg.json], (objs)=>{
       if(!objs.length) return;
       const obj = objs[0];
@@ -3966,19 +4038,21 @@ function changeGroupCount(originalId, targetCount){
       canvas.requestRenderAll();
       autoExtendIfNeeded();
       if(targetCount > 1){
+        _releaseMutex();
         changeGroupCount(originalId, targetCount);
       } else {
         renderItemList();
         renderSelectedPanel();
         updateInfoBar();
         updateSummary();
+        _releaseMutex();
       }
     });
     return;
   }
 
   // ── No change ──
-  if(targetCount === currentCount) return;
+  if(targetCount === currentCount){ _releaseMutex(); return; }
 
   // ── DECREASE: remove excess copies from end of sorted list ──
   if(targetCount < currentCount){
@@ -3993,6 +4067,7 @@ function changeGroupCount(originalId, targetCount){
     updateInfoBar();
     updateSummary();
     pushUndo();
+    _releaseMutex();
     return;
   }
 
@@ -4026,6 +4101,7 @@ function changeGroupCount(originalId, targetCount){
   const rotatedFits = mmH <= state.sheet.w && mmW <= state.sheet.h;
   if(!nativeFits && !rotatedFits){
     toast(t('sizeTooLarge'), 'error');
+    _releaseMutex();
     return;
   }
 
@@ -4042,15 +4118,18 @@ function changeGroupCount(originalId, targetCount){
   }
   if(slots.length === 0){
     toast(t('sizeTooLarge'), 'error');
+    _releaseMutex();
     return;
   }
 
   // --- Performance: rasterize SVG groups to PNG for fast cloning ---
   const isGroup = liveSample.type === 'group';
   const rasterScale = 2;
-  const rasterW = Math.round(natW * (liveSample.scaleX || 1) * rasterScale);
-  const rasterH = Math.round(natH * (liveSample.scaleY || 1) * rasterScale);
+  const rasterW = Math.round(natW * Math.abs(liveSample.scaleX || 1) * rasterScale);
+  const rasterH = Math.round(natH * Math.abs(liveSample.scaleY || 1) * rasterScale);
 
+  // Show percentage counter for large batches — use setTimeout to let browser render
+  const _startCloning = () => {
   const placeNewClones = (imgDataUrl) => {
     const addClone = (slot) => {
       return new Promise(resolve => {
@@ -4074,6 +4153,7 @@ function changeGroupCount(originalId, targetCount){
             img._mmLeft = slot.x; img._mmTop = slot.y;
             img.originX = 'center'; img.originY = 'center';
             img.angle = slot.rotated ? 90 : 0;
+            img.flipX = false; img.flipY = false;
             img.scaleX = (img._mmW * displayPxPerMm) / img.width;
             img.scaleY = (img._mmH * displayPxPerMm) / img.height;
             img.left = (slot.x + slot.w/2) * displayPxPerMm;
@@ -4105,23 +4185,41 @@ function changeGroupCount(originalId, targetCount){
       });
     };
 
-    const BATCH = 8;
+    const BATCH = 32;
     let idx = 0;
     const nextBatch = () => {
       const batch = slots.slice(idx, idx + BATCH);
       idx += BATCH;
+      // Update loader progress as percentage
+      if(delta > 10){
+        const done = Math.min(idx, slots.length);
+        showCanvasLoader(Math.round((done / slots.length) * 90), "Logo's plaatsen");
+      }
       Promise.all(batch.map(slot => addClone(slot))).then(() => {
         if(idx < slots.length){
           setTimeout(nextBatch, 0);
         } else {
+          if(delta > 10) showCanvasLoader(95, 'Indeling optimaliseren');
           canvas.requestRenderAll();
           autoExtendIfNeeded();
           shrinkDTF();
-          renderItemList();
-          renderSelectedPanel();
-          updateInfoBar();
-          updateSummary();
-          pushUndo();
+          // Auto-optimize layout when adding many copies at once
+          if(delta > 10){
+            // Use setTimeout to let the loader text update render before repack blocks
+            setTimeout(() => {
+              repackAll();
+              hideCanvasLoader();
+              _releaseMutex();
+            }, 50);
+          } else {
+            renderItemList();
+            renderSelectedPanel();
+            updateInfoBar();
+            updateSummary();
+            pushUndo();
+            hideCanvasLoader();
+            _releaseMutex();
+          }
           if(slots.length < delta){
             toast(t('sizeTooLarge'), 'warn');
           }
@@ -4132,29 +4230,20 @@ function changeGroupCount(originalId, targetCount){
   };
 
   if(isGroup){
-    // Rasterize the SVG group to PNG for fast image clones
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = rasterW;
-    tmpCanvas.height = rasterH;
-    const tmpFab = new fabric.StaticCanvas(tmpCanvas, {
-      width: rasterW, height: rasterH,
-      backgroundColor: null, enableRetinaScaling: false,
+    // Use liveSample.toDataURL() — renders the group exactly as displayed on canvas
+    // This guarantees no mirroring/flipping issues from SVG transforms
+    const savedAngle = liveSample.angle;
+    const savedFlipX = liveSample.flipX;
+    const savedFlipY = liveSample.flipY;
+    liveSample.set({ angle: 0, flipX: false, flipY: false });
+    liveSample.setCoords();
+    const dataUrl = liveSample.toDataURL({
+      format: 'png',
+      multiplier: rasterScale,
     });
-    liveSample.clone(clone => {
-      clone.set({
-        originX: 'center', originY: 'center',
-        left: rasterW / 2, top: rasterH / 2,
-        scaleX: rasterW / clone.width,
-        scaleY: rasterH / clone.height,
-        angle: 0,
-      });
-      clone.setCoords();
-      tmpFab.add(clone);
-      tmpFab.renderAll();
-      const dataUrl = tmpCanvas.toDataURL('image/png');
-      tmpFab.dispose();
-      placeNewClones(dataUrl);
-    }, FABRIC_EXTRA_PROPS);
+    liveSample.set({ angle: savedAngle, flipX: savedFlipX, flipY: savedFlipY });
+    liveSample.setCoords();
+    placeNewClones(dataUrl);
   } else if(liveSample.type === 'image'){
     // Already a rasterized image — reuse its element src for fast cloning
     const el = liveSample.getElement();
@@ -4166,6 +4255,14 @@ function changeGroupCount(originalId, targetCount){
     }
   } else {
     placeNewClones(null);
+  }
+  }; // end _startCloning
+
+  if(delta > 10){
+    showCanvasLoader(0, "Logo's plaatsen");
+    setTimeout(_startCloning, 30); // let browser render the 0% before heavy work
+  } else {
+    _startCloning();
   }
 }
 
@@ -4545,28 +4642,19 @@ function tileSheet(){
   };
 
   if(isGroup && layout.length > 1){
-    // Rasterize SVG group for fast tiling
-    const tmpEl = document.createElement('canvas');
-    tmpEl.width = rasterW; tmpEl.height = rasterH;
-    const tmpFab = new fabric.StaticCanvas(tmpEl, {
-      width: rasterW, height: rasterH,
-      backgroundColor: null, enableRetinaScaling: false,
+    // Use sample.toDataURL() — renders exactly as displayed, no mirroring issues
+    const savedAngle = sample.angle;
+    const savedFlipX = sample.flipX;
+    const savedFlipY = sample.flipY;
+    sample.set({ angle: 0, flipX: false, flipY: false });
+    sample.setCoords();
+    const dataUrl = sample.toDataURL({
+      format: 'png',
+      multiplier: rasterScale,
     });
-    sample.clone(clone => {
-      clone.set({
-        originX:'center', originY:'center',
-        left: rasterW/2, top: rasterH/2,
-        scaleX: rasterW / clone.width,
-        scaleY: rasterH / clone.height,
-        angle: 0,
-      });
-      clone.setCoords();
-      tmpFab.add(clone);
-      tmpFab.renderAll();
-      const dataUrl = tmpEl.toDataURL('image/png');
-      tmpFab.dispose();
-      addTilesFromImage(dataUrl);
-    }, FABRIC_EXTRA_PROPS);
+    sample.set({ angle: savedAngle, flipX: savedFlipX, flipY: savedFlipY });
+    sample.setCoords();
+    addTilesFromImage(dataUrl);
   } else if(layout.length > 1){
     // Non-group: use JSON serialization (fast for images)
     const sampleJson = sample.toJSON(FABRIC_EXTRA_PROPS);
@@ -5379,6 +5467,23 @@ function updatePdfProgress(current, total){
    TOAST + MODAL
    ========================================================= */
 const toastWrap = document.getElementById('toastWrap');
+/* =========================================================
+   CANVAS LOADING OVERLAY
+   ========================================================= */
+function showCanvasLoader(pct, label){
+  const el = document.getElementById('canvasPct');
+  if(!el) return;
+  const numEl = document.getElementById('canvasPctNum');
+  const lblEl = document.getElementById('canvasPctLabel');
+  if(numEl) numEl.textContent = (typeof pct === 'number' ? Math.round(pct) : 0) + '%';
+  if(lblEl && label) lblEl.textContent = label;
+  el.classList.add('active');
+}
+function hideCanvasLoader(){
+  const el = document.getElementById('canvasPct');
+  if(el) el.classList.remove('active');
+}
+
 function toast(msg, type='info', ms=3000, toastId, dismissLabel){
   const el = document.createElement('div');
   el.className = 'toast ' + type + (ms === 0 ? ' sticky' : '');
@@ -5471,10 +5576,12 @@ function repackAll(){
      the placement that adds the least height. This fills side-gaps naturally
      because smaller items slide into lower parts of the skyline. */
 
-  // Reset all rotations to 0° before repacking — prevents accumulation
+  // Reset all rotations/flips to 0° before repacking — prevents accumulation
   // (e.g. 90°+90°=180° upside down) and ensures the packer only applies 0° or 90°.
   objs.forEach(o => {
     o.rotate(0);
+    o.flipX = false;
+    o.flipY = false;
     // Recalculate scales so visual size matches _mmW × _mmH at angle=0
     o.scaleX = (o._mmW * displayPxPerMm) / o.width;
     o.scaleY = (o._mmH * displayPxPerMm) / o.height;
@@ -5647,16 +5754,17 @@ function repackAll(){
     item.placement = bestPlacement;
   });
 
-  // Apply placements to canvas objects
+  // Apply placements to canvas objects — preserve exact _mmW/_mmH to prevent drift
   placements.forEach((p, idx) => {
     const item = items.find(it => it.placement === p);
     if(!item) return;
     const o = item.obj;
 
+    // Save original logical dimensions before any transforms
+    const savedMmW = item.origW;
+    const savedMmH = item.origH;
+
     // Set absolute rotation: 0° (normal) or 90° (rotated).
-    // Angles were reset to 0° above, so this is always a clean set.
-    // Scales are already correct for _mmW × _mmH from the reset step;
-    // fabric swaps visual width↔height automatically at 90°.
     o.rotate(p.rotated ? 90 : 0);
     o.setCoords();
 
@@ -5666,8 +5774,11 @@ function repackAll(){
     o.top  += (p.y * displayPxPerMm) - br.top;
     o.setCoords();
 
-    // Sync mm values from the actual canvas position
-    syncMmFromPx(o);
+    // Set mm values directly — don't use syncMmFromPx to avoid bounding-rect drift
+    o._mmLeft = p.x;
+    o._mmTop  = p.y;
+    o._mmW    = savedMmW;
+    o._mmH    = savedMmH;
   });
 
   // Shrink DTF roll to fit content tightly
@@ -5743,7 +5854,7 @@ document.getElementById('bgPicker').addEventListener('click', e=>{
   state.sheetBg = bg;
   [...e.currentTarget.children].forEach(el=>el.classList.toggle('active', el.dataset.bg===bg));
   const shadow = document.getElementById('sheetShadow');
-  shadow.classList.remove('bg-white','bg-gray','bg-checker');
+  shadow.classList.remove('bg-white','bg-gray','bg-black','bg-checker');
   shadow.classList.add('bg-'+bg);
 });
 
@@ -5776,8 +5887,17 @@ if(_optBtn) _optBtn.onclick = ()=>{
   const objs = canvas.getObjects().filter(o=>o._mmW);
   if(objs.length < 2) return;
   pushUndo();
-  repackAll();
-  toast(t('optimizeDone'), 'success');
+  if(objs.length > 20){
+    showCanvasLoader(0, 'Indeling optimaliseren');
+    setTimeout(() => {
+      repackAll();
+      hideCanvasLoader();
+      toast(t('optimizeDone'), 'success');
+    }, 50);
+  } else {
+    repackAll();
+    toast(t('optimizeDone'), 'success');
+  }
 };
 
 /* Preview functionality removed */
