@@ -161,6 +161,15 @@ window.addEventListener('load', ()=>{
   .gap-step-btn:active{background:#d1f0f5}
   .gap-stepper-wrap input{flex:1;min-width:0;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-size:.9rem;font-weight:700;padding:8px 4px;font-family:'Inter',sans-serif;outline:none;-moz-appearance:textfield}
   .gap-stepper-wrap input::-webkit-outer-spin-button,.gap-stepper-wrap input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .manual-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:4px 0}
+  .manual-toggle input{display:none}
+  .manual-toggle-switch{position:relative;width:38px;height:22px;background:#d1d5db;border-radius:11px;transition:background .2s;flex-shrink:0}
+  .manual-toggle-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  .manual-toggle input:checked + .manual-toggle-switch{background:var(--primary)}
+  .manual-toggle input:checked + .manual-toggle-switch::after{transform:translateX(16px)}
+  .manual-toggle-label{font-size:.85rem;font-weight:600;color:var(--text)}
+  .canvas-manual-badge{display:none;position:absolute;top:8px;right:8px;z-index:90;background:rgba(245,158,11,.9);color:#fff;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:6px;letter-spacing:.5px;text-transform:uppercase;pointer-events:none}
+  .canvas-manual-badge.active{display:block}
   .gap-unit{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 16px;white-space:nowrap;flex-shrink:0}
 
 
@@ -415,7 +424,7 @@ window.addEventListener('load', ()=>{
 
   <header>
     <div class="header-brand">
-      <img src="./logo-wit.svg" alt="Transferpersshop">
+      <a href="https://www.transferpersshop.nl" target="_blank" rel="noopener" style="display:inline-flex"><img src="./logo-wit.svg" alt="Transferpersshop"></a>
     </div>
     <div class="header-center">
       <h1 data-i18n="appTitle">Gang Sheet Builder</h1>
@@ -476,6 +485,16 @@ window.addEventListener('load', ()=>{
         </div>
       </div>
 
+      <div class="section" id="manualModeSection">
+        <div class="section-head"><span class="num">6</span><h3 data-i18n="manualModeStep">Indeling modus</h3></div>
+        <label class="manual-toggle" for="manualModeToggle">
+          <input type="checkbox" id="manualModeToggle">
+          <span class="manual-toggle-switch"></span>
+          <span class="manual-toggle-label" data-i18n="manualModeLabel">Handmatige indeling</span>
+        </label>
+        <p class="help" data-i18n="manualModeHelp">Schakel automatische indeling uit. Logo's kunnen vrij gesleept, overlapt en 360° gedraaid worden.</p>
+      </div>
+
       <!-- Project save/load: planned for future release -->
 
 
@@ -505,6 +524,7 @@ window.addEventListener('load', ()=>{
       </div>
       <div class="canvas-wrap" id="canvasWrap">
         <div class="canvas-pct" id="canvasPct"><span class="canvas-pct-label" id="canvasPctLabel">Logo's plaatsen</span><span class="canvas-pct-num" id="canvasPctNum">0%</span></div>
+        <div class="canvas-manual-badge" id="manualBadge">Handmatige modus</div>
         <div class="canvas-ruler-col">
           <div class="canvas-hruler-row">
             <div class="canvas-hruler-corner"></div>
@@ -634,7 +654,7 @@ window.addEventListener('load', ()=>{
         <tr><td style="padding:3px 8px 3px 0;color:var(--muted)">0</td><td style="padding:3px 0" data-i18n="zoomFit">Passend</td></tr>
       </table>
     </div>
-    <p class="version-tag">v1.4.1 · 13-05-2026</p>
+    <p class="version-tag">v1.5.0 · 18-05-2026</p>
   </div>
 </div>
 

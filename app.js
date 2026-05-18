@@ -76,6 +76,13 @@ const I18N = {
     sheetLabel:'Vel', addSheet:'+ Nieuw vel',
     sizeTooLarge:'Logo te groot om te tilen op dit vel',
     overlapWarn:"Logo's mogen niet overlappen. Positie is teruggezet.",
+    manualModeStep:'Indeling modus',
+    manualModeLabel:'Handmatige indeling',
+    manualModeHelp:'Schakel automatische indeling uit. Logo\'s kunnen vrij gesleept, overlapt en 360° gedraaid worden.',
+    manualModeOn:'Handmatige indeling ingeschakeld',
+    manualModeOff:'Automatische indeling hersteld',
+    manualModeConfirm:'Terug naar automatische indeling? Dit optimaliseert de indeling en overschrijft je handmatige layout.',
+    manualModeOptimizeWarn:'Indeling optimaliseren schakelt handmatige modus uit.',
     smallDetailWarn:'Let op: dit logo bevat details kleiner dan 0.4 mm bij deze grootte. Zeer fijne details kunnen verloren gaan in de print.',
     embeddedRasterWarn:'Dit vectorbestand bevat een ingesloten afbeelding (raster). De printkwaliteit hangt af van de resolutie van die afbeelding.',
     embeddedRasterHint:'Dit vectorbestand bevat een ingesloten afbeelding. De DPI is gebaseerd op die afbeelding, niet op het vectorbestand zelf.',
@@ -140,6 +147,8 @@ const I18N = {
     tourStepGapBody:'Stel de afstand tussen logo\'s in. Deze tussenruimte wordt overal toegepast: bij kopiëren, dupliceren en "Vel vullen".',
     tourStepListTitle:"Geüploade logo's",
     tourStepListBody:'Overzicht van al je geüploade logo\'s met het totale aantal kopieën over alle vellen. Gebruik de +/− knoppen of typ een aantal om snel kopieën toe te voegen of te verwijderen.',
+    tourStepManualTitle:'Indeling modus',
+    tourStepManualBody:'Schakel hier over naar handmatige indeling. Logo\'s kunnen dan vrij gesleept, overlapt en 360° gedraaid worden. Handig als je zelf volledige controle over de layout wilt.',
     undoBtn:'Ongedaan maken', redoBtn:'Herhalen',
     projectSave:'Project opslaan', projectLoad:'Project laden',
     shortcutsBtn:'⌨ Sneltoetsen', shortcutsTitle:'Sneltoetsen',
@@ -217,6 +226,13 @@ const I18N = {
     sheetLabel:'Sheet', addSheet:'+ New sheet',
     sizeTooLarge:'Logo too large to tile on this sheet',
     overlapWarn:'Logos may not overlap. Position has been reverted.',
+    manualModeStep:'Layout mode',
+    manualModeLabel:'Manual layout',
+    manualModeHelp:'Disable automatic layout. Logos can be freely dragged, overlapped and rotated 360°.',
+    manualModeOn:'Manual layout enabled',
+    manualModeOff:'Automatic layout restored',
+    manualModeConfirm:'Switch back to automatic layout? This will optimize the layout and overwrite your manual arrangement.',
+    manualModeOptimizeWarn:'Optimizing layout will disable manual mode.',
     smallDetailWarn:'Warning: this logo contains details smaller than 0.4 mm at this size. Very fine details may be lost in print.',
     embeddedRasterWarn:'This vector file contains an embedded image (raster). Print quality depends on the resolution of that image.',
     embeddedRasterHint:'This vector file contains an embedded image. The DPI is based on that image, not the vector file itself.',
@@ -281,6 +297,8 @@ const I18N = {
     tourStepGapBody:'Set the distance between logos. This spacing is applied everywhere: when copying, duplicating, and "Fill sheet".',
     tourStepListTitle:'Uploaded logos',
     tourStepListBody:'Overview of all your uploaded logos with the total number of copies across all sheets. Use the +/− buttons or type a number to quickly add or remove copies.',
+    tourStepManualTitle:'Layout mode',
+    tourStepManualBody:'Switch to manual layout here. Logos can then be freely dragged, overlapped, and rotated 360°. Useful when you want full control over the layout.',
     undoBtn:'Undo', redoBtn:'Redo',
     projectSave:'Save project', projectLoad:'Load project',
     shortcutsBtn:'⌨ Shortcuts', shortcutsTitle:'Keyboard Shortcuts',
@@ -344,6 +362,7 @@ const state = {
   sheetBg: 'checker',
   zoom: 1,
   fillTemplate: null,
+  manualMode: false,  // true = free placement, no collision/snap/rotation restrictions
 };
 
 /* =========================================================
@@ -468,7 +487,8 @@ canvas.on('before:transform', () => {
 
 function attachObjListeners(o){
   o.on('modified', ()=>{
-    clampObjToSheet(o); preventOverlap(o); syncMmFromPx(o);
+    if(!state.manualMode){ clampObjToSheet(o); preventOverlap(o); }
+    syncMmFromPx(o);
     // Push the PRE-transform snapshot (state before drag/scale/rotate)
     if(_preTransformSnap && !_isLoadingState){
       undoRedoStack.undo.push(_preTransformSnap);
@@ -479,14 +499,21 @@ function attachObjListeners(o){
       updateUndoRedoButtons();
     }
   });
-  o.on('moving',   ()=>{ clampObjToSheet(o); preventOverlap(o); syncMmFromPx(o); drawAlignmentGuides(o); });
-  o.on('scaling',  ()=>{ clampObjToSheet(o); syncMmFromPx(o); });
+  o.on('moving', ()=>{
+    if(!state.manualMode){ clampObjToSheet(o); preventOverlap(o); }
+    syncMmFromPx(o);
+    drawAlignmentGuides(o);
+  });
+  o.on('scaling',  ()=>{ if(!state.manualMode) clampObjToSheet(o); syncMmFromPx(o); });
   o.on('rotating', ()=>{
-    // Snap to nearest 90° (0° or 90° only — never 180°/270° to prevent upside-down)
-    const raw = ((o.angle % 360) + 360) % 360;
-    const snapped = raw < 45 || raw >= 315 ? 0 : (raw < 135 ? 90 : (raw < 225 ? 0 : 90));
-    if(Math.abs(o.angle - snapped) > 0.1) o.rotate(snapped);
-    clampObjToSheet(o); syncMmFromPx(o);
+    if(!state.manualMode){
+      // Snap to nearest 90° (0° or 90° only — never 180°/270° to prevent upside-down)
+      const raw = ((o.angle % 360) + 360) % 360;
+      const snapped = raw < 45 || raw >= 315 ? 0 : (raw < 135 ? 90 : (raw < 225 ? 0 : 90));
+      if(Math.abs(o.angle - snapped) > 0.1) o.rotate(snapped);
+      clampObjToSheet(o);
+    }
+    syncMmFromPx(o);
   });
   o.set({
     cornerColor:'#1d9aaf', cornerStrokeColor:'#1d9aaf', borderColor:'#1d9aaf',
@@ -598,6 +625,7 @@ function clampObjToSheet(obj){
    Uses axis-aligned bounding rects for speed. Finds the smallest push
    direction (left, right, up, down) to resolve each collision. */
 function preventOverlap(moving){
+  if(state.manualMode) return;
   if(!moving || !moving.setCoords) return;
   const gapPx = (state.gapMm || 0) * displayPxPerMm;
   const objs = canvas.getObjects();
@@ -2254,9 +2282,25 @@ function extractSvgColors(group){
    fill, stroke, and stop-color attributes/styles. Returns updated SVG string.
    Used by recolorRaster and propagateRecolorToSiblings to keep _svgSource
    in sync for correct PDF export. */
-function recolorSvgSourceString(svgStr, oldHex, newHex){
+// Color distance helper: Euclidean RGB distance between two hex colors
+function _hexColorDist(hex1, hex2){
+  const a = hexToRgb(hex1), b = hexToRgb(hex2);
+  const dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+  return Math.sqrt(dr*dr + dg*dg + db*db);
+}
+
+// Match helper: returns true if hex matches target exactly OR within tolerance
+function _hexMatches(hexVal, targetHex, tolerance){
+  if(!hexVal) return false;
+  if(hexVal === targetHex) return true;
+  if(tolerance > 0) return _hexColorDist(hexVal, targetHex) <= tolerance;
+  return false;
+}
+
+function recolorSvgSourceString(svgStr, oldHex, newHex, tolerance){
   if(!svgStr) return svgStr;
   const old = oldHex.toLowerCase();
+  const tol = tolerance || 0;
   const normHex = (v)=>{
     if(!v || typeof v !== 'string') return null;
     if(v.startsWith('#')){
@@ -2274,7 +2318,7 @@ function recolorSvgSourceString(svgStr, oldHex, newHex){
     doc.querySelectorAll('*').forEach(el=>{
       ['fill','stroke'].forEach(attr=>{
         const val = el.getAttribute(attr);
-        if(val && !val.startsWith('url') && normHex(val) === old){
+        if(val && !val.startsWith('url') && _hexMatches(normHex(val), old, tol)){
           el.setAttribute(attr, newHex);
         }
       });
@@ -2283,7 +2327,7 @@ function recolorSvgSourceString(svgStr, oldHex, newHex){
         let changed = false;
         const newStyle = style.replace(/(fill|stroke)\s*:\s*([^;]+)/gi, (match, prop, val)=>{
           const trimmed = val.trim();
-          if(!trimmed.startsWith('url') && normHex(trimmed) === old){
+          if(!trimmed.startsWith('url') && _hexMatches(normHex(trimmed), old, tol)){
             changed = true; return prop + ':' + newHex;
           }
           return match;
@@ -2293,11 +2337,11 @@ function recolorSvgSourceString(svgStr, oldHex, newHex){
     });
     doc.querySelectorAll('stop').forEach(stop=>{
       const sc = stop.getAttribute('stop-color');
-      if(sc && normHex(sc) === old) stop.setAttribute('stop-color', newHex);
+      if(sc && _hexMatches(normHex(sc), old, tol)) stop.setAttribute('stop-color', newHex);
       const style = stop.getAttribute('style');
       if(style){
         const newStyle = style.replace(/stop-color\s*:\s*([^;]+)/gi, (match, val)=>{
-          if(normHex(val.trim()) === old) return 'stop-color:' + newHex;
+          if(_hexMatches(normHex(val.trim()), old, tol)) return 'stop-color:' + newHex;
           return match;
         });
         if(newStyle !== style) stop.setAttribute('style', newStyle);
@@ -2310,9 +2354,10 @@ function recolorSvgSourceString(svgStr, oldHex, newHex){
   }
 }
 
-function recolorSvgPaths(group, oldHex, newHex){
+function recolorSvgPaths(group, oldHex, newHex, tolerance){
   if(!group || !group._objects) return;
   const old = oldHex.toLowerCase();
+  const tol = tolerance || 0;
 
   const normHex = (v)=>{
     if(!v || typeof v !== 'string') return null;
@@ -2332,7 +2377,7 @@ function recolorSvgPaths(group, oldHex, newHex){
     let changed = false;
     grad.colorStops.forEach(stop=>{
       const hex = normHex(stop.color);
-      if(hex === old){ stop.color = newHex; changed = true; }
+      if(_hexMatches(hex, old, tol)){ stop.color = newHex; changed = true; }
     });
     return changed;
   };
@@ -2350,7 +2395,7 @@ function recolorSvgPaths(group, oldHex, newHex){
         }
         // Direct color string
         const hex = normHex(v);
-        if(hex === old) o.set(prop, newHex);
+        if(_hexMatches(hex, old, tol)) o.set(prop, newHex);
       });
     });
   };
@@ -2369,7 +2414,7 @@ function recolorSvgPaths(group, oldHex, newHex){
         ['fill','stroke'].forEach(attr=>{
           const val = el.getAttribute(attr);
           // Skip gradient references like url(#id)
-          if(val && !val.startsWith('url') && normHex(val) === old){
+          if(val && !val.startsWith('url') && _hexMatches(normHex(val), old, tol)){
             el.setAttribute(attr, newHex);
           }
         });
@@ -2379,7 +2424,7 @@ function recolorSvgPaths(group, oldHex, newHex){
           let changed = false;
           const newStyle = style.replace(/(fill|stroke)\s*:\s*([^;]+)/gi, (match, prop, val)=>{
             const trimmed = val.trim();
-            if(!trimmed.startsWith('url') && normHex(trimmed) === old){
+            if(!trimmed.startsWith('url') && _hexMatches(normHex(trimmed), old, tol)){
               changed = true; return prop + ':' + newHex;
             }
             return match;
@@ -2392,12 +2437,12 @@ function recolorSvgPaths(group, oldHex, newHex){
       doc.querySelectorAll('stop').forEach(stop=>{
         // stop-color as attribute
         const sc = stop.getAttribute('stop-color');
-        if(sc && normHex(sc) === old) stop.setAttribute('stop-color', newHex);
+        if(sc && _hexMatches(normHex(sc), old, tol)) stop.setAttribute('stop-color', newHex);
         // stop-color in inline style
         const style = stop.getAttribute('style');
         if(style){
           const newStyle = style.replace(/stop-color\s*:\s*([^;]+)/gi, (match, val)=>{
-            if(normHex(val.trim()) === old) return 'stop-color:' + newHex;
+            if(_hexMatches(normHex(val.trim()), old, tol)) return 'stop-color:' + newHex;
             return match;
           });
           if(newStyle !== style) stop.setAttribute('style', newStyle);
@@ -2498,9 +2543,17 @@ function propagateRecolorToSiblings(primaryObj, oldHex, newHex){
       }, FABRIC_EXTRA_PROPS);
     }
   } else {
-    // All-raster copies: pixel-replace in-place without remove/add.
-    // Can't use recolorRaster() — it removes+adds objects, shows toasts,
-    // calls setActiveObject, and triggers renderItemList per sibling.
+    // Primary is raster (image type). Propagate to all siblings.
+    // CRITICAL: also update group-type siblings (original SVG group) so their
+    // _svgSource and Fabric paths stay in sync — otherwise PDF export uses stale colors.
+    // Use tolerance because raster colors may not exactly match SVG colors
+    // (rasterization merges similar colors, anti-aliasing shifts values).
+    const groupSibs = siblings.filter(s => s.type === 'group' && s._objects);
+    groupSibs.forEach(sib => {
+      recolorSvgPaths(sib, oldHex, newHex, RASTER_COLOR_TOLERANCE);
+    });
+
+    // Raster copies: pixel-replace in-place without remove/add.
     const oldRgb = hexToRgb(oldHex);
     const newRgb = hexToRgb(newHex);
     const tolSq = RASTER_COLOR_TOLERANCE * RASTER_COLOR_TOLERANCE;
@@ -2531,8 +2584,9 @@ function propagateRecolorToSiblings(primaryObj, oldHex, newHex){
         angle: sib.angle, originX: sib.originX, originY: sib.originY,
       };
       // Update _svgSource so PDF export reflects the color change
+      // Use tolerance: raster colors may not exactly match SVG source colors
       if(sib._svgSource){
-        sib._svgSource = recolorSvgSourceString(sib._svgSource, oldHex, newHex);
+        sib._svgSource = recolorSvgSourceString(sib._svgSource, oldHex, newHex, RASTER_COLOR_TOLERANCE);
         sib._recolored = true;
       }
 
@@ -2895,8 +2949,9 @@ function recolorRaster(obj, oldHex, newHex){
     if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
 
     // Update _svgSource with the new color so PDF export reflects the change
+    // Use tolerance: raster-extracted colors may not exactly match SVG source hex values
     if(obj._svgSource){
-      newImg._svgSource = recolorSvgSourceString(obj._svgSource, oldHex, newHex);
+      newImg._svgSource = recolorSvgSourceString(obj._svgSource, oldHex, newHex, RASTER_COLOR_TOLERANCE);
       newImg._recolored = true;
     }
 
@@ -3420,8 +3475,8 @@ function setSizeMm(dim, val){
     o.setCoords();
   });
 
-  // Auto-repack so copies fill the sheet optimally at new size
-  if(siblings.length > 1) repackAll();
+  // Auto-repack so copies fill the sheet optimally at new size (skip in manual mode)
+  if(siblings.length > 1 && !state.manualMode) repackAll();
 
   canvas.requestRenderAll();
   renderSelectedPanel();
@@ -4099,7 +4154,7 @@ function changeGroupCount(originalId, targetCount){
 
   const nativeFits  = mmW <= state.sheet.w && mmH <= state.sheet.h;
   const rotatedFits = mmH <= state.sheet.w && mmW <= state.sheet.h;
-  if(!nativeFits && !rotatedFits){
+  if(!nativeFits && !rotatedFits && !state.manualMode){
     toast(t('sizeTooLarge'), 'error');
     _releaseMutex();
     return;
@@ -4108,12 +4163,23 @@ function changeGroupCount(originalId, targetCount){
   // Find free spots for ONLY the delta new copies.
   // All existing canvas objects (including this group's copies) are automatic obstacles.
   let slots = packSpotsSmart(mmW, mmH, delta);
-  if(SHEET_FORMATS[state.sheetFormat]?.isDTF){
+  if(SHEET_FORMATS[state.sheetFormat]?.isDTF && !state.manualMode){
     let growTries = 0;
     while(slots.length < delta && state.sheet.h + 1000 <= MAX_LENGTH_MM && growTries < 10){
       growRoll(1000);
       slots = packSpotsSmart(mmW, mmH, delta);
       growTries++;
+    }
+  }
+  // In manual mode: if packer can't find spots, generate fallback positions
+  // (centered on sheet with small offsets so user can see & drag them)
+  if(state.manualMode && slots.length < delta){
+    const existing = slots.length;
+    const centerX = state.sheet.w / 2 - mmW / 2;
+    const centerY = state.sheet.h / 2 - mmH / 2;
+    for(let i = existing; i < delta; i++){
+      const offset = (i - existing) * 3; // 3mm cascade per logo so they're distinguishable
+      slots.push({ x: centerX + offset, y: centerY + offset, w: mmW, h: mmH, rotated: false });
     }
   }
   if(slots.length === 0){
@@ -4199,12 +4265,12 @@ function changeGroupCount(originalId, targetCount){
         if(idx < slots.length){
           setTimeout(nextBatch, 0);
         } else {
-          if(delta > 10) showCanvasLoader(95, 'Indeling optimaliseren');
+          if(delta > 10 && !state.manualMode) showCanvasLoader(95, 'Indeling optimaliseren');
           canvas.requestRenderAll();
           autoExtendIfNeeded();
           shrinkDTF();
-          // Auto-optimize layout when adding many copies at once
-          if(delta > 10){
+          // Auto-optimize layout when adding many copies at once (skip in manual mode)
+          if(delta > 10 && !state.manualMode){
             // Use setTimeout to let the loader text update render before repack blocks
             setTimeout(() => {
               repackAll();
@@ -4922,7 +4988,18 @@ async function runPdfExport(withBackground = false){
     const uniqueLogos = new Map(); // oid → { sample, tiles: [] }
     for(const o of liveObjs){
       const oid = o._originalId || o._id;
-      if(!uniqueLogos.has(oid)) uniqueLogos.set(oid, { sample: o, tiles: [] });
+      if(!uniqueLogos.has(oid)){
+        uniqueLogos.set(oid, { sample: o, tiles: [] });
+      } else {
+        // Prefer a sample with _recolored flag — its _svgSource reflects color changes.
+        // Also prefer group (SVG) over image for higher-fidelity vector export.
+        const cur = uniqueLogos.get(oid).sample;
+        if(!cur._recolored && o._recolored){
+          uniqueLogos.get(oid).sample = o;
+        } else if(!cur._recolored && !o._recolored && cur.type !== 'group' && o.type === 'group'){
+          uniqueLogos.get(oid).sample = o;
+        }
+      }
       uniqueLogos.get(oid).tiles.push({
         mmLeft: o._mmLeft, mmTop: o._mmTop,
         mmW: o._mmW, mmH: o._mmH,
@@ -5886,6 +5963,21 @@ const _optBtn = document.getElementById('optimizeBtn');
 if(_optBtn) _optBtn.onclick = ()=>{
   const objs = canvas.getObjects().filter(o=>o._mmW);
   if(objs.length < 2) return;
+  // If manual mode is active, ask before optimizing (switches to auto)
+  if(state.manualMode){
+    confirmModal(t('manualModeLabel'), t('manualModeOptimizeWarn') + ' ' + t('manualModeConfirm'), {okLabel: t('ok'), cancelLabel: t('cancel')}).then(ok => {
+      if(!ok) return;
+      state.manualMode = false;
+      _updateManualModeUI();
+      _doOptimize();
+    });
+    return;
+  }
+  _doOptimize();
+};
+function _doOptimize(){
+  const objs = canvas.getObjects().filter(o=>o._mmW);
+  if(objs.length < 2) return;
   pushUndo();
   if(objs.length > 20){
     showCanvasLoader(0, 'Indeling optimaliseren');
@@ -5899,6 +5991,49 @@ if(_optBtn) _optBtn.onclick = ()=>{
     toast(t('optimizeDone'), 'success');
   }
 };
+
+/* =========================================================
+   MANUAL MODE TOGGLE
+   ========================================================= */
+function _updateManualModeUI(){
+  const cb = document.getElementById('manualModeToggle');
+  const badge = document.getElementById('manualBadge');
+  if(cb) cb.checked = state.manualMode;
+  if(badge) badge.classList.toggle('active', state.manualMode);
+}
+
+const _manualToggle = document.getElementById('manualModeToggle');
+if(_manualToggle) _manualToggle.addEventListener('change', ()=>{
+  if(_manualToggle.checked){
+    // Switching TO manual mode
+    state.manualMode = true;
+    _updateManualModeUI();
+    toast(t('manualModeOn'), 'info', 2500);
+  } else {
+    // Switching BACK to automatic — styled confirm dialog
+    _manualToggle.checked = true; // keep checked until user confirms
+    confirmModal(t('manualModeLabel'), t('manualModeConfirm'), {okLabel: t('ok'), cancelLabel: t('cancel')}).then(ok => {
+      if(!ok){
+        return; // user cancelled, checkbox stays checked
+      }
+      state.manualMode = false;
+      _manualToggle.checked = false;
+      _updateManualModeUI();
+      pushUndo();
+      const objs = canvas.getObjects().filter(o=>o._mmW);
+      if(objs.length > 1){
+        showCanvasLoader(0, 'Indeling optimaliseren');
+        setTimeout(() => {
+          repackAll();
+          hideCanvasLoader();
+          toast(t('manualModeOff'), 'success', 2500);
+        }, 50);
+      } else {
+        toast(t('manualModeOff'), 'success', 2500);
+      }
+    });
+  }
+});
 
 /* Preview functionality removed */
 
@@ -6043,6 +6178,7 @@ const TOUR_STEPS = [
   { target:'.left .section:nth-child(3)', titleKey:'tourStep2Title', bodyKey:'tourStep2Body', pos:'right' },
   { target:'#gapSection',                 titleKey:'tourStepGapTitle', bodyKey:'tourStepGapBody', pos:'right' },
   { target:'#itemListSection',            titleKey:'tourStepListTitle', bodyKey:'tourStepListBody', pos:'right' },
+  { target:'#manualModeSection',          titleKey:'tourStepManualTitle', bodyKey:'tourStepManualBody', pos:'right' },
   { target:'.zoom-bar',                   titleKey:'tourStepZoomTitle', bodyKey:'tourStepZoomBody', pos:'below' },
   { target:'.canvas-bottom-bar',          titleKey:'tourStep6Title', bodyKey:'tourStep6Body', pos:'above' },
   { target:'#selectedSection',            titleKey:'tourStepSelTitle', bodyKey:'tourStepSelBody', pos:'left' },
