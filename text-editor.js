@@ -72,6 +72,8 @@ function open(){
   var m = document.getElementById('textEditorModal');
   if(!m) return;
   m.classList.add('open');
+  var lfb = document.getElementById('teLocalFontsBtn');
+  if(lfb) lfb.style.display = ('queryLocalFonts' in window) ? '' : 'none';
   // Donkere modus: zet de standaard tekstkleur op wit (preview-veld blijft licht)
   try{
     if(document.documentElement.getAttribute('data-theme') === 'dark'){
@@ -140,6 +142,7 @@ function _closePicker(){
 }
 function _onSearch(){
   var s = document.getElementById('teFontSearch');
+  if(_localMode){ _renderLocalFontList(s ? s.value : ''); return; }
   _renderFontList(s ? s.value : '');
 }
 function _renderFontList(filter){
@@ -260,6 +263,82 @@ function _needsSimBold(){ return _bold && !_loadedFonts[_currentName+'__700_'+(_
 function _needsSimItalic(){ return _italic && !_loadedFonts[_currentName+'__'+(_bold?'700':'400')+'_italic']; }
 
 /* ══════════ Custom font upload ══════════ */
+/* ══════════ Lokale fonts (Local Font Access API — Chrome/Edge) ══════════ */
+var _localFonts = null;   // Map: family → FontData (Regular-voorkeur)
+var _localMode = false;
+
+async function loadLocalFonts(){
+  if(!('queryLocalFonts' in window)){
+    if(window.toast) window.toast('Deze browser ondersteunt lokale fonts niet — gebruik Chrome of Edge, of upload een .ttf', 'warn', 5000);
+    return;
+  }
+  try{
+    _setStatus('Lokale fonts ophalen\u2026', '#6946c8');
+    var fonts = await window.queryLocalFonts();
+    var fams = new Map();
+    fonts.forEach(function(f){
+      var cur = fams.get(f.family);
+      var isReg = /^(regular|normal|book)$/i.test(f.style || '');
+      if(!cur || (isReg && !cur._gsbReg)){
+        try{ f._gsbReg = isReg; }catch(_){ }
+        fams.set(f.family, f);
+      }
+    });
+    if(!fams.size){ _setStatus('Geen lokale fonts gevonden', '#ef4444'); return; }
+    _localFonts = fams;
+    _localMode = true;
+    _setStatus(fams.size + ' fonts op deze computer', '#16a34a');
+    _openPicker();
+    _renderLocalFontList('');
+  }catch(e){
+    _setStatus('Geen toegang tot lokale fonts' + (e && e.message ? ': ' + e.message : ''), '#ef4444');
+  }
+}
+
+function _renderLocalFontList(q){
+  var list = document.getElementById('teFontList');
+  if(!list || !_localFonts) return;
+  var ql = (q || '').toLowerCase();
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:.7rem;color:#6b7280;border-bottom:1px solid #e5e7eb"><span>Fonts van deze computer</span>'
+    + '<button onclick="gsbTextEditor.exitLocalFonts();event.stopPropagation()" style="background:none;border:none;color:#1d9aaf;font-size:.7rem;font-weight:700;cursor:pointer">\u2190 Standaard fonts</button></div>';
+  var n = 0;
+  _localFonts.forEach(function(f, fam){
+    if(ql && fam.toLowerCase().indexOf(ql) < 0) return;
+    if(n >= 400) return;
+    n++;
+    var safe = fam.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    html += '<div class="te-fp-item" onclick="gsbTextEditor.pickLocalFont(\''+safe+'\')" style="font-family:\''+safe+'\', sans-serif">'+fam+'</div>';
+  });
+  list.innerHTML = html;
+}
+
+function exitLocalFonts(){
+  _localMode = false;
+  var s = document.getElementById('teFontSearch');
+  _renderFontList(s ? s.value : '');
+}
+
+async function pickLocalFont(family){
+  var fd = _localFonts && _localFonts.get(family);
+  if(!fd) return;
+  try{
+    _setStatus('Font laden\u2026', '#6946c8');
+    var blob = await fd.blob();
+    var buf = await blob.arrayBuffer();
+    var font = opentype.parse(buf);
+    _loadedFonts[family] = font;
+    _currentFont = font; _currentName = family; _currentId = '';
+    var lb = document.getElementById('teFontLabel');
+    if(lb){ lb.textContent = family; lb.style.fontFamily = "'" + family + "', sans-serif"; }
+    _setStatus('', '');
+    _closePicker();
+    _refreshAll();
+  }catch(e){
+    _setStatus('Kan "' + family + '" niet laden — probeer een ander font of upload de .ttf', '#ef4444');
+    console.warn('[TE] local font parse failed:', e);
+  }
+}
+
 async function onCustomFontUpload(){
   var inp = document.getElementById('teCustomFontInput');
   if(!inp||!inp.files||!inp.files[0]) return;
@@ -1358,6 +1437,7 @@ window.gsbTextEditor = {
   togglePicker:_togglePicker,
   onSearch:_onSearch,
   onCustomFontUpload:onCustomFontUpload,
+  loadLocalFonts:loadLocalFonts, pickLocalFont:pickLocalFont, exitLocalFonts:exitLocalFonts,
   onCsvImport:onCsvImport,
   toggleBold:toggleBold, toggleItalic:toggleItalic,
   toggleUnderline:toggleUnderline, toggleAllCaps:toggleAllCaps,

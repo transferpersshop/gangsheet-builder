@@ -934,7 +934,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.26.1 · 12-07-2026</p>
+    <p class="version-tag">v2.27.0 · 12-07-2026</p>
   </div>
 </div>
 
@@ -1099,6 +1099,10 @@ window.addEventListener('load', ()=>{
                   <div class="te-fp-list" id="teFontList"></div>
                 </div>
               </div>
+              <button class="te-upload-btn" id="teLocalFontsBtn" style="display:none" onclick="gsbTextEditor.loadLocalFonts()" title="Kies uit de fonts die op deze computer geïnstalleerd zijn (Chrome/Edge)">
+                <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                Deze computer
+              </button>
               <button class="te-upload-btn" onclick="document.getElementById('teCustomFontInput').click()">
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Upload eigen font
@@ -1397,10 +1401,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.26.1"></script>
-<script src="./login-ui.js?v=2.26.1"></script>
-<script src="./app.js?v=2.26.1"></script>
-<script src="./text-editor.js?v=2.26.1"></script>
-<script src="./logo-editor.js?v=2.26.1"></script>
+<script src="./auth.js?v=2.27.0"></script>
+<script src="./login-ui.js?v=2.27.0"></script>
+<script src="./app.js?v=2.27.0"></script>
+<script src="./text-editor.js?v=2.27.0"></script>
+<script src="./logo-editor.js?v=2.27.0"></script>
 </body>
 </html>
