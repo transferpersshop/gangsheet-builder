@@ -274,6 +274,7 @@ async function loadLocalFonts(){
   }
   try{
     _setStatus('Lokale fonts ophalen\u2026', '#6946c8');
+    if(window.toast) window.toast('Fonts van deze computer ophalen \u2014 geef eenmalig toestemming in de browser', 'info', 4000);
     var fonts = await window.queryLocalFonts();
     var fams = new Map();
     fonts.forEach(function(f){
@@ -288,10 +289,12 @@ async function loadLocalFonts(){
     _localFonts = fams;
     _localMode = true;
     _setStatus(fams.size + ' fonts op deze computer', '#16a34a');
+    if(window.toast) window.toast(fams.size + ' fonts van deze computer geladen', 'success', 3000);
     _openPicker();
     _renderLocalFontList('');
   }catch(e){
     _setStatus('Geen toegang tot lokale fonts' + (e && e.message ? ': ' + e.message : ''), '#ef4444');
+    if(window.toast) window.toast('Geen toegang tot lokale fonts \u2014 toestemming geweigerd of niet ondersteund', 'warn', 5000);
   }
 }
 
@@ -299,7 +302,7 @@ function _renderLocalFontList(q){
   var list = document.getElementById('teFontList');
   if(!list || !_localFonts) return;
   var ql = (q || '').toLowerCase();
-  var html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:.7rem;color:#6b7280;border-bottom:1px solid #e5e7eb"><span>Fonts van deze computer</span>'
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:.7rem;color:#6b7280;border-bottom:1px solid #e5e7eb"><span>Fonts van deze computer</span>'
     + '<button onclick="gsbTextEditor.exitLocalFonts();event.stopPropagation()" style="background:none;border:none;color:#1d9aaf;font-size:.7rem;font-weight:700;cursor:pointer">\u2190 Standaard fonts</button></div>';
   var n = 0;
   _localFonts.forEach(function(f, fam){
@@ -307,7 +310,7 @@ function _renderLocalFontList(q){
     if(n >= 400) return;
     n++;
     var safe = fam.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    html += '<div class="te-fp-item" onclick="gsbTextEditor.pickLocalFont(\''+safe+'\')" style="font-family:\''+safe+'\', sans-serif">'+fam+'</div>';
+    html += '<div class="te-fp-item" onclick="gsbTextEditor.pickLocalFont(\''+safe+'\')" style="font-family:\''+safe+'\', sans-serif;padding:8px 16px">'+fam+'</div>';
   });
   list.innerHTML = html;
 }
