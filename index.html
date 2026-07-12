@@ -1,0 +1,1406 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gang Sheet Builder — Transferpersshop</title>
+<link rel="icon" href="favicon.ico?v=2" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=2">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1d9aaf">
+
+<meta name="description" content="Gratis online gang sheet builder voor DTF transfers. Plaats je logo's, pas kleuren aan en download een print-ready 300 DPI PDF. Door Transferpersshop.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://www.transferpersshop.nl/builder">
+<!-- Open Graph -->
+<meta property="og:title" content="Gang Sheet Builder — Transferpersshop">
+<meta property="og:description" content="Gratis online gang sheet builder voor DTF transfers. Plaats je logo's, pas kleuren aan en download een print-ready 300 DPI PDF.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.transferpersshop.nl/builder">
+<meta property="og:site_name" content="Transferpersshop">
+<!-- Favicon — replace with your actual favicon path -->
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- svg2pdf.js: auto-registers pdf.svg() on jsPDF when loaded after jspdf.
+     Primary: jsDelivr (npm mirror). Fallback: unpkg (npm mirror). -->
+<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js"
+  onerror="console.warn('[GSB] svg2pdf.js primary CDN failed, trying fallback...');
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js';
+    s.onerror=function(){console.error('[GSB] svg2pdf.js FAILED to load from both CDNs')};
+    document.head.appendChild(s);"></script>
+<!-- pdf-lib: for embedding original AI/PDF pages as vector in export -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"
+  onerror="console.warn('[GSB] pdf-lib primary CDN failed, trying fallback...');
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    s.onerror=function(){console.error('[GSB] pdf-lib FAILED to load from both CDNs')};
+    document.head.appendChild(s);"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script>
+// Startup diagnostic — runs after all scripts have had time to load
+window.addEventListener('load', ()=>{
+  const j = typeof window.jspdf !== 'undefined';
+  // svg2pdf.js either patches jsPDF.API.svg or exposes a global
+  let svg2pdfMethod = 'NONE';
+  if(j){
+    const t = new window.jspdf.jsPDF();
+    if(typeof t.svg === 'function') svg2pdfMethod = 'pdf.svg()';
+  }
+  if(svg2pdfMethod === 'NONE' && typeof window.svg2pdf === 'function') svg2pdfMethod = 'window.svg2pdf()';
+  if(svg2pdfMethod === 'NONE' && typeof window.svg2pdf === 'object' && window.svg2pdf) svg2pdfMethod = 'window.svg2pdf (object)';
+  const pl = typeof window.PDFLib !== 'undefined' && typeof window.PDFLib.PDFDocument !== 'undefined';
+  console.log('%c[Gang Sheet Builder] Library check:', 'font-weight:bold');
+  console.log('  jsPDF:', j ? '✓' : '✗ MISSING');
+  console.log('  svg2pdf.js:', svg2pdfMethod !== 'NONE' ? '✓ via ' + svg2pdfMethod : '✗ MISSING — SVG→vector export disabled');
+  console.log('  pdf-lib:', pl ? '✓' : '✗ MISSING — AI/PDF→vector export disabled');
+  console.log('  pdf.js:', typeof window.pdfjsLib !== 'undefined' ? '✓' : '✗ MISSING');
+  // Store for use in export
+  window._gsbLibs = { svg2pdf: svg2pdfMethod, pdfLib: pl };
+});
+</script>
+<style>
+  :root{
+    --primary:#1d9aaf;--secondary:#65358c;--accent:#F39200;
+    --bg-light:#f0fdff;--bg-subtle:#f7f6ff;--text:#1a1a2e;--muted:#6b7280;
+    --border:#e5e7eb;--error:#dc2626;--success:#16a34a;--warn:#f59e0b;
+    --gradient:linear-gradient(135deg,var(--primary),var(--secondary));
+  }
+  /* ── Gestylede instant-tooltips ── */
+  .gsb-tip{position:relative;cursor:help;border-bottom:1px dotted var(--muted)}
+  .gsb-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:0;background:#1a1a2e;color:#fff;padding:8px 12px;border-radius:8px;font-size:.72rem;font-weight:500;line-height:1.45;width:230px;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .1s;z-index:6000;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+  .gsb-tip::before{content:'';position:absolute;bottom:calc(100% + 3px);left:14px;border:5px solid transparent;border-top-color:#1a1a2e;opacity:0;visibility:hidden;transition:opacity .1s;z-index:6000}
+  .gsb-tip:hover::after,.gsb-tip:hover::before{opacity:1;visibility:visible}
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--bg-light)}
+  h1,h2,h3,h4{font-family:'Nunito',system-ui,sans-serif;font-weight:800;margin:0}
+  button{font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer}
+  input,select{font-family:'Inter',sans-serif}
+
+  .app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+  header{background:#fff;border-bottom:1px solid var(--border);padding:0;display:grid;grid-template-columns:380px 1fr 380px;align-items:stretch;height:60px}
+  .header-brand{background:var(--gradient);display:flex;align-items:center;justify-content:center;padding:0 24px}
+  .header-brand img{height:40px;width:auto}
+  .header-center{display:flex;align-items:center;justify-content:center}
+  .header-center h1{font-size:1.15rem;white-space:nowrap}
+  .header-right{display:flex;align-items:center;justify-content:flex-end;padding:0 20px;gap:12px}
+
+  .lang-switch{display:inline-flex;background:var(--bg-subtle);border-radius:10px;padding:3px;gap:2px}
+  .lang-switch button{background:transparent;border:none;padding:6px 12px;border-radius:7px;font-size:.78rem;color:var(--muted);font-weight:800;letter-spacing:.5px}
+  .lang-switch button.active{background:#fff;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+  .btn{border:none;border-radius:10px;padding:10px 16px;font-size:.9rem;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .05s ease, filter .15s ease, box-shadow .15s ease}
+  .btn:hover{filter:brightness(1.05)}
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-secondary{background:var(--secondary);color:#fff}
+  .btn-accent{background:var(--accent);color:#fff}
+  .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn-grad{
+    background: linear-gradient(#fff,#fff) padding-box, var(--gradient) border-box;
+    border: 2px solid transparent;color: var(--text);font-weight:800;padding:9px 16px;
+  }
+  .btn-grad:hover{box-shadow:0 4px 12px rgba(29,154,175,.15);filter:none}
+  .btn-grad[disabled]{background:#f9fafb;color:#9ca3af;border:2px solid var(--border)}
+  .btn-grad-fill{background:var(--gradient);color:#fff;border:none;font-weight:800;padding:12px 18px}
+  .btn-grad-fill:hover{box-shadow:0 4px 14px rgba(29,154,175,.25);filter:brightness(1.05)}
+
+  main{display:grid;grid-template-columns:380px minmax(0,1fr) 380px;min-height:0}
+  .center{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;background:#fff;border-right:1px solid var(--border);border-left:1px solid var(--border)}
+  aside{padding:16px;overflow-y:auto}
+  aside.left{background:#f3f4f6;position:relative;z-index:1}
+  aside.right{background:#f3f4f6;display:flex;flex-direction:column;min-height:0;padding:0;position:relative;z-index:1}
+  aside.right .right-scroll{flex:1;overflow-y:auto;padding:16px}
+  aside h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;margin-top:18px}
+  aside h3:first-child{margin-top:0}
+  .summary-inline .summary-row{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;padding:7px 0;color:var(--text)}
+  .summary-inline .summary-row + .summary-row{border-top:1px dashed var(--border)}
+  .summary-inline .label{color:var(--muted);font-weight:500}
+  .summary-inline .val{font-weight:800}
+
+  .section{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  .section:last-child{margin-bottom:0}
+  .section-head{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+  .section-head .num{width:22px;height:22px;border-radius:6px;background:var(--gradient);color:#fff;font-family:'Nunito';font-weight:800;font-size:.78rem;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+  .section-head h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text);margin:0}
+  .sub-label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-width:0}
+  .field label{font-size:.8rem;color:var(--muted);font-weight:500}
+  .field input,.field select{width:100%;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;background:#fff}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(29,154,175,.15)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
+
+  .size-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .size-btn{padding:12px 8px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-weight:700;font-size:.85rem;text-align:center;transition:all .15s}
+  .size-btn small{display:block;color:var(--muted);font-weight:500;font-size:.72rem;margin-top:3px}
+  .size-btn:hover{border-color:var(--primary)}
+  .size-btn.active{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;color:var(--primary);padding:11px 7px}
+
+  .unit-toggle{display:inline-flex;background:var(--bg-subtle);border-radius:8px;padding:3px}
+  .unit-toggle button{background:transparent;border:none;padding:6px 12px;border-radius:6px;font-size:.8rem;color:var(--muted)}
+  .unit-toggle button.active{background:#fff;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+  .upload-area{border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg-subtle)}
+  .upload-area:hover{border-color:var(--primary);background:var(--bg-light)}
+  .upload-area.drag{border-color:var(--primary);background:var(--bg-light)}
+  .upload-area p{margin:6px 0 0;font-size:.85rem;color:var(--muted)}
+  .upload-area .drop-max{margin:2px 0 0;font-size:.72rem;font-style:italic;color:var(--muted);opacity:.7}
+  .upload-area strong{color:var(--primary);font-size:.9rem}
+  .tip-link{color:var(--primary);text-decoration:underline;cursor:pointer;font-weight:500}
+
+  /* Gap stepper */
+  .project-title-input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:.85rem;font-family:'Inter',sans-serif;outline:none;transition:border-color .2s}
+  .project-title-input:focus{border-color:var(--primary)}
+  .project-title-input::placeholder{color:var(--muted);font-weight:400}
+  .format-btn{padding:10px 6px;border:1px solid var(--border);border-radius:10px;background:#fff;font-size:.8rem;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s;text-align:center;line-height:1.3}
+  .format-btn:hover{border-color:var(--primary);background:#f0fbfc}
+  .format-btn.active{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:9px 5px}
+  .format-btn .fmt-title{display:block;font-weight:700;font-size:.82rem}
+  .format-btn.active .fmt-title{color:var(--primary)}
+  .format-btn .fmt-size{display:block;font-size:.65rem;font-weight:400;color:var(--muted);margin-top:2px}
+  .gap-stepper-wrap{display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;width:100%}
+  .gap-step-btn{width:40px;height:40px;border:none;background:#f9fafb;font-size:1.1rem;font-weight:700;color:var(--primary);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .gap-step-btn:hover{background:#e6f7fa}
+  .gap-step-btn:active{background:#d1f0f5}
+  .gap-stepper-wrap input{flex:1;min-width:0;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-size:.9rem;font-weight:700;padding:8px 4px;font-family:'Inter',sans-serif;outline:none;-moz-appearance:textfield}
+  .gap-stepper-wrap input::-webkit-outer-spin-button,.gap-stepper-wrap input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .manual-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:4px 0}
+  .manual-toggle input{display:none}
+  .manual-toggle-switch{position:relative;width:38px;height:22px;background:#d1d5db;border-radius:11px;transition:background .2s;flex-shrink:0}
+  .manual-toggle-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  .manual-toggle input:checked + .manual-toggle-switch{background:var(--primary)}
+  .manual-toggle input:checked + .manual-toggle-switch::after{transform:translateX(16px)}
+  .manual-toggle-label{font-size:.85rem;font-weight:600;color:var(--text)}
+  .canvas-manual-badge{display:none;position:absolute;top:8px;right:8px;z-index:90;background:rgba(245,158,11,.9);color:#fff;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:6px;letter-spacing:.5px;text-transform:uppercase;pointer-events:none}
+  .canvas-manual-badge.active{display:block}
+  .gap-unit{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 16px;white-space:nowrap;flex-shrink:0}
+
+
+  .zoom-bar{display:flex;align-items:center;gap:6px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--border);font-size:.78rem;color:var(--muted);flex-wrap:wrap}
+  .zoom-bar button.zoom-btn{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:.8rem;color:var(--text);font-weight:700;cursor:pointer}
+  .zoom-bar button.zoom-btn:hover{border-color:var(--primary);color:var(--primary)}
+  .zoom-bar button.zoom-btn.undo-redo-btn{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px}
+  .zoom-bar button.zoom-btn.undo-redo-btn:disabled{opacity:.35;cursor:default;border-color:var(--border);color:var(--muted)}
+  .zoom-bar button.zoom-btn.undo-redo-btn:disabled:hover{border-color:var(--border);color:var(--muted)}
+  .zoom-bar .zoom-val{margin:0 4px;min-width:42px;text-align:center;font-weight:700;color:var(--text)}
+  .zoom-bar .zoom-sep{width:1px;height:22px;background:var(--border);margin:0 8px}
+  .zoom-bar .clear-btn-center{
+    background: linear-gradient(#fff,#fff) padding-box, var(--gradient) border-box;
+    border: 2px solid transparent;color: var(--text);font-weight:800;
+    padding:7px 14px;border-radius:10px;font-size:.82rem;cursor:pointer;
+    font-family:'Nunito',sans-serif;
+  }
+  .zoom-bar .clear-btn-center:hover{box-shadow:0 4px 12px rgba(29,154,175,.15)}
+  .zoom-bar .clear-btn-center:disabled{background:#f9fafb;color:#9ca3af;border:2px solid var(--border);cursor:not-allowed;box-shadow:none}
+  .zoom-bar .clear-btn-fill{background:var(--gradient);color:#fff;border:2px solid transparent}
+  .zoom-bar .clear-btn-fill:hover{box-shadow:0 4px 14px rgba(29,154,175,.25);filter:brightness(1.05)}
+  .zoom-bar .clear-btn-fill:disabled{background:#f9fafb;color:#9ca3af;filter:none}
+
+  /* rotation slider */
+  .rot-slider-wrap{display:flex;flex-direction:column;gap:8px;margin-top:2px;min-width:0}
+  .rot-slider-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .rot-val{font-size:1rem;font-weight:800;font-family:'Nunito',sans-serif;color:var(--text)}
+  .rot-slider{width:100%;-webkit-appearance:none;appearance:none;height:6px;border-radius:999px;background:#e5e7eb;outline:none;cursor:pointer}
+  .rot-slider::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:#e5e7eb}
+  .rot-slider::-moz-range-track{height:6px;border-radius:999px;background:#e5e7eb}
+  .rot-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:var(--primary);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);margin-top:-6px;cursor:grab}
+  .rot-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--primary);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);cursor:grab}
+  .rot-slider:active::-webkit-slider-thumb{cursor:grabbing}
+  .rot-chips{display:flex;gap:5px;flex-wrap:wrap}
+  .rot-chips button{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:.72rem;font-weight:700;color:var(--muted);cursor:pointer}
+  .rot-chips button:hover{border-color:var(--primary);color:var(--primary)}
+  .rot-chips button.active{background:var(--primary);border-color:var(--primary);color:#fff}
+  .dpi-hint{font-size:.72rem;color:var(--muted);line-height:1.35;margin-top:4px}
+  .item-row .row-del{background:#fee2e2;border:none;color:var(--error);width:28px;height:28px;padding:0;border-radius:8px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:800;line-height:1}
+  .item-row .row-del:hover{background:#fecaca}
+  .item-row .row-del svg{width:14px;height:14px;stroke:currentColor;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  .canvas-wrap{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;padding:16px 24px 24px;overflow:auto;background:radial-gradient(circle at 1px 1px,rgba(0,0,0,.06) 1px,transparent 0);background-size:18px 18px}
+  /* Logo loading overlay — centered on canvas with gradient progress bar */
+  /* ── Text Editor ── */
+  .te-row{display:flex;gap:12px;align-items:flex-end;margin-bottom:6px}
+  .te-field{display:flex;flex-direction:column;gap:3px}
+  .te-field label{font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .te-input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:'Inter',sans-serif;background:var(--bg);color:var(--fg);outline:none;transition:border-color .15s}
+  .te-input:focus{border-color:var(--primary)}
+  textarea.te-input{resize:vertical;min-height:60px}
+  textarea.te-input.te-wysiwyg{font-size:1.4rem;line-height:1.5;padding:12px 14px;min-height:80px;transition:font-family .2s}
+  .te-small-btn{background:none;border:1px dashed var(--border);color:var(--fg);border-radius:8px;padding:6px 12px;font-size:.78rem;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+  .te-small-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--bg-light)}
+  .te-small-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  /* Font picker */
+  .te-fp{position:relative}
+  .te-fp-trigger{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg);transition:border-color .15s;min-height:38px}
+  .te-fp-trigger:hover{border-color:var(--primary)}
+  .te-fp-trigger svg{width:14px;height:14px;fill:none;stroke:var(--muted);stroke-width:2;flex-shrink:0;transition:transform .2s}
+  .te-fp-panel.open ~ .te-fp-trigger svg,.te-fp-trigger:has(~ .te-fp-panel.open) svg{transform:rotate(180deg)}
+  .te-fp-label{font-size:.85rem;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .te-fp-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;background:var(--bg-subtle);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);overflow:hidden}
+  .te-fp-panel.open{display:block}
+  .te-fp-search{width:100%;padding:9px 12px;border:none;border-bottom:1px solid var(--border);font-size:.84rem;font-family:'Inter',sans-serif;background:transparent;color:var(--fg);outline:none}
+  .te-fp-list{max-height:260px;overflow-y:auto;padding:4px 0}
+  .te-fi{padding:8px 14px;cursor:pointer;transition:background .1s;font-size:.92rem;line-height:1.5}
+  .te-fi:hover{background:var(--bg-light)}
+  .te-fi-active{background:var(--bg-light);font-weight:600}
+  .te-fi-active::after{content:'✓';float:right;color:var(--primary);font-size:.8rem}
+  .te-fi-sep{height:1px;background:var(--border);margin:4px 10px}
+  /* Color picker */
+  .te-color-wrap{display:flex;align-items:center;gap:8px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);min-height:38px}
+  .te-color-wrap input[type=color]{width:28px;height:28px;border:none;padding:0;cursor:pointer;border-radius:6px;background:none;-webkit-appearance:none;appearance:none}
+  .te-color-wrap input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+  .te-color-wrap input[type=color]::-webkit-color-swatch{border:1px solid rgba(0,0,0,.12);border-radius:5px}
+  .te-color-hex{font-size:.78rem;font-family:'SF Mono','Roboto Mono',monospace;color:var(--muted);letter-spacing:.5px}
+  /* Preview */
+  .te-preview{min-height:40px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;text-align:center;overflow:visible}
+  /* Toggle buttons */
+  .te-tog-row{display:flex;gap:4px}
+  .te-tog{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:7px;background:var(--bg);cursor:pointer;font-size:.88rem;color:var(--fg);transition:all .15s;padding:0;font-family:'Inter',sans-serif}
+  .te-tog:hover{border-color:var(--primary);background:var(--bg-light)}
+  .te-tog.te-tog-on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  /* Upload font button */
+  .te-upload-btn{flex:1;background:none;border:1px dashed var(--border);color:var(--fg);border-radius:8px;padding:6px 10px;font-size:.74rem;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+  .te-upload-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--bg-light)}
+  .te-upload-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  /* Used fonts tags */
+  .te-used-tag{display:inline-block;background:var(--bg-light);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-size:.74rem;color:var(--fg);margin:2px 4px 2px 0}
+  /* Two-column layout */
+  .te-layout{display:flex;flex-direction:column;gap:0}
+  .te-controls{min-width:0}
+  .j-add-row:hover{border-color:var(--primary);color:var(--primary);background:var(--bg-light)}
+  .j-add-row svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
+  .logo-load-overlay{display:none;position:absolute;inset:0;z-index:150;background:rgba(0,0,0,.25);align-items:center;justify-content:center;pointer-events:none}
+  .logo-load-overlay.active{display:flex}
+  .logo-load-card{background:rgba(255,255,255,.96);border-radius:16px;padding:28px 40px;box-shadow:0 8px 32px rgba(0,0,0,.18);display:flex;flex-direction:column;align-items:center;gap:14px;min-width:220px}
+  .logo-load-spinner{width:32px;height:32px;border:3px solid #e5e7eb;border-top-color:#6946c8;border-radius:50%;animation:logoSpin .7s linear infinite}
+  @keyframes logoSpin{to{transform:rotate(360deg)}}
+  .logo-load-text{font-size:.85rem;font-weight:500;color:#374151;margin:0}
+  .logo-load-bar{width:180px;height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden;position:relative}
+  .logo-load-bar-fill{height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,#6946c8,#1d9aaf);transition:width .3s ease}
+  .canvas-pct{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100;flex-direction:column;align-items:center;gap:4px;background:rgba(255,255,255,.94);padding:20px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.15);pointer-events:none;text-align:center}
+  .canvas-pct.active{display:flex}
+  .canvas-pct-label{font-size:.8rem;font-weight:500;color:#6b7280;text-transform:uppercase;letter-spacing:1.5px}
+  .canvas-pct-num{font-size:2.8rem;font-weight:700;color:#1d9aaf;letter-spacing:1px;line-height:1}
+  .canvas-ruler-col{display:flex;flex-direction:column;flex-shrink:0}
+  .canvas-hruler-row{display:flex;align-items:flex-end}
+  .canvas-hruler-corner{width:36px;height:20px;flex-shrink:0;margin-right:4px}
+  .canvas-hruler{position:relative;height:20px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.7);margin-bottom:2px}
+  .hruler-tick{position:absolute;bottom:0;width:0;border-left:1px solid rgba(0,0,0,.2)}
+  .hruler-label{position:absolute;bottom:calc(100% + 1px);left:-6px;font-size:.55rem;color:var(--muted);white-space:nowrap;line-height:1}
+  .canvas-ruler-row{display:flex;align-items:flex-start;gap:0;flex-shrink:0}
+  .canvas-ruler{position:relative;width:36px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(255,255,255,.7);margin-right:4px}
+  .ruler-tick{position:absolute;right:0;height:0;border-top:1px solid rgba(0,0,0,.2)}
+  .ruler-tick.ruler-meter{border-top:1.5px solid var(--primary)}
+  .ruler-label{position:absolute;right:calc(100% + 4px);top:-6px;font-size:.6rem;color:var(--muted);white-space:nowrap;line-height:1}
+  .ruler-label-meter{font-weight:700;color:var(--primary);font-size:.7rem}
+  .sheet-shadow{position:relative;box-shadow:0 10px 40px rgba(0,0,0,.15);border-radius:2px;flex-shrink:0}
+  .sheet-shadow canvas{background:transparent !important}
+  .sheet-shadow .canvas-container{background:transparent !important}
+  .sheet-shadow.bg-white{background:#fff}
+  .sheet-shadow.bg-gray{background:#e5e7eb}
+  .sheet-shadow.bg-black{background:#000}
+  .sheet-shadow.bg-checker{background-color:#fff;background-image:linear-gradient(45deg,#d1d5db 25%,transparent 25%),linear-gradient(-45deg,#d1d5db 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d1d5db 75%),linear-gradient(-45deg,transparent 75%,#d1d5db 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0px}
+  .bg-picker{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .bg-swatch{height:36px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s;position:relative;overflow:hidden}
+  .bg-swatch:hover{border-color:var(--primary)}
+  .bg-swatch.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,154,175,.2)}
+  .bg-swatch[data-bg="white"]{background:#fff}
+  .bg-swatch[data-bg="gray"]{background:#e5e7eb}
+  .bg-swatch[data-bg="black"]{background:#000}
+  .bg-swatch[data-bg="checker"]{background-color:#fff;background-image:linear-gradient(45deg,#d1d5db 25%,transparent 25%),linear-gradient(-45deg,#d1d5db 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d1d5db 75%),linear-gradient(-45deg,transparent 75%,#d1d5db 75%);background-size:10px 10px;background-position:0 0,0 5px,5px -5px,-5px 0px}
+  .toolbar-info{display:flex;gap:10px;align-items:center;font-size:.72rem;color:var(--muted);margin-right:4px}
+  .toolbar-info strong{color:var(--text)}
+  .fill-meter{width:100px;height:6px;background:var(--border);border-radius:999px;overflow:hidden}
+  .fill-meter span{display:block;height:100%;background:var(--gradient);transition:width .3s}
+
+  .item-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff;font-size:.8rem;cursor:pointer;transition:border-color .15s}
+  .item-row:hover{border-color:#cbd5e1}
+  .item-row.selected{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:9px}
+  .item-row.item-row-empty{opacity:.5}
+  .item-thumb{width:42px;height:42px;background:#f3f4f6;border-radius:8px;flex-shrink:0;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--border)}
+  .item-info{flex:1;min-width:0}
+  .item-info .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+  .item-info .meta{color:var(--muted);font-size:.7rem;margin-top:2px}
+  .count-stepper{display:flex;align-items:center;gap:0;flex-shrink:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-subtle)}
+  .count-stepper button{background:transparent;border:none;width:26px;height:28px;font-size:1rem;font-weight:800;color:var(--primary);cursor:pointer;padding:0}
+  .count-stepper button:hover:not([disabled]){background:var(--bg-light)}
+  .count-stepper input{width:36px;height:28px;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-size:.8rem;font-weight:700;background:#fff;color:var(--text);padding:0;-moz-appearance:textfield}
+  .count-stepper input::-webkit-outer-spin-button,.count-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .dpi-pill{padding:2px 6px;border-radius:999px;font-size:.65rem;font-weight:700}
+  .dpi-ok{background:#dcfce7;color:var(--success)}
+  .dpi-warn{background:#fef3c7;color:var(--warn)}
+  .dpi-bad{background:#fee2e2;color:var(--error)}
+
+  .empty{color:var(--muted);font-size:.82rem;font-style:italic;text-align:center;padding:14px}
+
+  .toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .tool-btn{padding:7px 10px;border-radius:8px;background:var(--bg-subtle);border:1px solid var(--border);font-size:.78rem;color:var(--text)}
+  .tool-btn:hover{background:var(--bg-light);border-color:var(--primary)}
+  .align-icon-btn{display:flex;align-items:center;justify-content:center;padding:6px 4px;min-width:0}
+  .align-icon-btn svg{flex-shrink:0}
+
+  /* ---- Color editing ---- */
+  .color-swatches{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+  .color-swatch{width:28px;height:28px;border-radius:6px;border:2px solid var(--border);cursor:pointer;transition:transform .1s,box-shadow .15s}
+  .color-swatch:hover{transform:scale(1.15);box-shadow:0 2px 8px rgba(0,0,0,.18)}
+  .color-swatch.active{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary)}
+  .color-hint{font-size:.72rem;color:var(--muted);margin:2px 0 4px}
+  .color-picker-row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  .color-picker-row input[type="color"]{width:36px;height:30px;border:1px solid var(--border);border-radius:6px;padding:1px;cursor:pointer}
+  .color-mode-tabs{display:flex;gap:0;margin:4px 0 6px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .color-mode-tabs button{flex:1;padding:4px 8px;font-size:.72rem;font-weight:700;border:none;background:#fff;color:var(--muted);cursor:pointer;font-family:'Nunito',sans-serif}
+  .color-mode-tabs button.active{background:var(--primary);color:#fff}
+  .color-input-group{display:flex;gap:3px;align-items:center;flex-wrap:nowrap}
+  .color-input-group input{width:40px;padding:4px 3px;border:1px solid var(--border);border-radius:5px;font-size:.78rem;text-align:center;font-family:'Inter',sans-serif}
+  .color-input-group label{font-size:.68rem;color:var(--muted);font-weight:600;min-width:10px;text-align:center}
+  .color-input-group .hex-input{width:80px}
+  .color-apply-btn{margin-top:6px;padding:5px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text);font-family:'Nunito',sans-serif}
+  .color-apply-btn:hover{border-color:var(--primary);color:var(--primary)}
+
+  .right-footer{border-top:1px solid var(--border);padding:14px 16px;background:#fff;display:flex;flex-direction:column;align-items:stretch}
+  .summary-card{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;border-radius:12px;padding:14px;margin-bottom:12px}
+  .summary-title{font-family:'Nunito',sans-serif;font-weight:800;font-size:.78rem;text-transform:uppercase;letter-spacing:.5px;color:var(--primary);margin-bottom:10px}
+  .summary-row{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;padding:5px 0;color:var(--text)}
+  .summary-row + .summary-row{border-top:1px dashed var(--border)}
+  .summary-row .label{color:var(--muted);font-weight:500}
+  .summary-row .val{font-weight:800}
+  .summary-row .val.good{color:var(--success)}
+  .summary-row .val.warn{color:var(--warn)}
+  .summary-row .val.bad{color:var(--error)}
+  .export-btn-bg{width:100%;justify-content:center;padding:10px 16px;font-size:.82rem;background:var(--surface);border:1px solid var(--border);color:var(--muted);cursor:pointer;margin-bottom:6px;transition:background .15s,color .15s}
+  .export-btn-bg:hover{background:var(--border);color:var(--text)}
+  .export-btn-big{width:100%;justify-content:center;padding:14px 16px;font-size:.95rem}
+  .footer-btn-row{display:flex;gap:6px;margin-bottom:6px}
+  .footer-btn-row .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:10px 8px;font-size:.78rem}
+  .footer-btn-row .btn svg{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Save‐pulse animation on user avatar */
+  @keyframes avatarPulse{
+    0%{transform:scale(1);box-shadow:0 0 0 0 rgba(105,70,200,.6)}
+    50%{transform:scale(1.15);box-shadow:0 0 0 10px rgba(105,70,200,0)}
+    100%{transform:scale(1);box-shadow:0 0 0 0 rgba(105,70,200,0)}
+  }
+  .user-avatar.save-pulse{animation:avatarPulse .8s ease-out}
+
+  .toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:999;pointer-events:none}
+  .toast{background:#fff;padding:12px 18px;border-radius:10px;border-left:4px solid var(--primary);box-shadow:0 6px 20px rgba(0,0,0,.15);font-size:.85rem;min-width:260px;max-width:480px;text-align:center;animation:toastIn .25s ease;pointer-events:auto;transition:opacity .35s ease, transform .35s ease;display:inline-flex;align-items:center;gap:12px;justify-content:center}
+  .toast .toast-text{flex:1;text-align:center}
+  .toast.sticky{padding:14px 16px 14px 18px;text-align:left;box-shadow:0 10px 32px rgba(0,0,0,.18)}
+  .toast.sticky .toast-text{text-align:left}
+  .toast-close{background:rgba(0,0,0,.05);border:none;width:26px;height:26px;border-radius:50%;font-size:1.1rem;line-height:1;color:var(--muted);cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:0;font-weight:700}
+  .toast-close:hover{background:rgba(0,0,0,.1);color:var(--text)}
+  .toast-dismiss-btn{background:var(--primary);border:none;border-radius:6px;color:#fff;font-size:.75rem;font-weight:600;padding:6px 14px;cursor:pointer;flex-shrink:0;white-space:nowrap;margin-left:8px}
+  .toast-dismiss-btn:hover{opacity:.85}
+  .toast.warn{border-left-color:var(--warn)}
+  .toast.error{border-left-color:var(--error)}
+  .toast.success{border-left-color:var(--success)}
+  @keyframes toastIn{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:500}
+  .modal-backdrop.open{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:24px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal h3{font-size:1.15rem;margin-bottom:10px}
+  .modal p{font-size:.88rem;color:var(--muted);line-height:1.5;margin:0 0 14px}
+  .modal .actions{display:flex;gap:8px;justify-content:flex-end}
+
+  .slider{width:100%}
+  .help{font-size:.72rem;color:var(--muted);margin-top:4px;line-height:1.4}
+  .sub-label{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--primary);margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--border);font-family:'Nunito',sans-serif}
+  .sub-label:first-child{margin-top:0}
+
+  /* ── Panel groups (selected logo) ── */
+  .panel-group{background:#f8fafb;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .panel-group-title{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--primary);margin-bottom:10px;padding-bottom:5px;border-bottom:2px solid rgba(29,154,175,.15);font-family:'Nunito',sans-serif}
+  .panel-row-label{font-size:.72rem;font-weight:700;color:var(--text);margin:8px 0 4px;opacity:.75}
+  .panel-row-label:first-child{margin-top:0}
+  .panel-group .field{margin-bottom:8px}
+
+  /* ── Aspect ratio lock button ── */
+  .size-row{display:flex;gap:6px;align-items:end;flex-wrap:nowrap}
+  .size-row .field{flex:1;min-width:0;margin-bottom:0}
+  .ratio-lock{background:none;border:none;padding:0;cursor:pointer;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:color .15s;flex-shrink:0;width:16px;height:16px;margin-bottom:6px;opacity:.45}
+  .ratio-lock svg{width:12px;height:12px}
+  .ratio-lock:hover{color:var(--primary);opacity:.8}
+  .ratio-lock.active{color:var(--primary);opacity:.7}
+
+  /* ── PDF progress (inline above export button) ── */
+  .pdf-progress{width:100%;max-height:0;opacity:0;overflow:hidden;transition:max-height .35s ease,opacity .3s ease,margin .3s ease;margin-bottom:0}
+  .pdf-progress.visible{max-height:60px;opacity:1;margin-bottom:10px}
+  .pdf-progress-inner{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(29,154,175,.07);border:1px solid rgba(29,154,175,.2);font-size:.8rem;font-weight:600;color:var(--primary)}
+  .pdf-progress-inner.pdf-done{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.3);color:#059669}
+  .pdf-spinner{width:18px;height:18px;border:2.5px solid rgba(29,154,175,.2);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+  .pdf-check{font-size:1rem;color:#059669;font-weight:700}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .section.highlight{animation:sectionPulse .6s ease;background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:15px}
+  @keyframes sectionPulse{0%{box-shadow:0 0 0 0 rgba(29,154,175,.4)}50%{box-shadow:0 0 0 8px rgba(29,154,175,.1)}100%{box-shadow:0 1px 2px rgba(0,0,0,.03)}}
+  .canvas-bottom-bar{display:flex;align-items:center;justify-content:center;gap:20px;padding:10px 16px;background:#fff;border-top:1px solid var(--border);font-size:.85rem;color:var(--muted)}
+  .canvas-bottom-group{display:flex;align-items:center;gap:10px}
+  .canvas-bottom-label{font-size:.82rem;font-weight:700;color:var(--text);white-space:nowrap}
+  .canvas-bottom-sep{width:1px;height:26px;background:var(--border)}
+  .bg-picker-inline{display:flex;gap:6px}
+  .bg-swatch-sm{width:48px;height:28px;border:2px solid var(--border);border-radius:6px;cursor:pointer;transition:border-color .15s}
+  .bg-swatch-sm:hover{border-color:var(--primary)}
+  .bg-swatch-sm.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,154,175,.2)}
+  .bg-swatch-sm[data-bg="white"]{background:#fff}
+  .bg-swatch-sm[data-bg="gray"]{background:#e5e7eb}
+  .bg-swatch-sm[data-bg="black"]{background:#000;border:1px solid #555}
+  .bg-swatch-sm[data-bg="checker"]{background-color:#fff;background-image:linear-gradient(45deg,#d1d5db 25%,transparent 25%),linear-gradient(-45deg,#d1d5db 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d1d5db 75%),linear-gradient(-45deg,transparent 75%,#d1d5db 75%);background-size:8px 8px;background-position:0 0,0 4px,4px -4px,-4px 0px}
+  .badge{display:inline-block;background:var(--accent);color:#fff;font-size:.62rem;padding:2px 6px;border-radius:4px;font-weight:700;margin-left:6px;vertical-align:middle}
+
+  /* Header icon buttons */
+  .hdr-icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:1.1rem;transition:all .15s}
+  .hdr-icon-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--bg-light)}
+  .hdr-icon-btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Info panel (slide-in from right) */
+  .info-panel-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:600;display:none;opacity:0;transition:opacity .25s}
+  .info-panel-backdrop.open{display:block;opacity:1}
+  .info-panel{position:fixed;top:0;right:-440px;width:420px;max-width:90vw;height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(0,0,0,.15);z-index:601;overflow-y:auto;padding:28px 24px;transition:right .3s ease}
+  .info-panel-backdrop.open .info-panel{right:0}
+  .info-panel h2{font-size:1.2rem;margin-bottom:16px;color:var(--text)}
+  .info-panel h3{font-size:.9rem;margin:18px 0 8px;color:var(--primary)}
+  .info-panel p{font-size:.85rem;line-height:1.6;color:var(--text);margin:0 0 10px}
+  .info-panel .close-info{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:50%;border:none;background:#f3f4f6;cursor:pointer;font-size:1.1rem;color:var(--muted);display:flex;align-items:center;justify-content:center}
+  .info-panel .close-info:hover{background:#e5e7eb;color:var(--text)}
+  .info-panel .tip-card{background:var(--bg-light);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px}
+  .info-panel .tip-card strong{color:var(--primary);font-size:.82rem}
+  .info-panel .tip-card p{font-size:.8rem;margin:4px 0 0;color:var(--muted)}
+  .info-panel .version-tag{font-size:.65rem;color:var(--muted);opacity:.5;text-align:center;margin:24px 0 0;letter-spacing:.3px}
+
+  /* Tour overlay */
+  .tour-backdrop{position:fixed;inset:0;z-index:700;display:none}
+  .tour-backdrop.open{display:block}
+  .tour-highlight{position:absolute;box-shadow:0 0 0 9999px rgba(0,0,0,.55);border-radius:10px;z-index:701;pointer-events:none;transition:all .35s ease}
+  .tour-tooltip{position:absolute;z-index:702;background:#fff;border-radius:12px;padding:18px 20px;max-width:320px;box-shadow:0 8px 30px rgba(0,0,0,.2);font-size:.85rem;line-height:1.5}
+  .tour-tooltip h4{font-size:.92rem;margin:0 0 6px;color:var(--primary)}
+  .tour-tooltip p{margin:0 0 12px;color:var(--text)}
+  .tour-tooltip .tour-nav{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+  .tour-tooltip .tour-step{font-size:.72rem;color:var(--muted);margin-right:auto}
+  .tour-tooltip .tour-btn{padding:7px 14px;border-radius:8px;border:none;font-weight:700;font-size:.82rem;cursor:pointer}
+  .tour-tooltip .tour-skip{background:transparent;color:var(--muted)}
+  .tour-tooltip .tour-skip:hover{color:var(--text)}
+  .tour-tooltip .tour-next{background:var(--gradient);color:#fff}
+  .tour-tooltip .tour-next:hover{filter:brightness(1.05)}
+
+  /* Responsive toolbar above canvas */
+  @media (max-width: 900px){
+    .zoom-bar{gap:4px;padding:6px 10px}
+    .zoom-bar .zoom-sep{display:none}
+    .zoom-bar .clear-btn-center{flex:1 1 auto;min-width:0;padding:7px 8px;font-size:.75rem;white-space:nowrap}
+    .zoom-bar .toolbar-info{width:100%;order:99;justify-content:center;margin-top:4px;padding-top:6px;border-top:1px solid var(--border)}
+  }
+  @media (max-width: 600px){
+    .zoom-bar .clear-btn-center{flex:1 1 100%;text-align:center}
+  }
+
+  /* ── Login screen ── */
+  .login-screen{position:fixed;inset:0;z-index:9999;background:var(--gradient);display:flex;align-items:center;justify-content:center;padding:20px}
+  .login-card{background:#fff;border-radius:20px;padding:40px 36px 32px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+  .login-card .logo-wrap{text-align:center;margin-bottom:24px}
+  .login-card .logo-wrap img{height:36px}
+  .login-card h2{text-align:center;font-size:1.3rem;margin-bottom:4px}
+  .login-card .subtitle{text-align:center;color:var(--muted);font-size:.85rem;margin-bottom:24px}
+  .login-tabs{display:flex;background:var(--bg-subtle);border-radius:10px;padding:3px;margin-bottom:20px}
+  .login-tabs button{flex:1;border:none;background:transparent;padding:8px;border-radius:8px;font-size:.85rem;font-weight:700;color:var(--muted);font-family:'Nunito',sans-serif;cursor:pointer}
+  .login-tabs button.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .login-field{margin-bottom:14px}
+  .login-field label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:4px}
+  .login-field input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.9rem;outline:none;transition:border .15s}
+  .login-field input:focus{border-color:var(--primary)}
+  .login-submit{width:100%;padding:12px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:.95rem;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;margin-top:8px;transition:filter .15s}
+  .login-submit:hover{filter:brightness(1.08)}
+  .login-submit:disabled{opacity:.5;cursor:not-allowed}
+  .login-link{display:block;text-align:center;margin-top:12px;color:var(--primary);font-size:.82rem;cursor:pointer;background:none;border:none;font-family:'Inter',sans-serif}
+  .login-link:hover{text-decoration:underline}
+  .login-error{background:#fef2f2;color:var(--error);padding:10px 12px;border-radius:8px;font-size:.82rem;margin-bottom:14px;display:none}
+  .login-success{background:#f0fdf4;color:var(--success);padding:10px 12px;border-radius:8px;font-size:.82rem;margin-bottom:14px;display:none}
+
+  /* ── User menu ── */
+  .user-menu-wrap{position:relative}
+  .user-avatar{width:34px;height:34px;border-radius:50%;background:var(--secondary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;cursor:pointer;border:none;font-family:'Nunito',sans-serif;transition:box-shadow .15s}
+  .user-avatar:hover{box-shadow:0 0 0 3px rgba(101,53,140,.2)}
+  .user-dropdown{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.12);min-width:240px;padding:8px 0;display:none;z-index:100}
+  .user-dropdown.open{display:block}
+  .user-dropdown .ud-header{padding:12px 16px;border-bottom:1px solid var(--border)}
+  .user-dropdown .ud-name{font-weight:700;font-size:.9rem}
+  .user-dropdown .ud-email{font-size:.78rem;color:var(--muted)}
+  .user-dropdown .ud-item{display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:.85rem;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:'Inter',sans-serif;color:var(--text)}
+  .user-dropdown .ud-item:hover{background:var(--bg-light)}
+  .user-dropdown .ud-item svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .user-dropdown .ud-sep{height:1px;background:var(--border);margin:4px 0}
+  .user-dropdown .ud-item.danger{color:var(--error)}
+
+  /* ── Modal overlay (shared) ── */
+  .gsb-modal-backdrop{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:20px}
+  .gsb-modal-backdrop.open{display:flex}
+  .gsb-modal{background:#fff;border-radius:16px;width:100%;max-width:800px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+  .gsb-modal.wide{max-width:1000px}
+  .gsb-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+  .gsb-modal-head h3{font-size:1.1rem}
+  .gsb-modal-close{background:none;border:none;padding:4px;color:var(--muted);cursor:pointer}
+  .gsb-modal-close svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+  .gsb-modal-body{flex:1;overflow-y:auto;padding:20px}
+  .gsb-modal-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+
+  /* ── Admin panel tabs ── */
+  .admin-layout{display:flex;gap:0;min-height:420px}
+  .admin-nav{width:180px;flex-shrink:0;border-right:1px solid var(--border);padding:8px 0;display:flex;flex-direction:column;gap:2px}
+  .admin-nav-item{display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:9px 16px;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer;font-family:'Nunito',sans-serif;text-align:left;border-radius:0;transition:all .15s}
+  .admin-nav-item svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .admin-nav-item:hover{color:var(--text);background:var(--bg-light)}
+  .admin-nav-item.active{color:var(--primary);background:linear-gradient(90deg,rgba(105,70,200,.08),transparent);border-right:2px solid var(--primary)}
+  .admin-nav-badge{background:var(--primary);color:#fff;font-size:.65rem;font-weight:800;padding:1px 6px;border-radius:10px;margin-left:auto}
+  .admin-content{flex:1;padding:20px;overflow-y:auto;max-height:520px}
+  .admin-tab-content{display:none}
+  .admin-tab-content.active{display:block}
+
+  /* ── Admin table ── */
+  .admin-table{width:100%;border-collapse:collapse;font-size:.82rem}
+  .admin-table th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);font-weight:700;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.5px}
+  .admin-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+  .admin-table tr:hover td{background:var(--bg-light)}
+  .admin-table select{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.8rem}
+  .admin-table .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700}
+  .admin-table .badge-admin{background:#ede9fe;color:var(--secondary)}
+  .admin-table .badge-printer{background:#e0f2fe;color:#0369a1}
+  .admin-table .badge-user{background:var(--bg-light);color:var(--muted)}
+  .admin-table .badge-blocked{background:#fef2f2;color:var(--error)}
+  .admin-table .badge-pending{background:#fef9c3;color:#854d0e}
+  .admin-table .btn-sm{padding:4px 10px;font-size:.75rem;border-radius:6px}
+  .admin-create-form{padding:12px 0}
+  .admin-lbl{display:block;font-size:.68rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+  .admin-inp{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:.82rem;font-family:'Inter',sans-serif;background:var(--bg);color:var(--fg);outline:none;transition:border-color .15s}
+  .admin-inp:focus{border-color:var(--primary)}
+
+  /* ── Projects grid ── */
+  .projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+  .project-card{background:#fff;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .project-card:hover{border-color:var(--primary);box-shadow:0 4px 12px rgba(29,154,175,.1)}
+  .project-card .pc-thumb{width:100%;aspect-ratio:4/3;background:var(--bg-subtle);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.8rem}
+  .project-card .pc-thumb img{width:100%;height:100%;object-fit:cover}
+  .project-card .pc-info{padding:10px 12px}
+  .project-card .pc-name{font-weight:700;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .project-card .pc-meta{font-size:.75rem;color:var(--muted);margin-top:2px}
+  .project-card .pc-actions{display:flex;justify-content:flex-end;padding:0 10px 10px;gap:6px}
+  .project-card .pc-actions button{padding:4px 10px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer}
+  .project-card .pc-actions button:hover{background:var(--bg-light)}
+  .project-card .pc-actions button.danger{color:var(--error);border-color:#fecaca}
+  .project-card .pc-actions button.danger:hover{background:#fef2f2}
+
+  /* ── Profile form ── */
+  .profile-form .pf-field{margin-bottom:16px}
+  .profile-form .pf-field label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:4px}
+  .profile-form .pf-field input,.profile-form .pf-field select{width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem}
+
+  /* ── Stats cards ── */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+  .stat-card{background:var(--bg-light);border-radius:10px;padding:16px;text-align:center}
+  .stat-card .sc-val{font-size:1.6rem;font-weight:800;font-family:'Nunito',sans-serif;color:var(--primary)}
+  .stat-card .sc-label{font-size:.78rem;color:var(--muted);margin-top:2px}
+
+  /* ── Settings form ── */
+  .settings-form .sf-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .settings-form .sf-label{flex:1;font-size:.85rem;font-weight:600}
+  .settings-form .sf-input{width:160px}
+  .settings-form .sf-input input,.settings-form .sf-input select{width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:.82rem}
+</style>
+</head>
+<body>
+
+<!-- ═══ Login screen ═══ -->
+<div class="login-screen" id="loginScreen" style="display:none">
+  <div class="login-card">
+    <div class="logo-wrap"><img src="./logo-wit.svg" alt="Transferpersshop" style="height:32px;filter:none;background:linear-gradient(135deg,#1d9aaf,#65358c);padding:8px 16px;border-radius:8px"></div>
+    <h2>Gang Sheet Builder</h2>
+    <p class="subtitle">Log in om je projecten op te slaan en te beheren</p>
+    <div class="login-tabs">
+      <button class="active" onclick="gsLoginUI.showTab('login')">Inloggen</button>
+      <button onclick="gsLoginUI.showTab('register')">Registreren</button>
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-success" id="loginSuccess"></div>
+    <!-- Login form -->
+    <form id="loginForm" onsubmit="gsLoginUI.handleLogin(event)">
+      <div class="login-field"><label>E-mailadres</label><input type="email" id="loginEmail" required autocomplete="email"></div>
+      <div class="login-field"><label>Wachtwoord</label><input type="password" id="loginPassword" required autocomplete="current-password" minlength="6"></div>
+      <button type="submit" class="login-submit" id="loginBtn">Inloggen</button>
+      <button type="button" class="login-link" onclick="gsLoginUI.showTab('reset')">Wachtwoord vergeten?</button>
+    </form>
+    <!-- Register form -->
+    <form id="registerForm" style="display:none" onsubmit="gsLoginUI.handleRegister(event)">
+      <div class="login-field"><label>Naam</label><input type="text" id="regName" required autocomplete="name"></div>
+      <div class="login-field"><label>Bedrijfsnaam</label><input type="text" id="regCompany" required autocomplete="organization"></div>
+      <div class="login-field"><label>E-mailadres</label><input type="email" id="regEmail" required autocomplete="email"></div>
+      <div class="login-field"><label>Wachtwoord (min. 6 tekens)</label><input type="password" id="regPassword" required autocomplete="new-password" minlength="6"></div>
+      <button type="submit" class="login-submit" id="regBtn">Account aanmaken</button>
+      <button type="button" class="login-link" onclick="gsLoginUI.showTab('login')">Al een account? Inloggen</button>
+    </form>
+    <!-- Reset form -->
+    <form id="resetForm" style="display:none" onsubmit="gsLoginUI.handleReset(event)">
+      <div class="login-field"><label>E-mailadres</label><input type="email" id="resetEmail" required></div>
+      <button type="submit" class="login-submit">Herstelmail versturen</button>
+      <button type="button" class="login-link" onclick="gsLoginUI.showTab('login')">Terug naar inloggen</button>
+    </form>
+    <!-- Password reset confirm (shown after clicking link in email) -->
+    <form id="resetConfirmForm" style="display:none" onsubmit="gsLoginUI.handleResetConfirm(event)">
+      <div class="login-field"><label>Nieuw wachtwoord (min. 6 tekens)</label><input type="password" id="newPassword" required minlength="6"></div>
+      <button type="submit" class="login-submit">Wachtwoord opslaan</button>
+    </form>
+  </div>
+</div>
+
+<div class="app" id="appContainer" style="display:none">
+
+  <header>
+    <div class="header-brand">
+      <a href="https://www.transferpersshop.nl" target="_blank" rel="noopener" style="display:inline-flex"><img src="./logo-wit.svg" alt="Transferpersshop"></a>
+    </div>
+    <div class="header-center">
+      <h1 data-i18n="appTitle">Gang Sheet Builder</h1>
+    </div>
+    <div class="header-right">
+      <button class="hdr-icon-btn" id="tourBtn" title="Rondleiding">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+      <button class="hdr-icon-btn" id="infoBtn" title="Productie-informatie">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
+      <div class="lang-switch" id="langSwitch">
+        <button data-lang="nl" class="active">NL</button>
+        <button data-lang="en">EN</button>
+      </div>
+      <!-- User menu -->
+      <div class="user-menu-wrap">
+        <button class="user-avatar" id="userAvatarBtn" onclick="gsLoginUI.toggleUserMenu()"><span id="userInitial">?</span></button>
+        <div class="user-dropdown" id="userDropdown">
+          <div class="ud-header">
+            <div class="ud-name" id="userMenuName">Gebruiker</div>
+            <div class="ud-email" id="userMenuEmail"></div>
+          </div>
+          <button class="ud-item" onclick="gsLoginUI.openProfile()">
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Profiel bewerken
+          </button>
+          <button class="ud-item" id="adminPanelLink" style="display:none" onclick="gsLoginUI.openAdmin()">
+            <svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Admin panel
+          </button>
+          <div class="ud-sep"></div>
+          <button class="ud-item danger" onclick="gsLoginUI.logout()">
+            <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Uitloggen
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <aside class="left">
+
+      <div class="section" id="projectTitleSection">
+        <div class="section-head"><span class="num">1</span><h3 data-i18n="projectTitleLabel">Opdracht naam</h3></div>
+        <input type="text" class="project-title-input" id="projectTitleInput" placeholder="Bijv. borstlogo's bedrijf X" data-i18n-placeholder="projectTitlePlaceholder">
+        <button class="btn export-btn-bg" style="width:100%;margin-top:8px;padding:10px 16px;font-size:.85rem;border-radius:8px;gap:6px;display:flex;align-items:center;justify-content:center" onclick="document.getElementById('gsbFileInput').click()">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Opdracht openen (.gsb)
+        </button>
+        <input type="file" id="gsbFileInput" accept=".gsb,.json" style="display:none" onchange="if(this.files[0])window.gsbImportProject(this.files[0]);this.value=''">
+      </div>
+
+      <div class="section">
+        <div class="section-head"><span class="num">2</span><h3 data-i18n="step1">Vel</h3></div>
+        <div class="size-grid" id="sizeGrid"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><span class="num">3</span><h3 data-i18n="step2">Upload logo's of maak tekst</h3></div>
+        <div class="upload-area" id="uploadArea">
+          <strong data-i18n="dropTitle">Klik of sleep hier</strong>
+          <p data-i18n="dropHint">SVG, AI, EPS, PDF, PNG, JPG</p>
+          <p class="drop-max" data-i18n="dropMax">Max. 50 MB</p>
+          <input type="file" id="fileInput" accept="image/svg+xml,.ai,.eps,.pdf,image/png,image/jpeg" multiple hidden>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px"><div style="flex:1;height:1px;background:var(--border)"></div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;white-space:nowrap">of</span><div style="flex:1;height:1px;background:var(--border)"></div></div>
+        <button class="btn export-btn-bg" style="width:100%;padding:10px 16px;font-size:.85rem;border-radius:8px;gap:6px;display:flex;align-items:center;justify-content:center" onclick="gsbTextEditor.open()">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M17 10H3"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M17 18H3"/></svg>
+          Tekst maken
+        </button>
+        <p class="help" id="uploadTipP"></p>
+      </div>
+
+      <div class="section" id="itemListSection">
+        <div class="section-head"><span class="num">4</span><h3><span data-i18n="allLogos">Geüploade logo's</span> <span id="itemCount" style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:4px">(0)</span></h3></div>
+        <div id="itemList">
+          <p class="empty" data-i18n="listEmpty">Nog niets geüpload.</p>
+        </div>
+      </div>
+
+      <div class="section" id="layoutGapSection">
+        <div class="section-head"><span class="num">5</span><h3 data-i18n="layoutGapLabel">Indeling & tussenruimte</h3></div>
+
+        <div id="gapSection" style="margin-bottom:12px">
+          <div class="sub-label" data-i18n="gapLabel">Tussenruimte tussen logo's</div>
+          <div class="gap-stepper-wrap">
+            <button type="button" class="gap-step-btn" id="gapDec">−</button>
+            <input type="number" id="gapInput" min="0" max="20" step="0.5" value="5">
+            <span class="gap-unit" id="gapUnitLabel">mm</span>
+            <button type="button" class="gap-step-btn" id="gapInc">+</button>
+          </div>
+          <p class="help" data-i18n="gapHelp">Bepaal de tussenruimte tussen de logo's voor het knippen/snijden van de transfers.</p>
+        </div>
+
+        <div id="manualModeSection">
+          <div class="sub-label" data-i18n="manualModeStep">Indeling modus</div>
+          <label class="manual-toggle" for="manualModeToggle">
+            <input type="checkbox" id="manualModeToggle">
+            <span class="manual-toggle-switch"></span>
+            <span class="manual-toggle-label" data-i18n="manualModeLabel">Handmatige indeling</span>
+          </label>
+          <p class="help" data-i18n="manualModeHelp">Schakel automatische indeling uit. Logo's kunnen vrij gesleept, overlapt en 360° gedraaid worden.</p>
+        </div>
+      </div>
+
+      <!-- Project save/load: planned for future release -->
+
+
+    </aside>
+
+    <div class="center">
+      <div class="zoom-bar">
+        <button class="zoom-btn undo-redo-btn" id="undoBtn" title="Ongedaan maken (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11a5 5 0 0 1 0 10H7"/><path d="m3 7 4-4"/><path d="m3 7 4 4"/></svg></button>
+        <button class="zoom-btn undo-redo-btn" id="redoBtn" title="Herhalen (Ctrl+Shift+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H10a5 5 0 0 0 0 10h7"/><path d="m21 7-4-4"/><path d="m21 7-4 4"/></svg></button>
+        <div class="zoom-sep"></div>
+        <button class="zoom-btn" id="zoomOutBtn" title="Zoom uit (−)">−</button>
+        <span class="zoom-val" id="zoomVal">100%</span>
+        <button class="zoom-btn" id="zoomInBtn" title="Zoom in (+)">+</button>
+        <button class="zoom-btn" id="zoomFitBtn" title="Passend (0)" data-i18n="zoomFit">Passend</button>
+        <button class="zoom-btn" id="zoomOneBtn" title="2×">2×</button>
+        <div class="zoom-sep"></div>
+        <button class="clear-btn-center" id="fillSheetBtn" disabled data-i18n="fillSheet">Vel vullen met logo</button>
+        <button class="clear-btn-center" id="optimizeBtn" disabled data-i18n="optimizeLayout">Optimaliseer indeling</button>
+        <button class="clear-btn-center" id="clearBtn" disabled data-i18n="clearSheet">Vel leegmaken</button>
+        <div style="flex:1"></div>
+        <div class="toolbar-info">
+          <span><span data-i18n="infoSheet">Vel</span>: <strong id="infoSize">—</strong></span>
+          <span><span data-i18n="infoUsed">Gebruikt</span>: <strong id="infoUsedVal">0%</strong></span>
+          <span>Logo's: <strong id="infoLogoCount">0</strong></span>
+          <div class="fill-meter"><span id="fillMeter" style="width:0%"></span></div>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <!-- Logo loading overlay -->
+        <div class="logo-load-overlay" id="logoLoadOverlay">
+          <div class="logo-load-card">
+            <div class="logo-load-spinner"></div>
+            <p class="logo-load-text" id="logoLoadText">Logo laden…</p>
+            <div class="logo-load-bar"><div class="logo-load-bar-fill" id="logoLoadBarFill"></div></div>
+          </div>
+        </div>
+        <div class="canvas-pct" id="canvasPct"><span class="canvas-pct-label" id="canvasPctLabel">Logo's plaatsen</span><span class="canvas-pct-num" id="canvasPctNum">0%</span></div>
+        <div class="canvas-manual-badge" id="manualBadge">Handmatige modus</div>
+        <div class="canvas-ruler-col">
+          <div class="canvas-hruler-row">
+            <div class="canvas-hruler-corner"></div>
+            <div class="canvas-hruler" id="canvasHRuler"></div>
+          </div>
+          <div class="canvas-ruler-row">
+            <div class="canvas-ruler" id="canvasRuler"></div>
+            <div class="sheet-shadow bg-checker" id="sheetShadow">
+              <canvas id="canvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="canvas-bottom-bar">
+        <div class="canvas-bottom-group">
+          <span class="canvas-bottom-label" data-i18n="unitLabel">Meeteenheid</span>
+          <div class="unit-toggle" id="unitToggle">
+            <button data-unit="cm" class="active">cm</button>
+            <button data-unit="mm">mm</button>
+          </div>
+        </div>
+        <div class="canvas-bottom-sep"></div>
+        <div class="canvas-bottom-group">
+          <span class="canvas-bottom-label" data-i18n="bgLabel">Achtergrond</span>
+          <div class="bg-picker-inline" id="bgPicker">
+            <div class="bg-swatch-sm" data-bg="white" title="Wit"></div>
+            <div class="bg-swatch-sm" data-bg="gray" title="Grijs"></div>
+            <div class="bg-swatch-sm" data-bg="black" title="Zwart"></div>
+            <div class="bg-swatch-sm active" data-bg="checker" title="Checkered"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="right">
+      <div class="right-scroll">
+
+        <div class="section" id="selectedSection">
+          <div class="section-head"><h3 data-i18n="selected">Geselecteerde logo</h3></div>
+          <div id="selectedPanel">
+            <p class="empty" data-i18n="selectEmpty">Klik op een logo om te bewerken.</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head"><h3 data-i18n="summaryTitle">Samenvatting</h3></div>
+          <div class="summary-inline" id="summaryCard">
+            <div class="summary-row"><span class="label" data-i18n="sumUnique">Unieke logo's</span><span class="val" id="sumUnique">0</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumTotal">Totaal aantal kopieën</span><span class="val" id="sumTotal">0</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumUsage">Gebruik van vel</span><span class="val" id="sumUsage">0%</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumLength">Formaat</span><span class="val" id="sumLength">1m</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumDpi">DPI-status</span><span class="val" id="sumDpi">—</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumColor">Kleurruimte</span><span class="val">sRGB · 300 DPI</span></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="right-footer">
+        <div class="pdf-progress" id="pdfProgressWrap"></div>
+        <div class="footer-btn-row">
+          <button class="btn export-btn-bg" id="exportBgBtn" data-i18n="exportBgBtn">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download drukproef
+          </button>
+          <button class="btn export-btn-bg" id="saveProjectBtn" onclick="window.gsbExportProject()">
+            <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Opdracht opslaan
+          </button>
+        </div>
+        <button class="btn btn-grad-fill export-btn-big" id="exportBtn" data-i18n="exportBtn">Download print-ready PDF</button>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <h3 id="modalTitle">Titel</h3>
+    <p id="modalBody">Inhoud</p>
+    <div class="actions" id="modalActions"></div>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div class="info-panel-backdrop" id="infoPanelBackdrop">
+  <div class="info-panel" id="infoPanel">
+    <button class="close-info" id="infoClose">✕</button>
+    <h2 data-i18n="infoTitle">Productie-informatie</h2>
+    <div class="tip-card">
+      <strong data-i18n="infoTipDetail">Minimale detailgrootte</strong>
+      <p data-i18n="infoTipDetailBody">Details kleiner dan 0,4 mm (1 pt) kunnen wegvallen tijdens productie. Houd hier rekening mee bij kleine teksten, dunne lijnen en fijne patronen.</p>
+    </div>
+    <div class="tip-card">
+      <strong data-i18n="infoTipVector">Vector boven raster</strong>
+      <p data-i18n="infoTipVectorBody">Gebruik bij voorkeur vectorbestanden (SVG, AI, PDF). Deze zijn schaalbaar zonder kwaliteitsverlies. PNG en JPG zijn rasterbestanden — hoe groter je ze maakt, hoe lager de DPI en hoe waziger de print.</p>
+    </div>
+    <div class="tip-card">
+      <strong data-i18n="infoTipDpi">Resolutie (DPI)</strong>
+      <p data-i18n="infoTipDpiBody" style="margin-bottom:8px">DPI (dots per inch) bepaalt de scherpte van je print. Alleen relevant voor rasterbestanden (PNG, JPG) — vectorbestanden zijn altijd scherp.</p>
+      <table style="width:100%;font-size:.8rem;border-collapse:collapse;line-height:1.4">
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--success);white-space:nowrap">Vector</td>
+          <td style="padding:4px 0">SVG, AI, PDF — oneindig scherp, altijd de beste keuze. Schaalbaar zonder kwaliteitsverlies.</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--success);white-space:nowrap">300+ DPI</td>
+          <td style="padding:4px 0">Uitstekende printkwaliteit. Scherpe lijnen en details, geen zichtbare pixels.</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--warn);white-space:nowrap">72–299 DPI</td>
+          <td style="padding:4px 0">Matige kwaliteit. Bruikbaar voor grote vlakken, maar fijne details en tekst kunnen wazig worden.</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px 4px 0;font-weight:700;color:var(--error);white-space:nowrap">&lt; 72 DPI</td>
+          <td style="padding:4px 0">Onvoldoende voor print. Zichtbaar pixelig, niet geschikt voor productie. Upload een hoger-resolutie bestand of maak het logo kleiner.</td>
+        </tr>
+      </table>
+    </div>
+    <div class="tip-card">
+      <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
+      <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
+    </div>
+    <p class="version-tag">v2.26.1 · 12-07-2026</p>
+  </div>
+</div>
+
+<!-- Tour overlay -->
+<div class="tour-backdrop" id="tourBackdrop">
+  <div class="tour-highlight" id="tourHighlight"></div>
+  <div class="tour-tooltip" id="tourTooltip">
+    <h4 id="tourStepTitle"></h4>
+    <p id="tourStepBody"></p>
+    <div class="tour-nav">
+      <span class="tour-step" id="tourStepNum"></span>
+      <button class="tour-btn tour-skip" id="tourSkip" data-i18n="tourSkip">Sluiten</button>
+      <button class="tour-btn tour-next" id="tourNext" data-i18n="tourNext">Volgende</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Save-name dialog ═══ -->
+<div class="gsb-modal-backdrop" id="saveNameModal" onclick="if(event.target===this)gsLoginUI.closeSaveDialog()">
+  <div class="gsb-modal" style="max-width:400px">
+    <div class="gsb-modal-head">
+      <h3>Project opslaan</h3>
+      <button class="gsb-modal-close" onclick="gsLoginUI.closeSaveDialog()">&times;</button>
+    </div>
+    <div class="gsb-modal-body" style="padding:18px 22px">
+      <div class="pf-field">
+        <label for="saveProjectName">Projectnaam</label>
+        <input type="text" id="saveProjectName" class="login-field" placeholder="Mijn project" onkeydown="if(event.key==='Enter')gsLoginUI.confirmSave()">
+      </div>
+      <button class="btn btn-grad-fill" style="width:100%;margin-top:14px;padding:10px 16px" onclick="gsLoginUI.confirmSave()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Projects modal ═══ -->
+<div class="gsb-modal-backdrop" id="projectsModal">
+  <div class="gsb-modal wide">
+    <div class="gsb-modal-head">
+      <h3>Mijn projecten</h3>
+      <button class="gsb-modal-close" onclick="gsLoginUI.closeModal('projectsModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="gsb-modal-body">
+      <div class="projects-grid" id="projectsGrid"></div>
+      <p id="projectsEmpty" style="text-align:center;color:var(--muted);padding:40px 0;display:none">Nog geen opgeslagen projecten.</p>
+    </div>
+    <div class="gsb-modal-foot">
+      <button class="btn btn-primary" onclick="gsLoginUI.saveCurrentProject()">Huidig project opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Profile modal ═══ -->
+<div class="gsb-modal-backdrop" id="profileModal">
+  <div class="gsb-modal" style="max-width:440px">
+    <div class="gsb-modal-head">
+      <h3>Profiel bewerken</h3>
+      <button class="gsb-modal-close" onclick="gsLoginUI.closeModal('profileModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="gsb-modal-body">
+      <form class="profile-form" id="profileForm" onsubmit="gsLoginUI.handleProfileSave(event)">
+        <div class="pf-field"><label>Naam</label><input type="text" id="profName"></div>
+        <div class="pf-field"><label>Bedrijfsnaam</label><input type="text" id="profCompany"></div>
+        <div class="pf-field"><label>Voorkeur formaat</label>
+          <select id="profFormat"><option value="dtf55">DTF 55cm</option><option value="dtf60">DTF 60cm</option><option value="a3">A3</option><option value="a4">A4</option><option value="a5">A5</option></select>
+        </div>
+        <div class="pf-field"><label>Eenheid</label>
+          <select id="profUnit"><option value="cm">Centimeter</option><option value="mm">Millimeter</option></select>
+        </div>
+        <div class="pf-field"><label>Taal</label>
+          <select id="profLang"><option value="nl">Nederlands</option><option value="en">English</option></select>
+        </div>
+        <div id="profProofLogoWrap" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <label style="font-size:.78rem;font-weight:700">Eigen drukproef-logo</label>
+          <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px">Vervangt het Transferpersshop-logo in de drukproef-footer. Geen logo geüpload = TPS-logo.</p>
+          <img id="profProofLogoPreview" alt="" style="display:none;max-height:48px;max-width:100%;background:#000;padding:4px;border-radius:6px;margin-bottom:8px">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="le-btn le-btn-pick" onclick="document.getElementById('profProofLogo').click()">Logo uploaden</button>
+            <button type="button" class="le-btn le-btn-pick" onclick="gsLoginUI.removeProofLogo()">Verwijderen</button>
+          </div>
+          <input type="file" id="profProofLogo" accept="image/png,image/jpeg,image/svg+xml" style="display:none" onchange="gsLoginUI.onProofLogoUpload()">
+        </div>
+        <button type="submit" class="login-submit" style="margin-top:12px">Opslaan</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Admin panel modal ═══ -->
+<div class="gsb-modal-backdrop" id="adminModal">
+  <div class="gsb-modal wide">
+    <div class="gsb-modal-head">
+      <h3>Admin panel</h3>
+      <button class="gsb-modal-close" onclick="gsLoginUI.closeModal('adminModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="admin-layout">
+      <nav class="admin-nav">
+        <button class="admin-nav-item active" onclick="gsLoginUI.adminTab('users')">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Gebruikers
+        </button>
+        <button class="admin-nav-item" onclick="gsLoginUI.adminTab('approval')">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-4 4-2-2"/></svg>
+          Goedkeuring
+          <span class="admin-nav-badge" id="approvalBadge" style="display:none">0</span>
+        </button>
+        <button class="admin-nav-item" onclick="gsLoginUI.adminTab('settings')">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          Instellingen
+        </button>
+        <button class="admin-nav-item" onclick="gsLoginUI.adminTab('stats')">
+          <svg viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+          Statistieken
+        </button>
+      </nav>
+      <div class="admin-content">
+        <div class="admin-tab-content active" id="adminTabUsers"><div id="adminUsersTable"></div></div>
+        <div class="admin-tab-content" id="adminTabApproval"><div id="adminApprovalTable"></div></div>
+        <div class="admin-tab-content" id="adminTabSettings"><div class="settings-form" id="adminSettingsForm"></div></div>
+        <div class="admin-tab-content" id="adminTabStats"><div id="adminStatsContent"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Text Editor modal ═══ -->
+<div class="gsb-modal-backdrop" id="textEditorModal" onclick="if(event.target===this)gsbTextEditor.close()">
+  <div class="gsb-modal wide">
+    <div class="gsb-modal-head">
+      <h3>Tekst maken</h3>
+      <button class="gsb-modal-close" onclick="gsbTextEditor.close()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="gsb-modal-body" style="padding:0">
+     <div class="le-body">
+      <div class="le-sidebar">
+        <button class="le-tool-btn active" id="teTabBtn_create" onclick="gsbTextEditor.selectPanel('create')">
+          <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          Tekst
+        </button>
+        <button class="le-tool-btn" id="teTabBtn_fonts" onclick="gsbTextEditor.selectPanel('fonts')">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 16l3-8 3 8M10 13.5h4"/></svg>
+          Fonts
+        </button>
+      </div>
+      <div class="le-main" style="padding:16px 20px">
+      <div id="tePanel_create">
+      <div class="te-layout">
+
+        <!-- ═══ LEFT COLUMN: Controls ═══ -->
+        <div class="te-controls">
+
+          <!-- ── Font picker + upload row ── -->
+          <div class="te-field">
+            <label>Lettertype</label>
+            <div style="display:flex;gap:8px;align-items:stretch">
+              <div class="te-fp" style="flex:2">
+                <div class="te-fp-trigger" onclick="gsbTextEditor.togglePicker()">
+                  <span class="te-fp-label" id="teFontLabel">Kies een lettertype…</span>
+                  <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </div>
+                <div class="te-fp-panel" id="teFontPanel">
+                  <input type="text" class="te-fp-search" id="teFontSearch" placeholder="Zoek lettertype…" oninput="gsbTextEditor.onSearch()" onclick="event.stopPropagation()">
+                  <div class="te-fp-list" id="teFontList"></div>
+                </div>
+              </div>
+              <button class="te-upload-btn" onclick="document.getElementById('teCustomFontInput').click()">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload eigen font
+              </button>
+            </div>
+          </div>
+          <input type="file" id="teCustomFontInput" accept=".ttf,.otf,.woff" style="display:none" onchange="gsbTextEditor.onCustomFontUpload()">
+          <div id="teFontStatus" style="font-size:.7rem;min-height:12px;margin:2px 0 4px"></div>
+
+          <!-- ── Styling + Color compact row ── -->
+          <div class="te-row" style="margin-bottom:8px;align-items:flex-end">
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Stijl</label>
+            <div class="te-tog-row" style="height:38px">
+              <button class="te-tog" id="teBtnBold" onclick="gsbTextEditor.toggleBold()" title="Vet"><b>B</b></button>
+              <button class="te-tog" id="teBtnItalic" onclick="gsbTextEditor.toggleItalic()" title="Cursief"><i>I</i></button>
+              <button class="te-tog" id="teBtnUnderline" onclick="gsbTextEditor.toggleUnderline()" title="Onderstreept"><u>U</u></button>
+              <button class="te-tog" id="teBtnCaps" onclick="gsbTextEditor.toggleAllCaps()" title="Hoofdletters">AA</button>
+            </div>
+            </div>
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Tekstkleur</label>
+              <div class="te-color-wrap" title="Tekstkleur" style="height:38px">
+                <input type="color" id="teColor" value="#000000" oninput="gsbTextEditor.syncColor()">
+                <span class="te-color-hex" id="teColorHex">#000000</span>
+              </div>
+            </div>
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Outline kleur</label>
+              <div class="te-color-wrap" title="Outline kleur" style="height:38px">
+                <input type="color" id="teStrokeColor" value="#FFFFFF" oninput="gsbTextEditor.syncStroke()">
+              </div>
+            </div>
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Outline dikte (mm)</label>
+              <input type="number" id="teStrokeWidth" class="te-input" value="0" min="0" max="20" step="0.5" style="width:64px;height:38px;padding:4px 6px;font-size:.8rem" oninput="gsbTextEditor.syncStroke()">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar.">Spacing &#9432;</label>
+            <input type="range" id="teSpacing" min="-5" max="20" step="1" value="0" style="flex:1;accent-color:var(--primary)" oninput="gsbTextEditor.onSpacingChange()">
+            <span id="teSpacingVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:20px;text-align:center">0</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Buigt de tekst langs een boog. Positief = boog omhoog, negatief = boog omlaag. Schuif door naar +360° of -360° om de tekst volledig rond te zetten (cirkel).">Buiging &#9432;</label>
+            <input type="range" id="teCurve" min="-360" max="360" step="5" value="0" style="flex:1;accent-color:var(--primary)" oninput="gsbTextEditor.onCurveChange()">
+            <span id="teCurveVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:34px;text-align:center">0&deg;</span>
+          </div>
+
+          <!-- ══════ Tekst invoer ══════ -->
+            <div class="te-row" style="margin-bottom:8px">
+              <div class="te-field" style="flex:1">
+                <label>Letter hoogte</label>
+                <div style="display:flex;gap:6px">
+                  <input type="number" id="teSizeMm" class="te-input" value="30" min="1" max="999" step="1" style="flex:1" oninput="gsbTextEditor.updatePreview()">
+                  <select id="teSizeUnit" class="te-input" style="width:60px">
+                    <option value="mm">mm</option>
+                    <option value="cm">cm</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="te-field">
+              <label>Tekst <span style="font-weight:400;opacity:.65">(nieuwe regel = nieuw los object)</span></label>
+              <textarea id="teTextInput" class="te-input te-wysiwyg" rows="3" placeholder="Jan&#10;Piet&#10;Klaas" oninput="gsbTextEditor.updatePreview()"></textarea>
+            </div>
+            <div style="margin-top:4px">
+              <button class="te-small-btn" onclick="document.getElementById('teCsvInput').click()">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Importeer CSV / Excel
+              </button>
+              <input type="file" id="teCsvInput" accept=".csv,.txt,.xlsx" style="display:none" onchange="gsbTextEditor.onCsvImport()">
+            </div>
+            <!-- Preview (shows stroke/styling) -->
+            <div id="tePreviewWrap" style="margin-top:8px">
+              <div id="tePreview" class="te-preview" style="min-height:40px">
+                <span style="color:#9ca3af;font-size:.82rem">Typ tekst hierboven</span>
+              </div>
+            </div>
+
+            <button class="btn btn-grad-fill" style="width:100%;margin-top:10px;padding:10px 16px;font-size:.88rem;border-radius:10px" onclick="gsbTextEditor.addTexts()">
+              Tekst toevoegen aan vel
+            </button>
+
+        </div><!-- end te-controls -->
+
+      </div><!-- end te-layout -->
+      </div><!-- end tePanel_create -->
+
+      <div id="tePanel_fonts" style="display:none">
+        <h4 style="font-size:.85rem;margin:0 0 10px">Fonts in deze opdracht</h4>
+        <div id="teUsedFonts" style="min-height:16px">
+          <span style="color:#9ca3af;font-size:.78rem">Nog geen teksten op het vel</span>
+        </div>
+      </div>
+
+      </div><!-- end le-main -->
+     </div><!-- end le-body -->
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- LOGO EDITOR MODAL                                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<style>
+  /* Layout: left tool strip + main area */
+  .le-body{display:flex;gap:0;padding:0!important;overflow:hidden}
+  .le-sidebar{width:72px;flex-shrink:0;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:8px 6px;gap:4px}
+  .le-tool-btn{padding:10px 4px;border:none;border-radius:8px;background:transparent;cursor:pointer;font-size:.62rem;font-weight:700;color:var(--muted);text-align:center;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px;letter-spacing:.2px}
+  .le-tool-btn svg{width:20px;height:20px;opacity:.5;stroke:currentColor;fill:none;stroke-width:1.8}
+  .le-tool-btn:hover{background:var(--bg-subtle);color:var(--primary)}
+  .le-tool-btn:hover svg{opacity:.9}
+  .le-tool-btn.active{background:linear-gradient(135deg,rgba(105,70,200,.1),rgba(29,154,175,.1));color:var(--primary)}
+  .le-tool-btn.active svg{opacity:1}
+  .le-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;max-height:78vh}
+  /* Preview area — achtergrond (checker/zwart) loopt over de VOLLE breedte */
+  .le-preview-wrap{padding:12px;display:flex;align-items:center;justify-content:center;height:clamp(280px,46vh,560px);flex-shrink:0;position:relative;border-bottom:1px solid var(--border);overflow:hidden}
+  .le-preview-wrap.le-checker{background-color:#fff;background-image:linear-gradient(45deg,#e8e8e8 25%,transparent 25%),linear-gradient(-45deg,#e8e8e8 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e8e8e8 75%),linear-gradient(-45deg,transparent 75%,#e8e8e8 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+  .le-preview-wrap.le-dark{background:#000}
+  .le-preview-wrap.le-dark .le-file-name{color:#fff;opacity:.75}
+  .le-preview-wrap canvas{max-width:100%;max-height:100%}
+  .le-file-name{position:absolute;top:8px;left:12px;font-size:.64rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.6}
+  /* Tool panels */
+  .le-tool-panel{display:none;padding:16px 18px;border-bottom:1px solid var(--border)}
+  .le-tool-panel.active{display:block}
+  .le-tool-panel h4{margin:0 0 12px;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:800}
+  .le-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .le-row:last-child{margin-bottom:0}
+  .le-row label{font-size:.78rem;color:var(--fg);min-width:72px;font-weight:600}
+  .le-row input[type=range]{flex:1;accent-color:var(--primary)}
+  .le-row input[type=color]{width:34px;height:30px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px}
+  .le-row select{font-size:.82rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff}
+  .le-val{font-size:.72rem;font-weight:700;color:var(--fg);min-width:26px;text-align:center}
+  .le-swatch{width:30px;height:30px;border-radius:6px;border:2px solid #ddd;flex-shrink:0}
+  .le-swatch-hex{font-size:.72rem;font-family:'SF Mono',monospace;color:var(--muted)}
+  /* Buttons */
+  .le-btn{padding:8px 16px;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;transition:all .15s}
+  .le-btn-apply{background:var(--gradient);color:#fff}
+  .le-btn-apply:hover{filter:brightness(1.1)}
+  .le-btn-sub{background:#dff3f5;color:#167f92;border:1px solid #c4e8ec;font-weight:700}
+  .le-btn-sub:hover{background:#c4e8ec;border-color:#96d5dd}
+  .le-btn-pick{background:#fff;color:var(--fg);border:1px solid var(--border);font-size:.72rem}
+  .le-btn-pick:hover{border-color:var(--primary);color:var(--primary)}
+  .le-cmyk{font-size:.68rem;font-family:'SF Mono',monospace;color:var(--muted);margin-top:2px}
+  .le-status{font-size:.75rem;color:var(--muted);margin-top:6px;min-height:16px}
+  .le-info{font-size:.72rem;color:var(--muted);margin-top:4px}
+  /* Placeholder when no tool selected */
+  .le-placeholder{padding:24px 18px;text-align:center;color:var(--muted);font-size:.82rem}
+  .le-placeholder svg{width:32px;height:32px;margin-bottom:8px;opacity:.3}
+  /* Color chips (auto-detected swatches) */
+  .le-color-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .le-color-chip{width:32px;height:32px;border-radius:6px;border:2px solid rgba(0,0,0,.1);cursor:pointer;transition:transform .1s,box-shadow .1s;padding:0}
+  .le-color-chip:hover{transform:scale(1.15);box-shadow:0 2px 8px rgba(0,0,0,.2);border-color:var(--primary)}
+</style>
+
+<div class="gsb-modal-backdrop" id="logoEditorModal" onclick="if(event.target===this)gsbLogoEditor.close()">
+  <div class="gsb-modal wide">
+    <div class="gsb-modal-head">
+      <h3>Logo bewerken</h3>
+      <button class="gsb-modal-close" onclick="gsbLogoEditor.close()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="le-body">
+      <!-- ── Left tool strip ── -->
+      <div class="le-sidebar">
+        <button class="le-tool-btn" data-tool="color" onclick="gsbLogoEditor.selectTool('color')">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.2-.3-.4-.6-.4-1 0-.9.8-1.7 1.7-1.7H17c3 0 5.5-2.5 5.5-5.5C22.5 5.5 17.8 2 12 2z"/><circle cx="6.5" cy="11.5" r="1.5" fill="currentColor" opacity=".4"/><circle cx="10" cy="7.5" r="1.5" fill="currentColor" opacity=".4"/><circle cx="15" cy="7.5" r="1.5" fill="currentColor" opacity=".4"/><circle cx="18" cy="11.5" r="1.5" fill="currentColor" opacity=".4"/></svg>
+          Kleur
+        </button>
+        <button class="le-tool-btn" data-tool="bgremove" id="leToolBgRemove" onclick="gsbLogoEditor.selectTool('bgremove')">
+          <svg viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5z" stroke-dasharray="4 2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18" opacity=".15"/></svg>
+          BG weg
+        </button>
+        <button class="le-tool-btn" data-tool="outline" onclick="gsbLogoEditor.selectTool('outline')">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+          Outline
+        </button>
+        <button class="le-tool-btn" data-tool="upscale" id="leToolUpscale" onclick="gsbLogoEditor.selectTool('upscale')">
+          <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><line x1="21" y1="3" x2="14" y2="10"/><polyline points="9 21 3 21 3 15"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          Upscale
+        </button>
+      </div>
+
+      <!-- ── Main content ── -->
+      <div class="le-main">
+        <!-- Preview -->
+        <div class="le-preview-wrap le-checker" id="lePreviewWrap">
+          <span class="le-file-name" id="leFileName">Logo</span>
+          <canvas id="lePreview"></canvas>
+        </div>
+
+        <!-- Placeholder -->
+        <div class="le-placeholder le-tool-panel active" id="lePanel_">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          <p>Kies een tool links om het logo te bewerken</p>
+        </div>
+
+        <!-- ═══ 1. Kleur aanpassen ═══ -->
+        <div class="le-tool-panel" id="lePanel_color">
+          <h4>Kleur aanpassen</h4>
+
+          <div style="margin-bottom:10px">
+            <label style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px">Kleuren in logo</label>
+            <div class="le-color-chips" id="leColorSwatches"></div>
+          </div>
+
+          <div class="le-row">
+            <label>Bronkleur</label>
+            <div class="le-swatch" id="lePickedSwatch" style="background:repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 50%/10px 10px;border-color:#ddd"></div>
+            <span class="le-swatch-hex" id="lePickedHex">Kies hieronder of gebruik pipet</span>
+            <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.startPick()" style="margin-left:auto;padding:6px 10px">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:3px"><path d="M2 22l1-6.5L16 2.5l5.5 5.5L8.5 21z"/><path d="M15 5l4 4"/></svg>
+              Pipet
+            </button>
+          </div>
+          <div class="le-cmyk" id="lePickedCmyk"></div>
+          <div class="le-row">
+            <label>Nieuwe kleur</label>
+            <input type="color" id="leReplColor" value="#FF0000">
+          </div>
+          <div class="le-cmyk" id="leReplCmyk" style="margin-bottom:4px"></div>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%;margin-top:8px">Kleur vervangen</button>
+
+          <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
+            <h4 style="margin:0 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:800">Snel omzetten</h4>
+            <div style="display:flex;gap:8px">
+              <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px">Maak zwart</button>
+              <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.78rem;padding:8px 0;border:1px solid #ddd;border-radius:8px">Maak wit</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ 2. BG Remove (bitmap only) ═══ -->
+        <div class="le-tool-panel" id="lePanel_bgremove">
+          <h4>Witte achtergrond verwijderen</h4>
+          <div class="le-row">
+            <label>Drempel</label>
+            <input type="range" id="leWhiteThresh" min="2" max="30" step="1" value="12" oninput="gsbLogoEditor.previewWhiteRemove()">
+            <span class="le-val" id="leWhiteThreshVal">12</span>
+          </div>
+          <p style="font-size:.72rem;color:var(--muted);margin:0 0 10px">Verwijdert wit overal — ook binnenin letters — met gladde randen. Schuif de drempel hoger als er witte resten achterblijven.</p>
+          <button class="le-btn le-btn-sub" id="leWhiteRemoveBtn" onclick="gsbLogoEditor.applyWhiteRemove()" style="width:100%">Verwijder wit</button>
+          <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
+            <h4 style="margin:0 0 8px">AI-verwijdering (foto's / gekleurde achtergrond)</h4>
+            <button class="le-btn le-btn-pick" id="leBgRemoveBtn" onclick="gsbLogoEditor.applyBgRemove()" style="width:100%">AI achtergrond verwijderen</button>
+          </div>
+          <div class="le-status" id="leBgStatus"></div>
+        </div>
+
+        <!-- ═══ 3. Outline ═══ -->
+        <div class="le-tool-panel" id="lePanel_outline">
+          <h4>Outline toevoegen</h4>
+          <div class="le-row">
+            <label>Kleur</label>
+            <input type="color" id="leOutColor" value="#FFFFFF">
+            <span style="font-size:.72rem;color:var(--muted)">Wit is standaard voor DTF</span>
+          </div>
+          <div class="le-row">
+            <label>Dikte (px)</label>
+            <input type="range" id="leOutWidth" min="0" max="40" step="1" value="0" oninput="gsbLogoEditor.previewOutline()">
+            <span class="le-val" id="leOutWidthVal">0</span>
+          </div>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyOutline()" style="width:100%;margin-top:8px">Outline toepassen</button>
+        </div>
+
+        <!-- ═══ 4. Upscale (bitmap only) ═══ -->
+        <div class="le-tool-panel" id="lePanel_upscale">
+          <h4>Afbeelding opschalen</h4>
+          <div class="le-row">
+            <label>Factor</label>
+            <select id="leUpFactor" onchange="gsbLogoEditor.previewUpscale()">
+              <option value="2">2×</option>
+              <option value="3">3×</option>
+              <option value="4">4×</option>
+            </select>
+            <span class="le-info" id="leUpInfo" style="margin:0;font-weight:700"></span>
+          </div>
+          <div class="le-row">
+            <label>Verscherpen</label>
+            <input type="range" id="leSharpAmount" min="0" max="3" step="0.1" value="0.5" oninput="gsbLogoEditor.onSharpChange()">
+            <span class="le-val" id="leSharpVal">0.5</span>
+          </div>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyUpscale()" style="width:100%;margin-top:8px">Opschalen</button>
+        </div>
+      </div>
+    </div>
+    <div class="gsb-modal-foot">
+      <button class="le-btn" style="background:transparent;color:var(--muted);border:1px solid var(--border);margin-right:auto" onclick="gsbLogoEditor.reset()">Reset</button>
+      <button class="le-btn" style="background:#fff;border:1px solid var(--border);color:var(--fg)" onclick="gsbLogoEditor.close()">Annuleren</button>
+      <button class="le-btn le-btn-apply" onclick="gsbLogoEditor.apply()">Toepassen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Supabase JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- opentype.js for text-to-SVG -->
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
+<script src="./auth.js?v=2.26.1"></script>
+<script src="./login-ui.js?v=2.26.1"></script>
+<script src="./app.js?v=2.26.1"></script>
+<script src="./text-editor.js?v=2.26.1"></script>
+<script src="./logo-editor.js?v=2.26.1"></script>
+</body>
+</html>
