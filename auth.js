@@ -352,6 +352,7 @@ function _setupListener(){
       _user = session.user;
     }
     if(event === 'PASSWORD_RECOVERY'){
+      _recoveryMode = true;
       // Show password reset form
       const el = document.getElementById('loginScreen');
       if(el) el.dataset.mode = 'reset-confirm';
@@ -375,7 +376,7 @@ async function init(){
   _setupListener();
   try {
     const { data: { session } } = await client.auth.getSession();
-    if(_hadRecoveryHash && session && session.user){
+    if(_recoveryMode && session && session.user){
       // Herstel-link: gebruiker MOET eerst een nieuw wachtwoord kiezen
       _user = session.user;
       const el = document.getElementById('loginScreen');
@@ -464,6 +465,7 @@ async function adminCreateUser(email, password, displayName, companyName, role, 
 const GSB_SITE_URL = 'https://builder.transferpersshop.nl';
 // Vastleggen vóór supabase de URL-hash opschoont: kwam de gebruiker via een herstel-link?
 const _hadRecoveryHash = /type=recovery/.test(window.location.hash || '') || /type=recovery/.test(window.location.search || '');
+let _recoveryMode = _hadRecoveryHash;
 function _authRedirectUrl(){
   // Op de live site altijd het productie-domein; lokaal ontwikkelen blijft werken
   if(location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:'){

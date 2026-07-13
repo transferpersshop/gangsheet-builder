@@ -63,7 +63,9 @@ async function handleRegister(e){
   const company = document.getElementById('regCompany').value.trim();
   const email = document.getElementById('regEmail').value.trim();
   const pw = document.getElementById('regPassword').value;
+  const pw2 = (document.getElementById('regPassword2') || {}).value;
   if(!name || !company || !email || !pw) return;
+  if(pw !== pw2) return showError('De wachtwoorden komen niet overeen.');
   btn.disabled = true; btn.textContent = 'Bezig...';
   const result = await gsAuth.signUp(email, pw, name, company);
   btn.disabled = false; btn.textContent = 'Account aanmaken';
@@ -91,7 +93,9 @@ async function handleResetConfirm(e){
   e.preventDefault();
   hideMsg();
   const pw = document.getElementById('newPassword').value;
+  const pw2 = (document.getElementById('newPassword2') || {}).value;
   if(!pw || pw.length < 6) return showError('Wachtwoord moet minimaal 6 tekens zijn.');
+  if(pw !== pw2) return showError('De wachtwoorden komen niet overeen.');
   const client = gsAuth.supabase;
   if(!client) return;
   const { error } = await client.auth.updateUser({ password: pw });
@@ -353,9 +357,9 @@ async function _loadAdminUsers(){
         </select></td>
         <td><span class="badge ${badge}">${badgeText}</span></td>
         <td>${date}</td>
-        <td>${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" onclick="gsLoginUI.toggleBlock('${u.id}',${!u.blocked})">${u.blocked ? 'Deblokkeren' : 'Blokkeren'}</button>
-          <button class="btn-sm btn" style="background:#1d9aaf;color:#fff;margin-left:4px" onclick="gsLoginUI.setTempPassword('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">Nieuw WW</button>
-          <button class="btn-sm btn" style="background:#dc2626;color:#fff;margin-left:4px" onclick="gsLoginUI.deleteUser('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">Verwijderen</button>` : ''}</td>
+        <td style="white-space:nowrap">${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" style="padding:5px 8px" title="${u.blocked ? 'Deblokkeren' : 'Blokkeren'}" onclick="gsLoginUI.toggleBlock('${u.id}',${!u.blocked})">${u.blocked ? '\u2714' : '\u26D4'}</button>
+          <button class="btn-sm btn" style="background:#1d9aaf;color:#fff;margin-left:4px;padding:5px 8px" title="Nieuw tijdelijk wachtwoord" onclick="gsLoginUI.setTempPassword('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">\u{1F511}</button>
+          <button class="btn-sm btn" style="background:#dc2626;color:#fff;margin-left:4px;padding:5px 8px" title="Account verwijderen" onclick="gsLoginUI.deleteUser('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">\u{1F5D1}</button>` : ''}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
   }

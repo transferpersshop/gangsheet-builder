@@ -316,7 +316,7 @@ function _applyVectorWork(trimmed){
     _preOutlineCanvas.height = trimmed.height;
     _preOutlineCanvas.getContext('2d').drawImage(trimmed, 0, 0);
     // Re-apply outline with scaled width
-    var scaledW = _outlineWidth * _vectorMult / 3;
+    var scaledW = _outlineMmToPx(_outlineWidth, _preOutlineCanvas.width);
     var result = _buildOutline(_preOutlineCanvas, scaledW, _outlineColor);
     _workCanvas.width = result.width;
     _workCanvas.height = result.height;
@@ -445,7 +445,7 @@ function _liveOutline(){
     }
     // Build from pre-outline source to avoid stacking outlines
     var source = _preOutlineCanvas || _workCanvas;
-    var scaledW = width * _vectorMult / 3;
+    var scaledW = _outlineMmToPx(width, source.width);
     var tmp = _buildOutline(source, scaledW, color);
     _drawPreview(tmp);
     return;
@@ -457,7 +457,7 @@ function _liveOutline(){
   if(width2 <= 0){ _drawPreview(_workCanvas); return; }
   // For raster: use pre-outline canvas if outline was already applied
   var sourceForOutline = _preOutlineCanvas || _workCanvas;
-  var tmp2 = _buildOutline(sourceForOutline, width2, color2);
+  var tmp2 = _buildOutline(sourceForOutline, _outlineMmToPx(width2, sourceForOutline.width), color2);
   _drawPreview(tmp2);
 }
 
@@ -492,7 +492,7 @@ function _resetToolPanels(){
   var ow = document.getElementById('leOutWidth');
   if(ow) ow.value = '0';
   var owv = document.getElementById('leOutWidthVal');
-  if(owv) owv.textContent = '0';
+  if(owv) owv.textContent = '0 mm';
   _pickedRGB = null;
   _pickedTol = 40;
   _updatePickedSwatch();
@@ -1030,7 +1030,7 @@ function applyWhiteRemove(){
     _preOutlineCanvas.width = cleaned.width;
     _preOutlineCanvas.height = cleaned.height;
     _preOutlineCanvas.getContext('2d').drawImage(cleaned, 0, 0);
-    var scaledW = _isVector ? (_outlineWidth * _vectorMult / 3) : _outlineWidth;
+    var scaledW = _outlineMmToPx(_outlineWidth, _preOutlineCanvas.width);
     var rebuilt = _buildOutline(_preOutlineCanvas, scaledW, _outlineColor);
     _workCanvas.width = rebuilt.width;
     _workCanvas.height = rebuilt.height;
@@ -1240,6 +1240,12 @@ function _loadImg(src){
     img.onerror = reject;
     img.src = src;
   });
+}
+
+/* mm → pixels op een gegeven canvas: het canvas beslaat (_mmW) mm breed */
+function _outlineMmToPx(mm, canvasW){
+  var mmW = (_fabricObj && _fabricObj._mmW) || 50;
+  return mm * (canvasW / Math.max(mmW, 0.01));
 }
 
 /* ══════════════════════════════════════════
@@ -1511,7 +1517,7 @@ function applyOutline(){
     _outlineColor = color;
 
     // Build outline from pre-outline canvas (replace, not stack)
-    var scaledW = width * _vectorMult / 3;
+    var scaledW = _outlineMmToPx(width, _preOutlineCanvas.width);
     var result = _buildOutline(_preOutlineCanvas, scaledW, color);
     _workCanvas.width = result.width;
     _workCanvas.height = result.height;
@@ -1542,7 +1548,7 @@ function applyOutline(){
   }
 
   var sourceForOutline = _preOutlineCanvas;
-  var result = _buildOutline(sourceForOutline, width, color);
+  var result = _buildOutline(sourceForOutline, _outlineMmToPx(width, sourceForOutline.width), color);
   _workCanvas.width = result.width; _workCanvas.height = result.height;
   _workCtx.drawImage(result, 0, 0);
   _hasOutline = true;
@@ -1554,7 +1560,7 @@ function applyOutline(){
 function previewOutline(){
   var ow = document.getElementById('leOutWidth');
   var owv = document.getElementById('leOutWidthVal');
-  if(ow && owv) owv.textContent = ow.value;
+  if(ow && owv) owv.textContent = parseFloat(ow.value) + ' mm';
   _livePreview();
 }
 
@@ -1735,7 +1741,7 @@ function apply(){
       var svgSrcA = _getSvgSrc(_fabricObj);
       if(svgSrcA){
         var refW = _preOutlineCanvas ? _preOutlineCanvas.width : _workCanvas.width;
-        var outlinePxA = _outlineWidth * _vectorMult / 3;
+        var outlinePxA = _outlineMmToPx(_outlineWidth, refW);
         var resA = _applySvgOutlineToSource(svgSrcA, outlinePxA, refW, _outlineColor);
         if(resA){
           _replaceVectorWithOutlinedSvg(_fabricObj, resA);
@@ -1750,7 +1756,7 @@ function apply(){
       var mult2 = Math.max(3, Math.ceil(2000 / Math.max(displayW2, 1)));
       var vecRender = _fabricObj.toCanvasElement(mult2);
       var trimmedRender = _trimCanvas(vecRender);
-      var scaledW2 = _outlineWidth * mult2 / 3;
+      var scaledW2 = _outlineMmToPx(_outlineWidth, trimmedRender.width);
       var outlinedCanvas = _buildOutline(trimmedRender, scaledW2, _outlineColor);
 
       var dataUrl2 = outlinedCanvas.toDataURL('image/png');

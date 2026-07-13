@@ -620,8 +620,9 @@ window.addEventListener('load', ()=>{
 
 <!-- ═══ Login screen ═══ -->
 <div class="login-screen" id="loginScreen" style="display:none">
-  <div class="login-card">
-    <div class="logo-wrap"><img src="./logo-wit.svg" alt="Transferpersshop" style="height:32px;filter:none;background:linear-gradient(135deg,#1d9aaf,#65358c);padding:8px 16px;border-radius:8px"></div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:20px;width:100%;max-width:400px">
+  <img src="./logo-wit.svg" alt="Transferpersshop" style="height:42px">
+  <div class="login-card" style="width:100%">
     <h2>Gang Sheet Builder</h2>
     <p class="subtitle">Log in om je projecten op te slaan en te beheren</p>
     <div class="login-tabs">
@@ -643,6 +644,7 @@ window.addEventListener('load', ()=>{
       <div class="login-field"><label>Bedrijfsnaam</label><input type="text" id="regCompany" required autocomplete="organization"></div>
       <div class="login-field"><label>E-mailadres</label><input type="email" id="regEmail" required autocomplete="email"></div>
       <div class="login-field"><label>Wachtwoord (min. 6 tekens)</label><input type="password" id="regPassword" required autocomplete="new-password" minlength="6"></div>
+      <div class="login-field"><label>Herhaal wachtwoord</label><input type="password" id="regPassword2" required autocomplete="new-password" minlength="6"></div>
       <button type="submit" class="login-submit" id="regBtn">Account aanmaken</button>
       <button type="button" class="login-link" onclick="gsLoginUI.showTab('login')">Al een account? Inloggen</button>
     </form>
@@ -654,9 +656,11 @@ window.addEventListener('load', ()=>{
     </form>
     <!-- Password reset confirm (shown after clicking link in email) -->
     <form id="resetConfirmForm" style="display:none" onsubmit="gsLoginUI.handleResetConfirm(event)">
-      <div class="login-field"><label>Nieuw wachtwoord (min. 6 tekens)</label><input type="password" id="newPassword" required minlength="6"></div>
+      <div class="login-field"><label>Nieuw wachtwoord (min. 6 tekens)</label><input type="password" id="newPassword" required minlength="6" autocomplete="new-password"></div>
+      <div class="login-field"><label>Herhaal nieuw wachtwoord</label><input type="password" id="newPassword2" required minlength="6" autocomplete="new-password"></div>
       <button type="submit" class="login-submit">Wachtwoord opslaan</button>
     </form>
+  </div>
   </div>
 </div>
 
@@ -934,7 +938,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.29.0 · 12-07-2026</p>
+    <p class="version-tag">v2.31.0 · 12-07-2026</p>
   </div>
 </div>
 
@@ -1302,36 +1306,42 @@ window.addEventListener('load', ()=>{
 
         <!-- ═══ 1. Kleur aanpassen ═══ -->
         <div class="le-tool-panel" id="lePanel_color">
-          <h4>Kleur aanpassen</h4>
-
-          <div style="margin-bottom:10px">
-            <label style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px">Kleuren in logo</label>
-            <div class="le-color-chips" id="leColorSwatches"></div>
+          <h4>Snel omzetten</h4>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px">Maak zwart</button>
+            <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.78rem;padding:8px 0;border:1px solid #ddd;border-radius:8px">Maak wit</button>
           </div>
 
-          <div class="le-row">
-            <label>Bronkleur</label>
-            <div class="le-swatch" id="lePickedSwatch" style="background:repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 50%/10px 10px;border-color:#ddd"></div>
-            <span class="le-swatch-hex" id="lePickedHex">Kies hieronder of gebruik pipet</span>
-            <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.startPick()" style="margin-left:auto;padding:6px 10px">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:3px"><path d="M2 22l1-6.5L16 2.5l5.5 5.5L8.5 21z"/><path d="M15 5l4 4"/></svg>
-              Pipet
-            </button>
-          </div>
-          <div class="le-cmyk" id="lePickedCmyk"></div>
-          <div class="le-row">
-            <label>Nieuwe kleur</label>
-            <input type="color" id="leReplColor" value="#FF0000">
-          </div>
-          <div class="le-cmyk" id="leReplCmyk" style="margin-bottom:4px"></div>
-          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%;margin-top:8px">Kleur vervangen</button>
+          <div style="border-top:1px solid var(--border);padding-top:12px">
+          <h4>Kleur vervangen</h4>
 
-          <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
-            <h4 style="margin:0 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:800">Snel omzetten</h4>
-            <div style="display:flex;gap:8px">
-              <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px">Maak zwart</button>
-              <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.78rem;padding:8px 0;border:1px solid #ddd;border-radius:8px">Maak wit</button>
+          <div style="margin-bottom:12px">
+            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">1</span>Kies de kleur die je wilt vervangen — klik een kleur of gebruik de pipet</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="le-color-chips" id="leColorSwatches" style="margin:0"></div>
+              <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.startPick()" style="margin-left:auto;padding:6px 10px;flex-shrink:0">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:3px"><path d="M2 22l1-6.5L16 2.5l5.5 5.5L8.5 21z"/><path d="M15 5l4 4"/></svg>
+                Pipet
+              </button>
             </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div class="le-swatch" id="lePickedSwatch" style="background:repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 50%/10px 10px;border-color:#ddd"></div>
+              <span class="le-swatch-hex" id="lePickedHex">Nog geen kleur gekozen</span>
+              <span class="le-cmyk" id="lePickedCmyk" style="margin:0"></span>
+            </div>
+          </div>
+
+          <div style="margin-bottom:12px">
+            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">2</span>Kies de nieuwe kleur</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="color" id="leReplColor" value="#FF0000" title="Klik om een kleur te kiezen">
+              <span style="font-size:.72rem;color:var(--muted)">Klik om een kleur te kiezen</span>
+              <span class="le-cmyk" id="leReplCmyk" style="margin:0 0 0 auto"></span>
+            </div>
+          </div>
+
+          <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">3</span>Pas toe</label>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%">Kleur vervangen</button>
           </div>
         </div>
 
@@ -1357,15 +1367,13 @@ window.addEventListener('load', ()=>{
           <h4>Outline toevoegen</h4>
           <div class="le-row">
             <label>Kleur</label>
-            <input type="color" id="leOutColor" value="#FFFFFF">
-            <span style="font-size:.72rem;color:var(--muted)">Wit is standaard voor DTF</span>
+            <input type="color" id="leOutColor" value="#FFFFFF" title="Klik om een kleur te kiezen">
+            <label style="min-width:auto;margin-left:12px">Dikte (mm)</label>
+            <input type="range" id="leOutWidth" min="0" max="10" step="0.25" value="0" oninput="gsbLogoEditor.previewOutline()">
+            <span class="le-val" id="leOutWidthVal" style="min-width:38px">0 mm</span>
           </div>
-          <div class="le-row">
-            <label>Dikte (px)</label>
-            <input type="range" id="leOutWidth" min="0" max="40" step="1" value="0" oninput="gsbLogoEditor.previewOutline()">
-            <span class="le-val" id="leOutWidthVal">0</span>
-          </div>
-          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyOutline()" style="width:100%;margin-top:8px">Outline toepassen</button>
+          <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px">Wit is standaard voor DTF. De dikte is in millimeters op ware printgrootte.</p>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyOutline()" style="width:100%;margin-top:4px">Outline toepassen</button>
         </div>
 
         <!-- ═══ 4. Upscale (bitmap only) ═══ -->
@@ -1401,10 +1409,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.29.0"></script>
-<script src="./login-ui.js?v=2.29.0"></script>
-<script src="./app.js?v=2.29.0"></script>
-<script src="./text-editor.js?v=2.29.0"></script>
-<script src="./logo-editor.js?v=2.29.0"></script>
+<script src="./auth.js?v=2.31.0"></script>
+<script src="./login-ui.js?v=2.31.0"></script>
+<script src="./app.js?v=2.31.0"></script>
+<script src="./text-editor.js?v=2.31.0"></script>
+<script src="./logo-editor.js?v=2.31.0"></script>
 </body>
 </html>
