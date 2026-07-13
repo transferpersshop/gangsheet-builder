@@ -107,6 +107,9 @@ async function _autoSelectDefault(){
 function close(){
   var m = document.getElementById('textEditorModal');
   if(m) m.classList.remove('open');
+  _editTarget = null;
+  var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
+  if(addBtn) addBtn.textContent = 'Tekst toevoegen aan vel';
   _closePicker();
 }
 
@@ -847,6 +850,83 @@ function selectPanel(p){
   if(p==='fonts') _showUsedFonts();
 }
 
+/* ══════════ Bewerk-modus: bestaande tekst heropenen ══════════ */
+var _editTarget = null;
+
+async function openEdit(obj){
+  if(!obj || !obj._textParams) return;
+  var p = obj._textParams;
+  open();
+  _editTarget = obj;
+  // Velden voorvullen — effecten zijn nu terug te draaien (outline op 0, buiging terug, etc.)
+  var ta = document.getElementById('teTextInput'); if(ta) ta.value = p.text || '';
+  var si = document.getElementById('teSizeMm'); if(si) si.value = p.sizeMm || 30;
+  var su = document.getElementById('teSizeUnit'); if(su) su.value = 'mm';
+  var ci = document.getElementById('teColor'); if(ci) ci.value = p.color || '#000000';
+  var ch = document.getElementById('teColorHex'); if(ch) ch.textContent = (p.color || '#000000').toUpperCase();
+  var sc = document.getElementById('teStrokeColor'); if(sc) sc.value = (p.strokeColor && p.strokeColor !== 'none') ? p.strokeColor : '#FFFFFF';
+  var sw = document.getElementById('teStrokeWidth'); if(sw) sw.value = p.strokeWidth || 0;
+  _strokeColor = p.strokeColor || 'none'; _strokeWidth = p.strokeWidth || 0;
+  _bold = !!p.bold; _italic = !!p.italic; _underline = !!p.underline; _allCaps = !!p.allCaps;
+  _spacing = p.spacing || 0; _curve = p.curve || 0;
+  var sp = document.getElementById('teSpacing'); if(sp) sp.value = _spacing;
+  var spv = document.getElementById('teSpacingVal'); if(spv) spv.textContent = _spacing;
+  var cv = document.getElementById('teCurve'); if(cv) cv.value = _curve;
+  var cvv = document.getElementById('teCurveVal'); if(cvv) cvv.textContent = _curve + '\u00b0';
+  ['Bold','Italic','Underline','Caps'].forEach(function(k, i){
+    var btn = document.getElementById('teBtn' + k);
+    if(btn) btn.classList.toggle('active', [_bold, _italic, _underline, _allCaps][i]);
+  });
+  // Font terugzetten (standaardfonts); custom/lokaal font blijft de huidige selectie
+  if(p.fontId){
+    var f = FONTS.find(function(x){ return x.id === p.fontId; });
+    if(f){
+      try{
+        _currentFont = await _loadFont(f.n, f.id, '400', 'normal');
+        _currentName = f.n; _currentId = f.id;
+        var lb = document.getElementById('teFontLabel');
+        if(lb){ lb.textContent = f.n; lb.style.fontFamily = "'" + f.n + "',sans-serif"; }
+      }catch(_){ }
+    }
+  } else if(p.fontName && _loadedFonts[p.fontName]){
+    _currentFont = _loadedFonts[p.fontName]; _currentName = p.fontName; _currentId = '';
+    var lb2 = document.getElementById('teFontLabel');
+    if(lb2){ lb2.textContent = p.fontName; lb2.style.fontFamily = "'" + p.fontName + "',sans-serif"; }
+  }
+  _refreshAll();
+  if(window.toast) window.toast('Tekst bewerken — pas aan en klik "Tekst bijwerken"', 'info', 2500);
+  var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
+  if(addBtn) addBtn.textContent = 'Tekst bijwerken';
+}
+
+function _replaceTextObject(obj, svgText, params, mmW, mmH){
+  fabric.loadSVGFromString(svgText, function(objects, options){
+    var g = fabric.util.groupSVGElements(objects, options);
+    g.objectCaching = false;
+    if(g._objects) g._objects.forEach(function(c){ c.objectCaching = false; });
+    var pxPerMm = window._displayPxPerMm || 5;
+    g.set({ originX:'left', originY:'top', left:obj.left, top:obj.top, angle:obj.angle,
+            scaleX:(mmW * pxPerMm) / g.width, scaleY:(mmH * pxPerMm) / g.height });
+    g._id = obj._id; g._originalId = obj._originalId; g._name = params.text;
+    g._naturalW = g.width; g._naturalH = g.height;
+    g._mmW = mmW; g._mmH = mmH; g._mmLeft = obj._mmLeft; g._mmTop = obj._mmTop;
+    g._svgSource = svgText; g._recolored = true; g._textParams = params;
+    if(g._originalId && typeof svgSourceStore !== 'undefined') svgSourceStore.set(g._originalId, svgText);
+    var canvas = window._gsbCanvas;
+    if(canvas){
+      if(typeof window.attachObjListeners === 'function') window.attachObjListeners(g);
+      canvas.remove(obj);
+      canvas.add(g);
+      canvas.setActiveObject(g);
+      canvas.requestRenderAll();
+      if(typeof window.syncMmFromPx === 'function') window.syncMmFromPx(g);
+      if(typeof window.invalidateThumb === 'function') window.invalidateThumb(g._originalId || g._id);
+      if(typeof window.renderItemList === 'function') window.renderItemList();
+      if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
+    }
+  });
+}
+
 /* ══════════ Add texts to canvas ══════════ */
 async function addTexts(){
   if(!_currentFont){ if(window.toast) window.toast('Kies eerst een lettertype','warn'); return; }
@@ -870,6 +950,25 @@ async function addTexts(){
 
   var lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
   if(!lines.length) return;
+
+  // Bewerk-modus: vervang het bestaande object in-place (eerste regel)
+  if(_editTarget){
+    var eResult = _textToSvg(lines[0], font, sizeMm, color, {
+      bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps,
+      spacing:_spacing, simulateBold:simBold, simulateItalic:simItalic,
+      strokeColor:_strokeColor, strokeWidth:_strokeWidth, strokeOffset:_strokeOffset,
+      curve:_curve,
+    });
+    if(!eResult){ if(window.toast) window.toast('Tekst kon niet worden omgezet', 'warn'); return; }
+    var eParams = { text:lines[0], fontName:_currentName, fontId:_currentId, sizeMm:sizeMm, color:color,
+      bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
+      strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve };
+    _replaceTextObject(_editTarget, eResult.svg, eParams, eResult.mmW, eResult.mmH);
+    _editTarget = null;
+    if(window.toast) window.toast('Tekst bijgewerkt', 'success');
+    close();
+    return;
+  }
   var added = 0;
   lines.forEach(function(line){
     var result = _textToSvg(line, font, sizeMm, color, {
@@ -879,7 +978,10 @@ async function addTexts(){
       curve:_curve,
     });
     if(!result){ console.warn('[TE] Empty SVG for:',line); return; }
-    if(window.loadSvg){ window.loadSvg(result.svg, line); added++; }
+    var params = { text:line, fontName:_currentName, fontId:_currentId, sizeMm:sizeMm, color:color,
+      bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
+      strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve };
+    if(window.loadSvg){ window.loadSvg(result.svg, line, params); added++; }
   });
   if(added > 0){
     if(window.toast) window.toast(added+' tekst'+(added>1?'en':'')+' toegevoegd','success');
@@ -1449,6 +1551,7 @@ window.gsbTextEditor = {
   selectPanel:selectPanel,
   syncColor:syncColor, syncStroke:syncStroke,
   addTexts:addTexts,
+  openEdit:openEdit,
   updatePreview:_refreshPreview,
   // Tabs
   switchTab:switchTab,

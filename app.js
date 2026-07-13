@@ -515,7 +515,7 @@ const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
   '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients',
-  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline'
+  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams'
 ];
 const FABRIC_UNDO_PROPS = FABRIC_EXTRA_PROPS.filter(p => p !== '_svgSource');
 
@@ -770,6 +770,65 @@ function resizeSheet(){
   const pxH = Math.round(sheetMmH * 3 * scale);
   displayPxPerMm = pxW / sheetMmW;
   window._displayPxPerMm = displayPxPerMm;
+
+/* ── Kleur-popover: alle <input type=color> krijgen een eigen kiezer met
+     palet, hex-veld en expliciete "Kies kleur"-knop (native picker sluit
+     onduidelijk door wegklikken) ── */
+const GSB_PALETTE = ['#FFFFFF','#000000','#dc2626','#FF6600','#F39200','#FFE100','#16a34a','#00B7C6','#1d9aaf','#2563eb','#1e3a8a','#65358c','#d946ef','#ec4899','#8B4513','#6b7280'];
+let _cpTarget = null, _cpEl = null;
+function _closeColorPop(){ if(_cpEl && _cpEl.parentNode) _cpEl.parentNode.removeChild(_cpEl); _cpEl = null; _cpTarget = null; }
+function _openColorPop(input){
+  _closeColorPop();
+  _cpTarget = input;
+  const cur = input.value || '#000000';
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;z-index:9500;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:12px;width:216px;font-family:Inter,sans-serif';
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin-bottom:10px">'
+    + GSB_PALETTE.map(c => '<button data-c="'+c+'" style="width:20px;height:20px;border-radius:5px;border:1px solid rgba(0,0,0,.15);background:'+c+';cursor:pointer;padding:0"></button>').join('')
+    + '</div>'
+    + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">'
+    + '<div id="cpPrev" style="width:26px;height:26px;border-radius:6px;border:1px solid #ddd;background:'+cur+';flex-shrink:0"></div>'
+    + '<input id="cpHex" type="text" value="'+cur.toUpperCase()+'" style="flex:1;min-width:0;padding:5px 7px;border:1px solid #e5e7eb;border-radius:6px;font-size:.78rem;font-family:monospace">'
+    + '<button id="cpMore" title="Vrij kiezen (kleurenwiel)" style="padding:5px 7px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:.72rem">&#127912;</button>'
+    + '</div>'
+    + '<button id="cpApply" style="width:100%;padding:8px 0;border:none;border-radius:8px;background:linear-gradient(135deg,#1d9aaf,#65358c);color:#fff;font-weight:700;font-size:.8rem;cursor:pointer">Kies kleur</button>';
+  document.body.appendChild(el);
+  const r = input.getBoundingClientRect();
+  let x = Math.min(r.left, innerWidth - 232), y = r.bottom + 8;
+  if(y + 200 > innerHeight) y = r.top - 208;
+  el.style.left = Math.max(8, x) + 'px'; el.style.top = Math.max(8, y) + 'px';
+  const hexIn = el.querySelector('#cpHex'), prev = el.querySelector('#cpPrev');
+  const norm = v => { v = (v||'').trim(); if(!v.startsWith('#')) v = '#'+v; return /^#[0-9a-fA-F]{6}$/.test(v) ? v : null; };
+  el.querySelectorAll('[data-c]').forEach(b => b.onclick = e => { e.stopPropagation(); hexIn.value = b.dataset.c.toUpperCase(); prev.style.background = b.dataset.c; });
+  hexIn.oninput = () => { const v = norm(hexIn.value); if(v) prev.style.background = v; };
+  el.querySelector('#cpMore').onclick = e => {
+    e.stopPropagation();
+    input._gsbNative = true;
+    input.addEventListener('input', function _sync(){ hexIn.value = input.value.toUpperCase(); prev.style.background = input.value; if(!_cpEl) input.removeEventListener('input', _sync); });
+    try{ input.showPicker(); }catch(_){ input.click(); }
+  };
+  el.querySelector('#cpApply').onclick = e => {
+    e.stopPropagation();
+    const v = norm(hexIn.value);
+    if(!v){ hexIn.style.borderColor = '#dc2626'; return; }
+    input.value = v;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    _closeColorPop();
+  };
+  el.addEventListener('click', e => e.stopPropagation());
+  _cpEl = el;
+}
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if(t && t.tagName === 'INPUT' && t.type === 'color'){
+    if(t._gsbNative){ t._gsbNative = false; return; } // "vrij kiezen" → native door
+    e.preventDefault();
+    _openColorPop(t);
+  } else if(_cpEl && !_cpEl.contains(t)){
+    _closeColorPop();
+  }
+}, true);
 
 /* ── Thema (licht = standaard, donker per account) ── */
 function gsbApplyTheme(theme){
@@ -1865,7 +1924,7 @@ function parseSvgDocSize(svgText){
   return null;
 }
 
-function loadSvg(svgText, name){
+function loadSvg(svgText, name, extra){
   // Detect embedded raster images inside the SVG.
   const embeddedRaster = detectEmbeddedRaster(svgText);
 
@@ -1904,6 +1963,7 @@ function loadSvg(svgText, name){
         targetMmW = state.sheet.w * 0.25;
         targetMmH = targetMmW * (naturalH / naturalW);
       }
+      if(extra) group._textParams = extra;
       placeImage(group, name, targetMmW, targetMmH, naturalW, naturalH);
       hideLogoLoading();
       if(embeddedRaster){
@@ -4054,7 +4114,13 @@ function actOnSelected(act){
 
   // Single-select actions
   switch(act){
-    case 'edit-logo': { if(window.gsbLogoEditor) window.gsbLogoEditor.open(obj); break; }
+    case 'edit-logo': {
+      // Teksten heropenen in de teksteditor: effecten (outline, buiging) zijn dan
+      // gewoon terug te draaien door de waardes aan te passen of op 0 te zetten
+      if(obj._textParams && window.gsbTextEditor && gsbTextEditor.openEdit){ gsbTextEditor.openEdit(obj); break; }
+      if(window.gsbLogoEditor) window.gsbLogoEditor.open(obj);
+      break;
+    }
     case 'rot90': { const cur = Math.round(((obj.angle||0)%360+360)%360); obj.rotate(cur===0?90:0); canvas.requestRenderAll(); syncMmFromPx(obj); pushUndo(); break; }
     case 'dup':   duplicate(obj); break;
     case 'del':   removeObj(obj); break;
