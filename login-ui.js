@@ -561,6 +561,37 @@ function _esc(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt
 
 /* ── Expose ── */
 
+function _stripWhiteBg(c){
+  try{
+    const ctx = c.getContext('2d');
+    const w = c.width, h = c.height;
+    const im = ctx.getImageData(0, 0, w, h);
+    const d = im.data;
+    const isWhite = i => d[i+3] > 200 && d[i] > 242 && d[i+1] > 242 && d[i+2] > 242;
+    // Alleen strippen als de hoeken wit zijn (anders is er geen witte achtergrond)
+    const corners = [0, (w-1)*4, (h-1)*w*4, ((h-1)*w + w-1)*4];
+    if(corners.filter(isWhite).length < 3) return;
+    const seen = new Uint8Array(w*h);
+    const q = [];
+    for(let x=0; x<w; x++){ q.push(x, (h-1)*w + x); }
+    for(let y=0; y<h; y++){ q.push(y*w, y*w + w-1); }
+    while(q.length){
+      const p = q.pop();
+      if(p < 0 || p >= w*h || seen[p]) continue;
+      seen[p] = 1;
+      const i = p*4;
+      if(!isWhite(i)) continue;
+      d[i+3] = 0;
+      const x = p % w, y = (p - x) / w;
+      if(x > 0) q.push(p-1);
+      if(x < w-1) q.push(p+1);
+      if(y > 0) q.push(p-w);
+      if(y < h-1) q.push(p+w);
+    }
+    ctx.putImageData(im, 0, 0);
+  }catch(_){ }
+}
+
 async function onProofLogoUpload(){
   const inp = document.getElementById('profProofLogo');
   const f = inp && inp.files ? inp.files[0] : null;
@@ -587,6 +618,7 @@ async function onProofLogoUpload(){
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       c.getContext('2d').drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
+      _stripWhiteBg(c);
       out = c.toDataURL('image/png');
     } else if(ext === 'pdf' || ext === 'ai' || ext === 'eps'){
       // PDF/AI direct via pdf.js; EPS eerst client-side naar PDF converteren
@@ -604,6 +636,7 @@ async function onProofLogoUpload(){
       const c = document.createElement('canvas');
       c.width = Math.round(viewport.width); c.height = Math.round(viewport.height);
       await page.render({ canvasContext: c.getContext('2d'), viewport }).promise;
+      _stripWhiteBg(c);
       out = c.toDataURL('image/png');
     } else {
       // Bitmap: verkleinen naar max 900px breed
@@ -615,6 +648,7 @@ async function onProofLogoUpload(){
       c.width = Math.max(1, Math.round(img.width * sc));
       c.height = Math.max(1, Math.round(img.height * sc));
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      _stripWhiteBg(c);
       out = c.toDataURL('image/png');
     }
   }catch(err){
@@ -622,10 +656,16 @@ async function onProofLogoUpload(){
     inp.value = '';
     return;
   }
-  await gsAuth.updateProfile({ proof_logo: out });
+  const { error } = await gsAuth.updateProfile({ proof_logo: out });
+  if(error){
+    if(window.toast) toast('Opslaan mislukt: ' + (error.message || 'onbekende fout') + ' \u2014 probeer een kleiner bestand', 'error', 6000);
+    inp.value = '';
+    return;
+  }
+  const fresh = (gsAuth.profile && gsAuth.profile.proof_logo) || out;
   const prev = document.getElementById('profProofLogoPreview');
-  if(prev){ prev.src = out; prev.style.display = ''; }
-  if(window.toast) toast('Drukproef-logo opgeslagen', 'success');
+  if(prev){ prev.src = fresh; prev.style.display = ''; }
+  if(window.toast) toast('Drukproef-logo opgeslagen \u2014 wordt gebruikt in je volgende drukproef', 'success', 3000);
 }
 async function removeProofLogo(){
   await gsAuth.updateProfile({ proof_logo: null });

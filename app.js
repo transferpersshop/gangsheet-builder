@@ -5482,17 +5482,24 @@ async function runPdfExport(withBackground = false){
         ftCtx.drawImage(ftImg, 0, 0, ftPxW, ftPxH);
         // Eigen drukproef-logo (printer/admin) vervangt het TPS-logo linksin
         try {
-          const customLogo = (window.gsAuth && gsAuth.profile && gsAuth.profile.proof_logo) || null;
+          // Altijd vers uit de database — voorkomt dat een oude sessie-kopie
+          // het vorige logo blijft tonen na een wissel
+          const customLogo = (window.gsAuth && gsAuth.getProofLogoFresh)
+            ? await gsAuth.getProofLogoFresh()
+            : ((window.gsAuth && gsAuth.profile && gsAuth.profile.proof_logo) || null);
           if(customLogo){
             const li = new Image();
             await new Promise((res, rej) => { li.onload = res; li.onerror = rej; li.src = customLogo; });
-            const areaW = ftPxW * 0.32, pad = ftPxH * 0.14;
+            // Rechterdeel = het witte TPS-logo — dat vak overschilderen (zwart,
+            // zelfde kleur als de footer) en het eigen logo daar gecentreerd plaatsen
+            const areaW = ftPxW * 0.34, pad = ftPxH * 0.14;
+            const x0 = ftPxW - areaW;
             ftCtx.fillStyle = '#000';
-            ftCtx.fillRect(0, 0, areaW, ftPxH);
+            ftCtx.fillRect(x0, 0, areaW, ftPxH);
             const mw = areaW - pad * 2, mh = ftPxH - pad * 2;
             const sc = Math.min(mw / li.width, mh / li.height);
             const dw = li.width * sc, dh = li.height * sc;
-            ftCtx.drawImage(li, pad + (mw - dw) / 2, pad + (mh - dh) / 2, dw, dh);
+            ftCtx.drawImage(li, x0 + pad + (mw - dw) / 2, pad + (mh - dh) / 2, dw, dh);
             console.log('[GSB Export] Custom proof logo toegepast in footer');
           }
         } catch(clErr){ console.warn('[GSB Export] Custom proof logo mislukt:', clErr); }

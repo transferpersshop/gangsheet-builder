@@ -422,6 +422,20 @@ async function getUserEmail(userId){
 }
 
 /* ── Admin: create user ── */
+async function getProofLogoFresh(){
+  if(!_user) return null;
+  const client = getClient();
+  if(!client) return (_profile && _profile.proof_logo) || null;
+  try{
+    const { data } = await client.from('profiles').select('proof_logo').eq('id', _user.id).single();
+    if(data){
+      if(_profile) _profile.proof_logo = data.proof_logo;
+      return data.proof_logo || null;
+    }
+  }catch(_){ }
+  return (_profile && _profile.proof_logo) || null;
+}
+
 async function adminSetPassword(userId, password){
   const client = getClient();
   if(!client) return { error: { message: 'Supabase niet geladen' } };
@@ -508,6 +522,7 @@ window.gsAuth = {
   adminCreateUser,
   adminDeleteUser,
   adminSetPassword,
+  getProofLogoFresh,
   getSettings, updateSetting,
   getUsageStats, getCompanyStats,
   logUsage: _logUsage,

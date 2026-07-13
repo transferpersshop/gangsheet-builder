@@ -408,7 +408,7 @@ function _syncTextareaFont(){
     ta.style.fontStyle = _italic ? 'italic' : 'normal';
     ta.style.textTransform = _allCaps ? 'uppercase' : 'none';
     ta.style.textDecoration = _underline ? 'underline' : 'none';
-    ta.style.color = (document.getElementById('teColor')||{}).value || '#000000';
+    ta.style.color = '#1a1a2e'; // invoerveld altijd leesbaar zwart; kleur zie je in de preview
   } else {
     ta.style.fontFamily = "'Inter', sans-serif";
     ta.style.fontWeight = '400';
@@ -471,18 +471,32 @@ function syncStroke(){
 }
 
 /* ══════════ Path data extraction (robust triple fallback) ══════════ */
+/* Verwijder pad-commando's met niet-eindige (NaN) coördinaten. Sommige
+   font-bestanden leveren op sommige platformen een enkel corrupt punt —
+   SVG-renderers stoppen dan MIDDEN in het pad met tekenen (tekst „valt weg”
+   vanaf die letter). Eén commando overslaan is onzichtbaar; het hele pad
+   kwijtraken niet. */
+function _cleanD(d){
+  if(!d || d.indexOf('NaN') < 0) return d;
+  console.warn('[TE] NaN-coördinaat in fontpad — commando(s) overgeslagen');
+  // 'NaN' bevat zelf de padletter a — eerst vervangen door een sentinel
+  var t = d.replace(/NaN/g, '\u0000');
+  return (t.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g) || [])
+    .filter(function(seg){ return seg.indexOf('\u0000') < 0; }).join('');
+}
+
 function _pd(path){
   // 1. toPathData
   try{ if(typeof path.toPathData==='function'){
     var d = path.toPathData(2);
-    if(typeof d==='string' && d.length>1) return d;
+    if(typeof d==='string' && d.length>1) return _cleanD(d);
     d = path.toPathData({decimalPlaces:2});
-    if(typeof d==='string' && d.length>1) return d;
+    if(typeof d==='string' && d.length>1) return _cleanD(d);
   }}catch(_){}
   // 2. parse toSVG
   try{ if(typeof path.toSVG==='function'){
     var svg = path.toSVG(2); if(typeof svg!=='string') svg = path.toSVG();
-    if(typeof svg==='string'){ var m=svg.match(/d="([^"]*)"/); if(m&&m[1].length>1) return m[1]; }
+    if(typeof svg==='string'){ var m=svg.match(/d="([^"]*)"/); if(m&&m[1].length>1) return _cleanD(m[1]); }
   }}catch(_){}
   // 3. manual from commands
   try{ if(path.commands&&path.commands.length){
@@ -496,7 +510,7 @@ function _pd(path){
         case 'Z': s+='Z'; break;
       }
     });
-    if(s.length>1) return s;
+    if(s.length>1) return _cleanD(s);
   }}catch(_){}
   return '';
 }
