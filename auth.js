@@ -375,6 +375,18 @@ async function init(){
   _setupListener();
   try {
     const { data: { session } } = await client.auth.getSession();
+    if(_hadRecoveryHash && session && session.user){
+      // Herstel-link: gebruiker MOET eerst een nieuw wachtwoord kiezen
+      _user = session.user;
+      const el = document.getElementById('loginScreen');
+      if(el) el.dataset.mode = 'reset-confirm';
+      showLogin();
+      showEl('resetConfirmForm');
+      hideEl('loginForm');
+      hideEl('registerForm');
+      hideEl('resetForm');
+      return;
+    }
     if(session && session.user){
       _user = session.user;
       await _loadProfile();
@@ -404,6 +416,15 @@ async function getUserEmail(userId){
 }
 
 /* ── Admin: create user ── */
+async function adminSetPassword(userId, password){
+  const client = getClient();
+  if(!client) return { error: { message: 'Supabase niet geladen' } };
+  const { data, error } = await client.functions.invoke('admin-set-password', { body: { userId, password } });
+  if(error) return { error };
+  if(data && data.error) return { error: { message: data.error } };
+  return { error: null };
+}
+
 async function adminDeleteUser(userId){
   const client = getClient();
   if(!client) return { error: { message: 'Supabase niet geladen' } };
@@ -441,6 +462,8 @@ async function adminCreateUser(email, password, displayName, companyName, role, 
 
 /* ── Admin: send password reset email ── */
 const GSB_SITE_URL = 'https://builder.transferpersshop.nl';
+// Vastleggen vóór supabase de URL-hash opschoont: kwam de gebruiker via een herstel-link?
+const _hadRecoveryHash = /type=recovery/.test(window.location.hash || '') || /type=recovery/.test(window.location.search || '');
 function _authRedirectUrl(){
   // Op de live site altijd het productie-domein; lokaal ontwikkelen blijft werken
   if(location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:'){
@@ -477,6 +500,7 @@ window.gsAuth = {
   listAllProjects,
   adminCreateUser,
   adminDeleteUser,
+  adminSetPassword,
   getSettings, updateSetting,
   getUsageStats, getCompanyStats,
   logUsage: _logUsage,

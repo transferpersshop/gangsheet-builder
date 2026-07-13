@@ -354,6 +354,7 @@ async function _loadAdminUsers(){
         <td><span class="badge ${badge}">${badgeText}</span></td>
         <td>${date}</td>
         <td>${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" onclick="gsLoginUI.toggleBlock('${u.id}',${!u.blocked})">${u.blocked ? 'Deblokkeren' : 'Blokkeren'}</button>
+          <button class="btn-sm btn" style="background:#1d9aaf;color:#fff;margin-left:4px" onclick="gsLoginUI.setTempPassword('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">Nieuw WW</button>
           <button class="btn-sm btn" style="background:#dc2626;color:#fff;margin-left:4px" onclick="gsLoginUI.deleteUser('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">Verwijderen</button>` : ''}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
@@ -393,6 +394,22 @@ async function adminCreateUser(){
 async function changeRole(userId, role){
   await gsAuth.updateUserRole(userId, role);
   _loadAdminUsers();
+}
+
+async function setTempPassword(userId, name){
+  if(!confirm('Nieuw tijdelijk wachtwoord instellen voor "' + name + '"?\n\nHet oude wachtwoord vervalt direct.')) return;
+  // Leesbaar tijdelijk wachtwoord: TPS- + 8 tekens zonder verwarrende karakters
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let pw = 'TPS-';
+  const rnd = new Uint32Array(8);
+  crypto.getRandomValues(rnd);
+  for(let i = 0; i < 8; i++) pw += chars[rnd[i] % chars.length];
+  const { error } = await gsAuth.adminSetPassword(userId, pw);
+  if(error){
+    if(window.toast) toast('Instellen mislukt: ' + (error.message || 'onbekende fout'), 'error', 5000);
+    return;
+  }
+  prompt('Tijdelijk wachtwoord voor "' + name + '" — kopieer en deel dit veilig.\nAdvies: laat de gebruiker het direct wijzigen via Profiel of "Wachtwoord vergeten".', pw);
 }
 
 async function deleteUser(userId, name){
@@ -567,7 +584,7 @@ async function removeProofLogo(){
 
 window.gsLoginUI = {
   onProofLogoUpload, removeProofLogo,
-  deleteUser,
+  deleteUser, setTempPassword,
   showTab, handleLogin, handleRegister, handleReset, handleResetConfirm,
   toggleUserMenu, logout,
   openModal, closeModal,
