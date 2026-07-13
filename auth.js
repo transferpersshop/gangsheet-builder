@@ -309,10 +309,15 @@ async function getCompanyStats(){
     .limit(5000);
   // Build per-company map
   const userCompany = {};
-  (profiles || []).forEach(p => {
-    userCompany[p.id] = p.company_name || p.display_name || 'Onbekend';
-  });
   const companies = {};
+  (profiles || []).forEach(p => {
+    const label = p.company_name
+      ? p.company_name + (p.display_name ? ' \u2014 ' + p.display_name : '')
+      : (p.display_name || 'Onbekend');
+    userCompany[p.id] = label;
+    // Iedereen in de lijst, ook zonder activiteit
+    if(!companies[label]) companies[label] = { gangsheets: 0, logins: 0, lastActivity: null };
+  });
   (logs || []).forEach(l => {
     const name = userCompany[l.user_id] || 'Onbekend';
     if(!companies[name]) companies[name] = { gangsheets: 0, logins: 0, lastActivity: null };

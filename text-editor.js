@@ -72,6 +72,22 @@ function open(){
   var m = document.getElementById('textEditorModal');
   if(!m) return;
   m.classList.add('open');
+  // Schone start voor nieuwe teksten (bewerken vult hierna alles voorin)
+  _editTarget = null;
+  _bold = _italic = _underline = _allCaps = false;
+  _spacing = 0; _curve = 0; _strokeColor = 'none'; _strokeWidth = 0;
+  var _r1 = document.getElementById('teTextInput'); if(_r1) _r1.value = '';
+  var _r2 = document.getElementById('teSizeMm'); if(_r2) _r2.value = 30;
+  var _r3 = document.getElementById('teColor'); if(_r3) _r3.value = '#000000';
+  var _r3h = document.getElementById('teColorHex'); if(_r3h) _r3h.textContent = '#000000';
+  var _r4 = document.getElementById('teStrokeColor'); if(_r4) _r4.value = '#FFFFFF';
+  var _r5 = document.getElementById('teStrokeWidth'); if(_r5) _r5.value = 0;
+  var _r6 = document.getElementById('teSpacing'); if(_r6) _r6.value = 0;
+  var _r6v = document.getElementById('teSpacingVal'); if(_r6v) _r6v.textContent = '0';
+  var _r7 = document.getElementById('teCurve'); if(_r7) _r7.value = 0;
+  var _r7v = document.getElementById('teCurveVal'); if(_r7v) _r7v.textContent = '0\u00b0';
+  ['Bold','Italic','Underline','Caps'].forEach(function(k){ var b = document.getElementById('teBtn'+k); if(b) b.classList.remove('active'); });
+  var _r8 = document.querySelector('#tePanel_create .btn-grad-fill'); if(_r8) _r8.textContent = 'Tekst toevoegen aan vel';
   var lfb = document.getElementById('teLocalFontsBtn');
   if(lfb) lfb.style.display = ('queryLocalFonts' in window) ? '' : 'none';
   // Donkere modus: zet de standaard tekstkleur op wit (preview-veld blijft licht)
@@ -604,7 +620,7 @@ function _textToSvg(text, font, heightMm, color, opts){
   if(hasStroke){
     // Expand viewBox for outward stroke + offset + safety margin
     // (1.6× strokebreedte: ronde joins onder diagonalen steken verder uit)
-    var expand = opts.strokeWidth * 2 + strokeOffset + fontSize * 0.06 + 10;
+    var expand = opts.strokeWidth + strokeOffset + 1.5; // outline steekt max strokeWidth uit
     tx += expand; ty += expand;
     w += expand * 2; h += expand * 2;
     transforms = 'translate('+_r(tx)+','+_r(ty)+')';
@@ -822,7 +838,7 @@ function _curvedSvg(text, font, fontSize, color, opts){
   if(w<=0||h<=0) return null;
   var tx = -bb.x1, ty = -bb.y1;
   var hasStroke = opts.strokeColor && opts.strokeColor!=='none' && opts.strokeWidth>0;
-  var expand = hasStroke ? (opts.strokeWidth + (opts.strokeOffset||0) + 8) : 2;
+  var expand = hasStroke ? (opts.strokeWidth + (opts.strokeOffset||0) + 1.5) : 1;
   tx += expand; ty += expand; w += expand*2; h += expand*2;
   var gp = cr.items.map(function(it){
     return '<path d="'+it.d+'" transform="translate('+_r(it.x)+','+_r(it.y)+') rotate('+_r(it.rot)+')"/>';

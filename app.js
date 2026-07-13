@@ -3117,6 +3117,46 @@ function makeLogoMonochrome(targetHex){
 // Replaces ALL fill, stroke, stop-color values with targetHex,
 // regardless of format (hex, rgb, named colors, shorthand).
 // Only skips 'none', 'transparent', 'url()', and the target color itself.
+/* Na mono-verkleuring: dubbele lagen (outline-laag + content) samenvoegen.
+   De outline-laag is een verdikte superset van de content — als alles nu
+   dezelfde kleur heeft, is de content-laag overbodig (voorkomt dubbele
+   inktlaag in de DTF-export). */
+function _flattenMonoLayers(doc){
+  try{
+    const root = doc.documentElement;
+    // 1. Logo-outline: [data-gsb-outline] aanwezig → verwijder de content-broers
+    const og = root.querySelector('[data-gsb-outline]');
+    if(og && og.parentNode === root){
+      [...root.children].forEach(ch => {
+        const tag = ch.nodeName.toLowerCase();
+        if(ch !== og && tag !== 'defs' && tag !== 'metadata' && tag !== 'title' && tag !== 'style'){
+          root.removeChild(ch);
+        }
+      });
+      return;
+    }
+    // 2. Tekst-outline: twee paths met identieke d — de gestrookte (superset) winnen
+    const paths = [...root.querySelectorAll('path')];
+    for(let i = 0; i < paths.length; i++){
+      for(let j = i + 1; j < paths.length; j++){
+        const a = paths[i], b = paths[j];
+        if(!a.parentNode || !b.parentNode) continue;
+        if(a.getAttribute('d') === b.getAttribute('d') &&
+           (a.getAttribute('transform') || '') === (b.getAttribute('transform') || '') &&
+           (a.getAttribute('fill') || '') === (b.getAttribute('fill') || '')){
+          const aStroked = a.getAttribute('stroke') && a.getAttribute('stroke') !== 'none';
+          const bStroked = b.getAttribute('stroke') && b.getAttribute('stroke') !== 'none';
+          // hou de gestrookte (grotere) laag, verwijder de kale duplicaat
+          if(aStroked && !bStroked) b.parentNode.removeChild(b);
+          else if(bStroked && !aStroked) a.parentNode.removeChild(a);
+          else if(aStroked === bStroked) b.parentNode.removeChild(b);
+        }
+      }
+    }
+  }catch(e){ console.warn('[GSB] flatten mono layers failed:', e); }
+}
+window._gsbFlattenMonoLayers = _flattenMonoLayers;
+
 function _makeMonoSvgSource(svgStr, targetHex){
   if(!svgStr) return svgStr;
   try {
@@ -3187,6 +3227,7 @@ function _makeMonoSvgSource(svgStr, targetHex){
       if(changed) styleEl.textContent = css;
     });
 
+    _flattenMonoLayers(doc);
     return new XMLSerializer().serializeToString(doc.documentElement);
   } catch(e){
     console.warn('[GSB] _makeMonoSvgSource failed:', e);
@@ -3533,7 +3574,7 @@ function renderSelectedPanel(){
     <!-- ── Logo bewerken (prominent) ── -->
     <button data-act="edit-logo" style="width:100%;padding:10px 16px;margin-bottom:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#F97316,#EA580C);color:#fff;font-size:.88rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;box-shadow:0 2px 8px rgba(249,115,22,.25)" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter=''">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      Logo bewerken
+      ${obj._textParams ? 'Tekst bewerken' : 'Logo bewerken'}
     </button>` : ''}
 
     <!-- ── TRANSFORM group ── -->
@@ -5987,6 +6028,7 @@ async function runPdfExport(withBackground = false){
     } else {
       toast('PDF opgeslagen (300 DPI raster)', 'success', 3000);
     }
+    try{ if(window.gsAuth && gsAuth.logUsage) gsAuth.logUsage('export_pdf', { format: state.sheetFormat, proof: !!withBackground }); }catch(_){}
     showPdfProgress(false, `${filename} ${t('pdfSaved')}`);
   } catch(err){
     console.error('PDF export error:', err);
