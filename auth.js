@@ -92,7 +92,7 @@ async function signUp(email, password, displayName, companyName){
   if(!client) return { error: { message: 'Supabase niet geladen' } };
   const { data, error } = await client.auth.signUp({
     email, password,
-    options: { data: { display_name: displayName || '', company_name: companyName || '' } }
+    options: { emailRedirectTo: _authRedirectUrl(), data: { display_name: displayName || '', company_name: companyName || '' } }
   });
   if(error) return { error };
   // Supabase may auto-confirm or require email confirmation
@@ -132,7 +132,7 @@ async function resetPassword(email){
   const client = getClient();
   if(!client) return { error: { message: 'Supabase niet geladen' } };
   const { error } = await client.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname
+    redirectTo: _authRedirectUrl()
   });
   return { error };
 }
@@ -404,6 +404,15 @@ async function getUserEmail(userId){
 }
 
 /* ── Admin: create user ── */
+async function adminDeleteUser(userId){
+  const client = getClient();
+  if(!client) return { error: { message: 'Supabase niet geladen' } };
+  const { data, error } = await client.functions.invoke('admin-delete-user', { body: { userId } });
+  if(error) return { error };
+  if(data && data.error) return { error: { message: data.error } };
+  return { error: null };
+}
+
 async function adminCreateUser(email, password, displayName, companyName, role, autoApprove){
   const client = getClient();
   if(!client) return { error: { message: 'Supabase niet geladen' } };
@@ -411,7 +420,7 @@ async function adminCreateUser(email, password, displayName, companyName, role, 
   const adminSession = (await client.auth.getSession()).data?.session;
   const { data, error } = await client.auth.signUp({
     email, password,
-    options: { data: { display_name: displayName || '', company_name: companyName || '' } }
+    options: { emailRedirectTo: _authRedirectUrl(), data: { display_name: displayName || '', company_name: companyName || '' } }
   });
   if(error) return { error };
   if(adminSession) await client.auth.setSession(adminSession);
@@ -431,11 +440,20 @@ async function adminCreateUser(email, password, displayName, companyName, role, 
 }
 
 /* ── Admin: send password reset email ── */
+const GSB_SITE_URL = 'https://builder.transferpersshop.nl';
+function _authRedirectUrl(){
+  // Op de live site altijd het productie-domein; lokaal ontwikkelen blijft werken
+  if(location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:'){
+    return location.origin + location.pathname;
+  }
+  return GSB_SITE_URL + '/';
+}
+
 async function sendPasswordReset(email){
   const client = getClient();
   if(!client) return { error: { message: 'Supabase niet geladen' } };
   const { error } = await client.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname
+    redirectTo: _authRedirectUrl()
   });
   return { error };
 }
@@ -458,6 +476,7 @@ window.gsAuth = {
   listUsers, updateUserRole, toggleBlockUser, approveUser,
   listAllProjects,
   adminCreateUser,
+  adminDeleteUser,
   getSettings, updateSetting,
   getUsageStats, getCompanyStats,
   logUsage: _logUsage,

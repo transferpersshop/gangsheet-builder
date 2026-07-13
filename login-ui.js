@@ -353,7 +353,8 @@ async function _loadAdminUsers(){
         </select></td>
         <td><span class="badge ${badge}">${badgeText}</span></td>
         <td>${date}</td>
-        <td>${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" onclick="gsLoginUI.toggleBlock('${u.id}',${!u.blocked})">${u.blocked ? 'Deblokkeren' : 'Blokkeren'}</button>` : ''}</td>
+        <td>${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" onclick="gsLoginUI.toggleBlock('${u.id}',${!u.blocked})">${u.blocked ? 'Deblokkeren' : 'Blokkeren'}</button>
+          <button class="btn-sm btn" style="background:#dc2626;color:#fff;margin-left:4px" onclick="gsLoginUI.deleteUser('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')">Verwijderen</button>` : ''}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
   }
@@ -391,6 +392,18 @@ async function adminCreateUser(){
 
 async function changeRole(userId, role){
   await gsAuth.updateUserRole(userId, role);
+  _loadAdminUsers();
+}
+
+async function deleteUser(userId, name){
+  const sure = confirm('Account van "' + name + '" definitief verwijderen?\n\nAlle opgeslagen opdrachten van deze gebruiker worden ook verwijderd. De persoon kan zich daarna opnieuw registreren met hetzelfde e-mailadres.');
+  if(!sure) return;
+  const { error } = await gsAuth.adminDeleteUser(userId);
+  if(error){
+    if(window.toast) toast('Verwijderen mislukt: ' + (error.message || 'onbekende fout'), 'error', 5000);
+    return;
+  }
+  if(window.toast) toast('Account verwijderd', 'success');
   _loadAdminUsers();
 }
 
@@ -554,6 +567,7 @@ async function removeProofLogo(){
 
 window.gsLoginUI = {
   onProofLogoUpload, removeProofLogo,
+  deleteUser,
   showTab, handleLogin, handleRegister, handleReset, handleResetConfirm,
   toggleUserMenu, logout,
   openModal, closeModal,
