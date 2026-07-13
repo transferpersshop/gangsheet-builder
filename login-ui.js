@@ -565,15 +565,63 @@ async function onProofLogoUpload(){
   const inp = document.getElementById('profProofLogo');
   const f = inp && inp.files ? inp.files[0] : null;
   if(!f) return;
-  const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
-  const img = new Image();
-  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
-  const s = Math.min(1, 600 / img.width);
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(img.width * s));
-  c.height = Math.max(1, Math.round(img.height * s));
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  const out = c.toDataURL('image/png');
+  const ext = (f.name.split('.').pop() || '').toLowerCase();
+  let out;
+  try{
+    if(ext === 'svg'){
+      // SVG: op hoge resolutie renderen via de browser (viewBox-veilig)
+      const txt = await f.text();
+      const doc = new DOMParser().parseFromString(txt, 'image/svg+xml');
+      const root = doc.documentElement;
+      if(!root.getAttribute('viewBox')){
+        const aw = parseFloat(root.getAttribute('width')) || 300;
+        const ah = parseFloat(root.getAttribute('height')) || 150;
+        root.setAttribute('viewBox', '0 0 ' + aw + ' ' + ah);
+      }
+      const vb = root.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+      const w = 900, h = Math.max(2, Math.round(w * (vb[3] || 1) / (vb[2] || 1)));
+      root.setAttribute('width', w); root.setAttribute('height', h);
+      const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(root)], { type: 'image/svg+xml' }));
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      out = c.toDataURL('image/png');
+    } else if(ext === 'pdf' || ext === 'ai' || ext === 'eps'){
+      // PDF/AI direct via pdf.js; EPS eerst client-side naar PDF converteren
+      let buf = await f.arrayBuffer();
+      if(ext === 'eps'){
+        if(!window._gsbConvertEps) throw new Error('EPS-conversie niet beschikbaar');
+        if(window.toast) toast('EPS converteren\u2026 dit kan even duren', 'info', 4000);
+        buf = await window._gsbConvertEps(buf);
+      }
+      if(!window.pdfjsLib) throw new Error('PDF-ondersteuning niet geladen');
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const page = await pdf.getPage(1);
+      const base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: Math.min(6, 900 / base.width) });
+      const c = document.createElement('canvas');
+      c.width = Math.round(viewport.width); c.height = Math.round(viewport.height);
+      await page.render({ canvasContext: c.getContext('2d'), viewport }).promise;
+      out = c.toDataURL('image/png');
+    } else {
+      // Bitmap: verkleinen naar max 900px breed
+      const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+      const sc = Math.min(1, 900 / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * sc));
+      c.height = Math.max(1, Math.round(img.height * sc));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL('image/png');
+    }
+  }catch(err){
+    if(window.toast) toast('Logo kon niet worden gelezen: ' + (err.message || 'onbekend'), 'error', 5000);
+    inp.value = '';
+    return;
+  }
   await gsAuth.updateProfile({ proof_logo: out });
   const prev = document.getElementById('profProofLogoPreview');
   if(prev){ prev.src = out; prev.style.display = ''; }

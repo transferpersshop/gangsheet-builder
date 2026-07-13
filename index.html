@@ -938,7 +938,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.34.0 · 12-07-2026</p>
+    <p class="version-tag">v2.35.0 · 12-07-2026</p>
   </div>
 </div>
 
@@ -1012,13 +1012,13 @@ window.addEventListener('load', ()=>{
         </div>
         <div id="profProofLogoWrap" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
           <label style="font-size:.78rem;font-weight:700">Eigen drukproef-logo</label>
-          <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px">Vervangt het Transferpersshop-logo in de drukproef-footer. Geen logo geüpload = TPS-logo.</p>
+          <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px">Vervangt het Transferpersshop-logo in de drukproef-footer. Ondersteunt PNG, JPG én vector (SVG, PDF, AI, EPS). Geen logo geüpload = TPS-logo.</p>
           <img id="profProofLogoPreview" alt="" style="display:none;max-height:48px;max-width:100%;background:#000;padding:4px;border-radius:6px;margin-bottom:8px">
           <div style="display:flex;gap:8px">
             <button type="button" class="le-btn le-btn-pick" onclick="document.getElementById('profProofLogo').click()">Logo uploaden</button>
             <button type="button" class="le-btn le-btn-pick" onclick="gsLoginUI.removeProofLogo()">Verwijderen</button>
           </div>
-          <input type="file" id="profProofLogo" accept="image/png,image/jpeg,image/svg+xml" style="display:none" onchange="gsLoginUI.onProofLogoUpload()">
+          <input type="file" id="profProofLogo" accept=".png,.jpg,.jpeg,.svg,.pdf,.ai,.eps" style="display:none" onchange="gsLoginUI.onProofLogoUpload()">
         </div>
         <button type="submit" class="login-submit" style="margin-top:12px">Opslaan</button>
       </form>
@@ -1409,10 +1409,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.34.0"></script>
-<script src="./login-ui.js?v=2.34.0"></script>
-<script src="./app.js?v=2.34.0"></script>
-<script src="./text-editor.js?v=2.34.0"></script>
-<script src="./logo-editor.js?v=2.34.0"></script>
+<script src="./auth.js?v=2.35.0"></script>
+<script src="./login-ui.js?v=2.35.0"></script>
+<script src="./app.js?v=2.35.0"></script>
+<script src="./text-editor.js?v=2.35.0"></script>
+<script src="./logo-editor.js?v=2.35.0"></script>
 </body>
 </html>

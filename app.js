@@ -1308,6 +1308,7 @@ function _extractPdfFromEps(arrayBuf){
    No server, no auth, no upload — runs entirely in the browser. */
 let _epsWorker = null;
 let _epsConvertId = 0;
+window._gsbConvertEps = (buf) => _convertEpsClient(buf);
 
 function _convertEpsClient(arrayBuf){
   return new Promise(function(resolve, reject){
