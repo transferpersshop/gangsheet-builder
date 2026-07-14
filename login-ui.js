@@ -396,7 +396,9 @@ async function adminCreateUser(){
 }
 
 async function changeRole(userId, role){
-  await gsAuth.updateUserRole(userId, role);
+  const { error } = await gsAuth.updateUserRole(userId, role);
+  if(error){ if(window.toast) toast('Rol wijzigen mislukt: ' + (error.message || 'onbekend'), 'error', 5000); }
+  else { if(window.toast) toast('Rol bijgewerkt', 'success', 1500); }
   _loadAdminUsers();
 }
 

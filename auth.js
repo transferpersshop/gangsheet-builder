@@ -229,15 +229,18 @@ async function listUsers(){
   if(!_isAdmin) return { data: [], error: { message: 'Geen admin' } };
   const client = getClient();
   const { data, error } = await client.from('profiles')
-    .select('id, display_name, company_name, role, blocked, created_at, updated_at')
+    .select('id, display_name, company_name, role, blocked, approved, created_at, updated_at')
     .order('created_at', { ascending: false });
   return { data: data || [], error };
 }
 
 async function updateUserRole(userId, role){
-  if(!_isAdmin) return { error: { message: 'Geen admin' } };
   const client = getClient();
-  return client.from('profiles').update({ role }).eq('id', userId);
+  if(!client) return { error: { message: 'Supabase niet geladen' } };
+  const { data, error } = await client.from('profiles').update({ role }).eq('id', userId).select('id, role');
+  if(error) return { error };
+  if(!data || !data.length) return { error: { message: 'Geen rij bijgewerkt (rechten?)' } };
+  return { data, error: null };
 }
 
 async function toggleBlockUser(userId, blocked){
@@ -467,6 +470,9 @@ async function adminCreateUser(email, password, displayName, companyName, role, 
   if(adminSession) await client.auth.setSession(adminSession);
   // Set role and auto-approve if created by admin
   if(data?.user){
+    // profielrij wordt door een DB-trigger aangemaakt — kort wachten voorkomt
+    // dat de rol-update op een nog niet bestaande rij niets doet
+    await new Promise(r => setTimeout(r, 600));
     const updates = {};
     if(role && role !== 'user') updates.role = role;
     if(autoApprove) updates.approved = true;
