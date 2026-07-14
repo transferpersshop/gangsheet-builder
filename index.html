@@ -938,7 +938,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.39.0 · 14-07-2026</p>
+    <p class="version-tag">v2.40.0 · 14-07-2026</p>
   </div>
 </div>
 
@@ -1020,6 +1020,8 @@ window.addEventListener('load', ()=>{
           </div>
           <input type="file" id="profProofLogo" accept=".png,.jpg,.jpeg,.svg,.pdf,.ai,.eps" style="display:none" onchange="gsLoginUI.onProofLogoUpload()">
         </div>
+        <div class="pf-field" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px"><label>Nieuw wachtwoord (optioneel, min. 6 tekens)</label><input type="password" id="profPw1" autocomplete="new-password"></div>
+        <div class="pf-field"><label>Herhaal nieuw wachtwoord</label><input type="password" id="profPw2" autocomplete="new-password"></div>
         <button type="submit" class="login-submit" style="margin-top:12px">Opslaan</button>
       </form>
     </div>
@@ -1409,10 +1411,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.39.0"></script>
-<script src="./login-ui.js?v=2.39.0"></script>
-<script src="./app.js?v=2.39.0"></script>
-<script src="./text-editor.js?v=2.39.0"></script>
-<script src="./logo-editor.js?v=2.39.0"></script>
+<script src="./auth.js?v=2.40.0"></script>
+<script src="./login-ui.js?v=2.40.0"></script>
+<script src="./app.js?v=2.40.0"></script>
+<script src="./text-editor.js?v=2.40.0"></script>
+<script src="./logo-editor.js?v=2.40.0"></script>
 </body>
 </html>

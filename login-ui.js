@@ -271,6 +271,18 @@ async function handleProfileSave(e){
   };
   const { error } = await gsAuth.updateProfile(updates);
   if(error){ alert('Opslaan mislukt: ' + error.message); return; }
+  // Wachtwoord wijzigen (optioneel veld)
+  const pw1 = (document.getElementById('profPw1') || {}).value || '';
+  const pw2 = (document.getElementById('profPw2') || {}).value || '';
+  if(pw1 || pw2){
+    if(pw1.length < 6){ if(window.toast) toast('Wachtwoord moet minimaal 6 tekens zijn', 'error', 4000); return; }
+    if(pw1 !== pw2){ if(window.toast) toast('De wachtwoorden komen niet overeen', 'error', 4000); return; }
+    const { error: pwErr } = await gsAuth.supabase.auth.updateUser({ password: pw1 });
+    if(pwErr){ if(window.toast) toast('Wachtwoord wijzigen mislukt: ' + (pwErr.message || 'onbekend'), 'error', 5000); return; }
+    if(window.toast) toast('Wachtwoord gewijzigd', 'success', 2500);
+    document.getElementById('profPw1').value = '';
+    document.getElementById('profPw2').value = '';
+  }
   if(window.gsbApplyTheme) gsbApplyTheme(updates.theme);
   closeModal('profileModal');
   // Update user menu display
