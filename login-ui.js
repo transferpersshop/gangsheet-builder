@@ -354,7 +354,7 @@ async function _loadAdminUsers(){
   if(!data || data.length === 0){ html += '<p>Geen gebruikers gevonden.</p>'; }
   else {
     html += `<table class="admin-table">
-    <thead><tr><th>Naam</th><th>Bedrijf</th><th>Rol</th><th>Status</th><th>Aangemeld</th><th>Actie</th></tr></thead>
+    <thead><tr><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Rol</th><th>Status</th><th>Aangemeld</th><th>Actie</th></tr></thead>
     <tbody>${data.map(u => {
       const date = new Date(u.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
       const badge = u.blocked ? 'badge-blocked' : u.approved === false ? 'badge-pending' : u.role === 'admin' ? 'badge-admin' : u.role === 'printer' ? 'badge-printer' : 'badge-user';
@@ -362,6 +362,7 @@ async function _loadAdminUsers(){
       return `<tr>
         <td>${_esc(u.display_name || '—')}</td>
         <td>${_esc(u.company_name || '—')}</td>
+        <td style="font-size:.82rem">${_esc(u.email || '—')}</td>
         <td><select onchange="gsLoginUI.changeRole('${u.id}',this.value)" ${u.id === gsAuth.user?.id ? 'disabled' : ''}>
           <option value="user" ${u.role==='user'?'selected':''}>Gebruiker</option>
           <option value="printer" ${u.role==='printer'?'selected':''}>Printer</option>

@@ -105,10 +105,13 @@ async function signUp(email, password, displayName, companyName){
   const profileUpdates = {};
   if(displayName && _profile && !_profile.display_name) profileUpdates.display_name = displayName;
   if(companyName && _profile && !_profile.company_name) profileUpdates.company_name = companyName;
+  if(email && _profile && !_profile.email) profileUpdates.email = email;
   if(Object.keys(profileUpdates).length > 0) await updateProfile(profileUpdates);
   await _logUsage('signup');
   // Check if approval is needed (self-registered accounts default to approved=false)
   if(_profile && _profile.approved === false){
+    // Notify admin about new pending registration
+    _notifyNewRegistration(displayName || '', companyName || '', email);
     await client.auth.signOut();
     _user = null; _profile = null; _isAdmin = false;
     return { data, needsApproval: true };
@@ -229,7 +232,7 @@ async function listUsers(){
   if(!_isAdmin) return { data: [], error: { message: 'Geen admin' } };
   const client = getClient();
   const { data, error } = await client.from('profiles')
-    .select('id, display_name, company_name, role, blocked, approved, created_at, updated_at')
+    .select('id, display_name, company_name, email, role, blocked, approved, created_at, updated_at')
     .order('created_at', { ascending: false });
   return { data: data || [], error };
 }
@@ -474,6 +477,7 @@ async function adminCreateUser(email, password, displayName, companyName, role, 
     // dat de rol-update op een nog niet bestaande rij niets doet
     await new Promise(r => setTimeout(r, 600));
     const updates = {};
+    if(email) updates.email = email;
     if(role && role !== 'user') updates.role = role;
     if(autoApprove) updates.approved = true;
     if(Object.keys(updates).length > 0){
@@ -506,6 +510,19 @@ async function sendPasswordReset(email){
     redirectTo: _authRedirectUrl()
   });
   return { error };
+}
+
+/* ── Notify admin: new registration pending approval ── */
+async function _notifyNewRegistration(displayName, companyName, email){
+  try{
+    const client = getClient();
+    if(!client) return;
+    await client.functions.invoke('notify-new-registration', {
+      body: { display_name: displayName, company_name: companyName, email: email }
+    });
+  }catch(e){
+    console.warn('Notificatie versturen mislukt:', e.message || e);
+  }
 }
 
 /* ── Admin: approve user account ── */
