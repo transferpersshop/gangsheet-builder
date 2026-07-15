@@ -64,6 +64,13 @@ var _strokeColor = 'none';
 var _strokeWidth = 0;
 var _strokeOffset = 0;  // gap between text and stroke (outside)
 var _curve = 0;         // buiging in graden (0 = recht, 360 = volledige cirkel)
+// Kleurmodus: 'rgb' of 'cmyk'
+var _colorMode = 'rgb';
+// CMYK waarden (wanneer gebruiker in CMYK modus invoert — bewaar originele waarden)
+var _cmykFill = null;    // {c,m,y,k} of null
+var _cmykStroke = null;  // {c,m,y,k} of null
+// Afmeting per: 'height' of 'width'
+var _sizeMode = 'height';
 // Jersey rows
 var _jerseyRows = [{name:'', num:''}];
 
@@ -76,6 +83,8 @@ function open(){
   _editTarget = null;
   _bold = _italic = _underline = _allCaps = false;
   _spacing = 0; _curve = 0; _strokeColor = 'none'; _strokeWidth = 0;
+  _colorMode = 'rgb'; _cmykFill = null; _cmykStroke = null; _sizeMode = 'height';
+  _syncColorModeUI(); _syncSizeModeUI();
   var _r1 = document.getElementById('teTextInput'); if(_r1) _r1.value = '';
   var _r2 = document.getElementById('teSizeMm'); if(_r2) _r2.value = 30;
   var _r3 = document.getElementById('teColor'); if(_r3) _r3.value = '#000000';
@@ -459,6 +468,13 @@ function syncColor(){
   var ci = document.getElementById('teColor');
   var ch = document.getElementById('teColorHex');
   if(ci&&ch) ch.textContent = ci.value.toUpperCase();
+  // Als CMYK modus actief is, sla de CMYK waarden op
+  if(_colorMode === 'cmyk' && ci && window.rgbToCmyk){
+    var rgb = _hexToRgbLocal(ci.value);
+    _cmykFill = window.rgbToCmyk(rgb.r, rgb.g, rgb.b);
+  } else {
+    _cmykFill = null;
+  }
   _refreshAll();
 }
 function syncStroke(){
@@ -467,7 +483,64 @@ function syncStroke(){
   _strokeColor = si?si.value:'none';
   _strokeWidth = parseFloat(sw?sw.value:0)||0;
   _strokeOffset = 0;
+  // Als CMYK modus actief is, sla de CMYK waarden op
+  if(_colorMode === 'cmyk' && si){
+    var rgb = _hexToRgbLocal(si.value);
+    _cmykStroke = window.rgbToCmyk ? window.rgbToCmyk(rgb.r, rgb.g, rgb.b) : null;
+  } else {
+    _cmykStroke = null;
+  }
   _refreshAll();
+}
+
+/* ══════════ Kleurmodus (RGB / CMYK) ══════════ */
+function setColorMode(mode){
+  _colorMode = mode;
+  _syncColorModeUI();
+  // Bij wisselen naar RGB: wis opgeslagen CMYK waarden
+  if(mode === 'rgb'){ _cmykFill = null; _cmykStroke = null; }
+  // Bij wisselen naar CMYK: bereken CMYK uit huidige hex
+  if(mode === 'cmyk'){
+    var ci = document.getElementById('teColor');
+    if(ci && window.rgbToCmyk){
+      var rgb = _hexToRgbLocal(ci.value);
+      _cmykFill = window.rgbToCmyk(rgb.r, rgb.g, rgb.b);
+    }
+    var si = document.getElementById('teStrokeColor');
+    if(si && window.rgbToCmyk){
+      var rgb2 = _hexToRgbLocal(si.value);
+      _cmykStroke = window.rgbToCmyk(rgb2.r, rgb2.g, rgb2.b);
+    }
+  }
+}
+function _syncColorModeUI(){
+  var wrap = document.getElementById('teColorModeToggle');
+  if(!wrap) return;
+  var btns = wrap.querySelectorAll('button');
+  btns.forEach(function(b){ b.classList.toggle('active', b.dataset.mode === _colorMode); });
+}
+
+/* ══════════ Afmeting per (hoogte / breedte) ══════════ */
+function setSizeMode(mode){
+  _sizeMode = mode;
+  _syncSizeModeUI();
+  _refreshAll();
+}
+function _syncSizeModeUI(){
+  var wrap = document.getElementById('teSizeModeToggle');
+  if(!wrap) return;
+  var btns = wrap.querySelectorAll('button');
+  btns.forEach(function(b){ b.classList.toggle('active', b.dataset.mode === _sizeMode); });
+  var lbl = document.getElementById('teSizeLabel');
+  if(lbl) lbl.textContent = _sizeMode === 'width' ? 'Font breedte' : 'Font hoogte';
+}
+
+/* ── Hex → RGB helper (lokaal, geen afhankelijkheid van app.js) ── */
+function _hexToRgbLocal(hex){
+  hex = (hex||'#000000').replace('#','');
+  if(hex.length===3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  var n = parseInt(hex,16);
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
 }
 
 /* ══════════ Path data extraction (robust triple fallback) ══════════ */
@@ -567,7 +640,7 @@ function _strokeSvg(dAttr, fillColor, strokeColor, sw, offset, transforms, simBo
 }
 
 /* ══════════ Core: text → SVG ══════════ */
-function _textToSvg(text, font, heightMm, color, opts){
+function _textToSvg(text, font, sizeMm, color, opts){
   if(opts.allCaps) text = text.toUpperCase();
   if(!text.trim()) return null;
   var upm = font.unitsPerEm||1000;
@@ -579,7 +652,28 @@ function _textToSvg(text, font, heightMm, color, opts){
   if(refH <= 0){ try{ refPath = font.getPath('X', 0, 0, upm); refBb = refPath.getBoundingBox(); refH = refBb.y2 - refBb.y1; } catch(_){ refH = 0; } }
   if(refH <= 0) refH = upm * 0.7; // fallback
 
-  var fontSize = (heightMm / refH) * upm;
+  var fontSize;
+  if(opts.sizeMode === 'width'){
+    // Breedte-modus: meet de breedte van de tekst bij 1 UPM en schaal naar gewenste breedte
+    var probeFS = upm;
+    var probeExtraSp = opts.spacing * probeFS / 100;
+    var probeW;
+    try{
+      if(Math.abs(probeExtraSp) > 0.01){
+        var pr = _renderGlyphs(font, text, 0, probeFS, probeExtraSp);
+        probeW = pr ? (pr.bb.x2 - pr.bb.x1) : 0;
+      } else {
+        var pp = font.getPath(text, 0, 0, probeFS);
+        var pbb = pp.getBoundingBox();
+        probeW = pbb.x2 - pbb.x1;
+      }
+    }catch(_){ probeW = 0; }
+    if(probeW <= 0) probeW = upm * text.length * 0.5; // fallback
+    fontSize = (sizeMm / probeW) * upm;
+  } else {
+    // Hoogte-modus (default): schaal fontSize zodat cap-hoogte = sizeMm
+    fontSize = (sizeMm / refH) * upm;
+  }
   var extraSp = opts.spacing * fontSize / 100;
 
   // ── Gebogen tekst: aparte route (glyphs langs boog) ──
@@ -899,6 +993,9 @@ async function openEdit(obj){
   _strokeColor = p.strokeColor || 'none'; _strokeWidth = p.strokeWidth || 0;
   _bold = !!p.bold; _italic = !!p.italic; _underline = !!p.underline; _allCaps = !!p.allCaps;
   _spacing = p.spacing || 0; _curve = p.curve || 0;
+  _sizeMode = p.sizeMode || 'height'; _syncSizeModeUI();
+  _colorMode = p.colorMode || 'rgb'; _cmykFill = p.cmykFill || null; _cmykStroke = p.cmykStroke || null;
+  _syncColorModeUI();
   var sp = document.getElementById('teSpacing'); if(sp) sp.value = _spacing;
   var spv = document.getElementById('teSpacingVal'); if(spv) spv.textContent = _spacing;
   var cv = document.getElementById('teCurve'); if(cv) cv.value = _curve;
@@ -981,18 +1078,21 @@ async function addTexts(){
   var lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
   if(!lines.length) return;
 
+  var svgOpts = {
+    bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps,
+    spacing:_spacing, simulateBold:simBold, simulateItalic:simItalic,
+    strokeColor:_strokeColor, strokeWidth:_strokeWidth, strokeOffset:_strokeOffset,
+    curve:_curve, sizeMode:_sizeMode,
+  };
+
   // Bewerk-modus: vervang het bestaande object in-place (eerste regel)
   if(_editTarget){
-    var eResult = _textToSvg(lines[0], font, sizeMm, color, {
-      bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps,
-      spacing:_spacing, simulateBold:simBold, simulateItalic:simItalic,
-      strokeColor:_strokeColor, strokeWidth:_strokeWidth, strokeOffset:_strokeOffset,
-      curve:_curve,
-    });
+    var eResult = _textToSvg(lines[0], font, sizeMm, color, svgOpts);
     if(!eResult){ if(window.toast) window.toast('Tekst kon niet worden omgezet', 'warn'); return; }
     var eParams = { text:lines[0], fontName:_currentName, fontId:_currentId, sizeMm:sizeMm, color:color,
       bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
-      strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve };
+      strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve, sizeMode:_sizeMode,
+      colorMode:_colorMode, cmykFill:_cmykFill, cmykStroke:_cmykStroke };
     _replaceTextObject(_editTarget, eResult.svg, eParams, eResult.mmW, eResult.mmH);
     _editTarget = null;
     if(window.toast) window.toast('Tekst bijgewerkt', 'success');
@@ -1001,16 +1101,12 @@ async function addTexts(){
   }
   var added = 0;
   lines.forEach(function(line){
-    var result = _textToSvg(line, font, sizeMm, color, {
-      bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps,
-      spacing:_spacing, simulateBold:simBold, simulateItalic:simItalic,
-      strokeColor:_strokeColor, strokeWidth:_strokeWidth, strokeOffset:_strokeOffset,
-      curve:_curve,
-    });
+    var result = _textToSvg(line, font, sizeMm, color, svgOpts);
     if(!result){ console.warn('[TE] Empty SVG for:',line); return; }
     var params = { text:line, fontName:_currentName, fontId:_currentId, sizeMm:sizeMm, color:color,
       bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
-      strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve };
+      strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve, sizeMode:_sizeMode,
+      colorMode:_colorMode, cmykFill:_cmykFill, cmykStroke:_cmykStroke };
     if(window.loadSvg){ window.loadSvg(result.svg, line, params); added++; }
   });
   if(added > 0){
@@ -1580,6 +1676,7 @@ window.gsbTextEditor = {
   onCurveChange:onCurveChange,
   selectPanel:selectPanel,
   syncColor:syncColor, syncStroke:syncStroke,
+  setColorMode:setColorMode, setSizeMode:setSizeMode,
   addTexts:addTexts,
   openEdit:openEdit,
   updatePreview:_refreshPreview,

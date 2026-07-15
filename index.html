@@ -229,9 +229,13 @@ window.addEventListener('load', ()=>{
   .canvas-wrap{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;padding:16px 24px 24px;overflow:auto;background:radial-gradient(circle at 1px 1px,rgba(0,0,0,.06) 1px,transparent 0);background-size:18px 18px}
   /* Logo loading overlay — centered on canvas with gradient progress bar */
   /* ── Text Editor ── */
-  .te-row{display:flex;gap:12px;align-items:flex-end;margin-bottom:6px}
+  .te-row{display:flex;gap:12px;align-items:flex-end;margin-bottom:14px}
   .te-field{display:flex;flex-direction:column;gap:3px}
   .te-field label{font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  /* Kleurmodus toggle */
+  .te-mode-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;height:38px}
+  .te-mode-toggle button{padding:6px 14px;font-size:.74rem;font-weight:600;background:transparent;color:var(--muted);border:none;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .te-mode-toggle button.active{background:var(--primary);color:#fff}
   .te-input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:'Inter',sans-serif;background:var(--bg);color:var(--fg);outline:none;transition:border-color .15s}
   .te-input:focus{border-color:var(--primary)}
   textarea.te-input{resize:vertical;min-height:60px}
@@ -938,7 +942,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.41.0 · 15-07-2026</p>
+    <p class="version-tag">v2.42.0 · 15-07-2026</p>
   </div>
 </div>
 
@@ -1118,16 +1122,14 @@ window.addEventListener('load', ()=>{
           <input type="file" id="teCustomFontInput" accept=".ttf,.otf,.woff" style="display:none" onchange="gsbTextEditor.onCustomFontUpload()">
           <div id="teFontStatus" style="font-size:.7rem;min-height:12px;margin:2px 0 4px"></div>
 
-          <!-- ── Styling + Color compact row ── -->
-          <div class="te-row" style="margin-bottom:8px;align-items:flex-end">
+          <!-- ── Kleurmodus + Kleur + Outline row ── -->
+          <div class="te-row" style="align-items:flex-end">
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Stijl</label>
-            <div class="te-tog-row" style="height:38px">
-              <button class="te-tog" id="teBtnBold" onclick="gsbTextEditor.toggleBold()" title="Vet"><b>B</b></button>
-              <button class="te-tog" id="teBtnItalic" onclick="gsbTextEditor.toggleItalic()" title="Cursief"><i>I</i></button>
-              <button class="te-tog" id="teBtnUnderline" onclick="gsbTextEditor.toggleUnderline()" title="Onderstreept"><u>U</u></button>
-              <button class="te-tog" id="teBtnCaps" onclick="gsbTextEditor.toggleAllCaps()" title="Hoofdletters">AA</button>
-            </div>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Kleurmodus</label>
+              <div class="te-mode-toggle" id="teColorModeToggle">
+                <button class="active" data-mode="rgb" onclick="gsbTextEditor.setColorMode('rgb')">RGB</button>
+                <button data-mode="cmyk" onclick="gsbTextEditor.setColorMode('cmyk')" style="border-left:1px solid var(--border)">CMYK</button>
+              </div>
             </div>
             <div class="te-field" style="flex:0 0 auto">
               <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Tekstkleur</label>
@@ -1147,30 +1149,56 @@ window.addEventListener('load', ()=>{
               <input type="number" id="teStrokeWidth" class="te-input" value="0" min="0" max="20" step="0.5" style="width:64px;height:38px;padding:4px 6px;font-size:.8rem" oninput="gsbTextEditor.syncStroke()">
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar.">Spacing &#9432;</label>
-            <input type="range" id="teSpacing" min="-5" max="20" step="1" value="0" style="flex:1;accent-color:var(--primary)" oninput="gsbTextEditor.onSpacingChange()">
-            <span id="teSpacingVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:20px;text-align:center">0</span>
+
+          <!-- ── Hoogte/Breedte + Afmeting per + Stijl row ── -->
+          <div class="te-row" style="align-items:flex-end">
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" id="teSizeLabel">Font hoogte</label>
+              <div style="display:flex;gap:0">
+                <input type="number" id="teSizeMm" class="te-input" value="30" min="1" max="999" step="1" style="width:62px;border-radius:8px 0 0 8px;border-right:none;text-align:center;height:38px;padding:4px 6px;font-size:.82rem" oninput="gsbTextEditor.updatePreview()">
+                <select id="teSizeUnit" class="te-input" style="width:54px;border-radius:0 8px 8px 0;border-left:1px solid var(--border);font-size:.78rem;padding:4px 2px;height:38px">
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                </select>
+              </div>
+            </div>
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Afmeting per</label>
+              <div class="te-mode-toggle" id="teSizeModeToggle">
+                <button class="active" data-mode="height" onclick="gsbTextEditor.setSizeMode('height')">Font hoogte</button>
+                <button data-mode="width" onclick="gsbTextEditor.setSizeMode('width')" style="border-left:1px solid var(--border)">Font breedte</button>
+              </div>
+            </div>
+            <div class="te-field" style="flex:0 0 auto">
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Stijl</label>
+              <div class="te-tog-row" style="height:38px">
+                <button class="te-tog" id="teBtnBold" onclick="gsbTextEditor.toggleBold()" title="Vet"><b>B</b></button>
+                <button class="te-tog" id="teBtnItalic" onclick="gsbTextEditor.toggleItalic()" title="Cursief"><i>I</i></button>
+                <button class="te-tog" id="teBtnUnderline" onclick="gsbTextEditor.toggleUnderline()" title="Onderstreept"><u>U</u></button>
+                <button class="te-tog" id="teBtnCaps" onclick="gsbTextEditor.toggleAllCaps()" title="Hoofdletters">AA</button>
+              </div>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Buigt de tekst langs een boog. Positief = boog omhoog, negatief = boog omlaag. Schuif door naar +360° of -360° om de tekst volledig rond te zetten (cirkel).">Buiging &#9432;</label>
-            <input type="range" id="teCurve" min="-360" max="360" step="5" value="0" style="flex:1;accent-color:var(--primary)" oninput="gsbTextEditor.onCurveChange()">
-            <span id="teCurveVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:34px;text-align:center">0&deg;</span>
+
+          <!-- ── Letter spacing + Tekst buiging row ── -->
+          <div style="display:flex;gap:24px;margin-bottom:14px">
+            <div style="flex:0 1 220px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar.">Letter spacing &#9432;</label>
+                <span id="teSpacingVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:20px;text-align:right">0</span>
+              </div>
+              <input type="range" id="teSpacing" min="-5" max="20" step="1" value="0" style="width:100%;accent-color:var(--primary);margin-top:4px" oninput="gsbTextEditor.onSpacingChange()">
+            </div>
+            <div style="flex:0 1 220px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Buigt de tekst langs een boog. Positief = boog omhoog, negatief = boog omlaag. Schuif door naar +360° of -360° om de tekst volledig rond te zetten (cirkel).">Tekst buiging &#9432;</label>
+                <span id="teCurveVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:34px;text-align:right">0&deg;</span>
+              </div>
+              <input type="range" id="teCurve" min="-360" max="360" step="5" value="0" style="width:100%;accent-color:var(--primary);margin-top:4px" oninput="gsbTextEditor.onCurveChange()">
+            </div>
           </div>
 
           <!-- ══════ Tekst invoer ══════ -->
-            <div class="te-row" style="margin-bottom:8px">
-              <div class="te-field" style="flex:1">
-                <label>Letter hoogte</label>
-                <div style="display:flex;gap:6px">
-                  <input type="number" id="teSizeMm" class="te-input" value="30" min="1" max="999" step="1" style="flex:1" oninput="gsbTextEditor.updatePreview()">
-                  <select id="teSizeUnit" class="te-input" style="width:60px">
-                    <option value="mm">mm</option>
-                    <option value="cm">cm</option>
-                  </select>
-                </div>
-              </div>
-            </div>
             <div class="te-field">
               <label>Tekst <span style="font-weight:400;opacity:.65">(nieuwe regel = nieuw los object)</span></label>
               <textarea id="teTextInput" class="te-input te-wysiwyg" rows="3" placeholder="Jan&#10;Piet&#10;Klaas" oninput="gsbTextEditor.updatePreview()"></textarea>
@@ -1338,8 +1366,12 @@ window.addEventListener('load', ()=>{
             <div style="display:flex;align-items:center;gap:8px">
               <input type="color" id="leReplColor" value="#FF0000" title="Klik om een kleur te kiezen">
               <span style="font-size:.72rem;color:var(--muted)">Klik om een kleur te kiezen</span>
-              <span class="le-cmyk" id="leReplCmyk" style="margin:0 0 0 auto"></span>
+              <div class="te-mode-toggle" id="leColorModeToggle" style="margin-left:auto;height:28px">
+                <button class="active" data-mode="rgb" onclick="gsbLogoEditor.setColorMode('rgb')" style="padding:3px 10px;font-size:.68rem">RGB</button>
+                <button data-mode="cmyk" onclick="gsbLogoEditor.setColorMode('cmyk')" style="border-left:1px solid var(--border);padding:3px 10px;font-size:.68rem">CMYK</button>
+              </div>
             </div>
+            <span class="le-cmyk" id="leReplCmyk" style="margin:4px 0 0"></span>
           </div>
 
           <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">3</span>Pas toe</label>

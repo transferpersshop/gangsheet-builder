@@ -38,6 +38,10 @@ var _preOutlineCanvas = null;  // snapshot before first outline (both vector & r
 var _hasOutline = false;
 var _outlineWidth = 0;         // saved slider value
 var _outlineColor = '#FFFFFF'; // saved outline color
+
+// Kleurmodus state (RGB / CMYK) — for storing CMYK metadata on fabric objects
+var _leColorMode = 'rgb';
+var _leCmykRepl = null; // {c,m,y,k} bij directe CMYK invoer
 var _vectorMult = 3;           // multiplier used for vector→canvas rendering
 
 // Token to cancel stale async SVG preview renders
@@ -834,6 +838,11 @@ function applyColorReplace(){
     // Vector: use recolorSvgPaths from app.js (modifies group + _svgSource)
     if(typeof recolorSvgPaths === 'function'){
       recolorSvgPaths(_fabricObj, oldHex, replHex, _pickedTol);
+    }
+    // Sla CMYK metadata op wanneer de gebruiker in CMYK-modus werkt
+    if(_leColorMode === 'cmyk' && _leCmykRepl){
+      if(!_fabricObj._cmykColorMap) _fabricObj._cmykColorMap = {};
+      _fabricObj._cmykColorMap[replHex.toLowerCase()] = {c:_leCmykRepl.c, m:_leCmykRepl.m, y:_leCmykRepl.y, k:_leCmykRepl.k};
     }
     _modified = true;
     _refreshVectorPreview();
@@ -1897,6 +1906,26 @@ function apply(){
   close(true);
 }
 
+/* ══════════ Kleurmodus (RGB / CMYK) ══════════ */
+function setColorMode(mode){
+  _leColorMode = mode;
+  var wrap = document.getElementById('leColorModeToggle');
+  if(wrap){
+    wrap.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.mode === mode); });
+  }
+  // Bij CMYK: bereken CMYK uit huidige replacement-kleur
+  if(mode === 'cmyk'){
+    var rc = document.getElementById('leReplColor');
+    if(rc && typeof _rgbToCmyk === 'function'){
+      var h = rc.value.replace('#','');
+      var r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+      _leCmykRepl = _rgbToCmyk(r, g, b);
+    }
+  } else {
+    _leCmykRepl = null;
+  }
+}
+
 /* ══════════ Expose ══════════ */
 window.gsbLogoEditor = {
   open: open, close: function(){ close(false); }, apply: apply, reset: reset,
@@ -1908,6 +1937,7 @@ window.gsbLogoEditor = {
   previewUpscale: previewUpscale,
   applyBgRemove: applyBgRemove,
   applyWhiteRemove: applyWhiteRemove, previewWhiteRemove: previewWhiteRemove,
+  setColorMode: setColorMode,
 };
 
 })();

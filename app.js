@@ -515,7 +515,7 @@ const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
   '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients',
-  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams'
+  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_cmykColorMap'
 ];
 const FABRIC_UNDO_PROPS = FABRIC_EXTRA_PROPS.filter(p => p !== '_svgSource');
 
@@ -5596,6 +5596,21 @@ async function runPdfExport(withBackground = false){
       }
     }
     console.log(`[GSB Export] Classification: ${vectorSvgIds.size} SVG vector, ${pdfEmbedIds.size} PDF embed (lossless), ${rasterIds.size} raster`);
+
+    // Log CMYK metadata availability
+    let cmykCount = 0;
+    for(const [oid, grp] of uniqueLogos){
+      const s = grp.sample;
+      if(s._textParams && (s._textParams.cmykFill || s._textParams.cmykStroke)){
+        cmykCount++;
+        console.log(`[GSB Export] CMYK data: text "${s._name||oid}" fill:`, s._textParams.cmykFill, 'stroke:', s._textParams.cmykStroke);
+      }
+      if(s._cmykColorMap && Object.keys(s._cmykColorMap).length > 0){
+        cmykCount++;
+        console.log(`[GSB Export] CMYK data: logo "${s._name||oid}" colorMap:`, s._cmykColorMap);
+      }
+    }
+    if(cmykCount > 0) console.log(`[GSB Export] ${cmykCount} object(s) met CMYK metadata gevonden`);
 
     // --- Helper: call svg2pdf with correct API ---
     async function callSvg2pdf(svgEl, targetJsPdf, opts){
