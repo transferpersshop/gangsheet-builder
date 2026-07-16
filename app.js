@@ -2079,7 +2079,17 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
     .replace(/<(\/?)svg:/g, '<$1')
     .replace(/\s+xmlns:svg="[^"]*"/g, '')
     // lege presentatie-attributen (SVGGraphics laat ze soms leeg achter)
-    .replace(/\s+(stroke-dasharray|stroke-linecap|stroke-linejoin)=""/g, '');
+    .replace(/\s+(stroke-dasharray|stroke-linecap|stroke-linejoin)=""/g, '')
+    // KRITIEK: miter limit < 1 is ongeldig in PDF (ISO 32000). SVGGraphics
+    // schrijft stroke-miterlimit="0" wanneer de bron-PDF er geen zet, en
+    // svg2pdf neemt dat over als "0. M" in de content stream. Ghostscript
+    // en pdf.js negeren dat stilzwijgend, maar Acrobat breekt de hele
+    // pagina af ("fout op de pagina" → lege drukproef/gangsheet).
+    // PDF-default is 10 — gebruik die bij elke ongeldige waarde.
+    .replace(/stroke-miterlimit="([^"]*)"/g, (m, v) => {
+      const f = parseFloat(v);
+      return (isFinite(f) && f >= 1) ? m : 'stroke-miterlimit="10"';
+    });
   if(!/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/.test(svgText))
     svgText = svgText.replace(/<svg\b/, '<svg xmlns="http://www.w3.org/2000/svg"');
   if(svgText.indexOf('xlink:href') !== -1 && !/xmlns:xlink=/.test(svgText))
