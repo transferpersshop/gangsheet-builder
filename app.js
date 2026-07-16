@@ -1486,7 +1486,7 @@ function loadRaster(dataUrl, name, dpi){
    separately for lossless export via pdf-lib embedPdf.
    --------------------------------------------------------- */
 // Max paths before we bail out to raster — keeps import snappy
-const PDF_MAX_SVG_PATHS = 200;
+const PDF_MAX_SVG_PATHS = 500;
 
 async function pdfToSvg(arrayBuffer){
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -1673,15 +1673,29 @@ async function pdfToSvg(arrayBuffer){
       case OPS.eoFillStroke: firstFillSeen=true; emitPath(true,true,'evenodd'); break;
       case OPS.endPath: pathD=''; break;
       case OPS.closeStroke: pathD+='Z '; emitPath(false,true,null); break;
-      // Clipping
+      // Clipping — skip full-page clip rectangles (they serve no purpose
+      // in SVG and cause masking artifacts after autoCropSvg adjusts the viewBox)
       case OPS.clip: case OPS.eoClip:
         if(pathD.trim()){
-          const clipId='clip'+(++clipCount);
-          const rule=fn===OPS.eoClip?' clip-rule="evenodd"':'';
-          elements.push(`<clipPath id="${clipId}"><path d="${pathD.trim()}"${rule}/></clipPath>`);
-          elements.push(`<g clip-path="url(#${clipId})">`);
-          if(transformCountStack.length) transformCountStack[transformCountStack.length-1]++;
-          pathD='';
+          // Detect full-page clip rectangle: M x0 y0 L x1 y0 L x1 y1 L x0 y1 Z
+          let isFullPageClip = false;
+          const clipMatch = pathD.trim().match(/^M([\d.\-]+)\s+([\d.\-]+)\s+L([\d.\-]+)\s+([\d.\-]+)\s+L([\d.\-]+)\s+([\d.\-]+)\s+L([\d.\-]+)\s+([\d.\-]+)\s+Z\s*$/);
+          if(clipMatch){
+            const cxs=[+clipMatch[1],+clipMatch[3],+clipMatch[5],+clipMatch[7]];
+            const cys=[+clipMatch[2],+clipMatch[4],+clipMatch[6],+clipMatch[8]];
+            const cw=Math.max(...cxs)-Math.min(...cxs), ch=Math.max(...cys)-Math.min(...cys);
+            if(cw >= W*0.95 && ch >= H*0.95) isFullPageClip = true;
+          }
+          if(isFullPageClip){
+            pathD=''; // Skip — full-page clip is redundant
+          } else {
+            const clipId='clip'+(++clipCount);
+            const rule=fn===OPS.eoClip?' clip-rule="evenodd"':'';
+            elements.push(`<clipPath id="${clipId}"><path d="${pathD.trim()}"${rule}/></clipPath>`);
+            elements.push(`<g clip-path="url(#${clipId})">`);
+            if(transformCountStack.length) transformCountStack[transformCountStack.length-1]++;
+            pathD='';
+          }
         }
         break;
       // Embedded images — can't convert to SVG paths, must use raster
@@ -1710,7 +1724,9 @@ async function pdfToSvg(arrayBuffer){
     const textContent = await page.getTextContent();
     let textIdx = 0;
     for(const item of textContent.items){
-      if(!item.str || !item.str.trim()){ continue; }
+      // Always increment textIdx to stay in sync with showText operator list,
+      // even for empty/skipped items (they still have a showText in the oplist)
+      if(!item.str || !item.str.trim()){ textIdx++; continue; }
       // item.transform = [scaleX, skewY, skewX, scaleY, tx, ty] in PDF coords (origin bottom-left, Y up)
       const [a, b, c, d, tx, ty] = item.transform;
       const fontSize = Math.sqrt(a*a + b*b);
@@ -1718,15 +1734,34 @@ async function pdfToSvg(arrayBuffer){
       // Use tracked fill color from operator list (matches showText call order)
       const color = textFillColors[textIdx] || fillColor;
       textIdx++;
-      // Approximate font-weight from font name
-      const fontWeight = (item.fontName && /bold/i.test(item.fontName)) ? ' font-weight="700"' : '';
+      // Parse font name from PDF (e.g. "IJJTJI+MyriadPro-Bold" → "Myriad Pro")
+      let fontFamily = 'sans-serif';
+      const isBold = item.fontName && /bold/i.test(item.fontName);
+      const isItalic = item.fontName && /italic|oblique/i.test(item.fontName);
+      if(item.fontName){
+        // Strip subset prefix (6 uppercase letters + "+")
+        let baseName = item.fontName.replace(/^[A-Z]{6}\+/, '');
+        // Strip style suffixes
+        baseName = baseName.replace(/[-,](Bold|Italic|Regular|Medium|Light|Book|Heavy|Black|Roman|Oblique|Semibold|SemiBold|ExtraBold|Condensed|Cond)+$/gi, '');
+        // Convert PostScript names to CSS-friendly names
+        // "MyriadPro" → "Myriad Pro", "TimesNewRomanPSMT" → "Times New Roman"
+        baseName = baseName
+          .replace(/Pro$/, ' Pro')
+          .replace(/([a-z])([A-Z])/g, '$1 $2')
+          .replace(/PSMT$/, '')
+          .replace(/MT$/, '')
+          .trim();
+        if(baseName) fontFamily = `"${baseName}", sans-serif`;
+      }
+      const fontWeight = isBold ? ' font-weight="700"' : '';
+      const fontStyle = isItalic ? ' font-style="italic"' : '';
       // Convert text position from PDF (Y-up) to SVG (Y-down) coordinates
       const escaped = item.str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       textElements.push(
         `<text transform="translate(${fmtN(tx)},${fmtN(yF(ty))})"` +
-        ` font-size="${fmtN(fontSize)}"${fontWeight}` +
+        ` font-size="${fmtN(fontSize)}"${fontWeight}${fontStyle}` +
         ` fill="${color}"` +
-        ` font-family="sans-serif"` +
+        ` font-family="${fontFamily}"` +
         `>${escaped}</text>`
       );
     }
@@ -1817,10 +1852,100 @@ async function loadPdfAsImage(arrayBuffer, name){
     const MAX_RENDER_PX = 5000;
     let scale = 300 / 72;
     const maxDim = Math.max(baseViewport.width, baseViewport.height);
-    if(maxDim * scale > MAX_RENDER_PX) scale = MAX_RENDER_PX / maxDim;
-    const viewport = page.getViewport({ scale });
-    const ow = Math.round(viewport.width);
-    const oh = Math.round(viewport.height);
+
+    // ── Content-aware scaling for large artboards ──
+    // AI files often have huge artboards (A0, 55×100cm) with a small logo.
+    // The old approach capped at 5000px for the FULL page, wasting most pixels
+    // on empty space — a 5cm logo on a 100cm artboard got only ~250px.
+    // Fix: scan at low res to find content bounds, then render only that area
+    // at high res using viewport offsets.
+    let useContentCrop = false;
+    let cropOffsetX = 0, cropOffsetY = 0;
+    let contentMmW = 0, contentMmH = 0;
+    let contentW_pts = 0, contentH_pts = 0;
+
+    if(maxDim * scale > MAX_RENDER_PX){
+      try {
+        const MAX_SCAN_PX = 2000;
+        const scanScale = Math.min(1, MAX_SCAN_PX / maxDim);
+        const scanVP = page.getViewport({ scale: scanScale });
+        const scanW = Math.round(scanVP.width), scanH = Math.round(scanVP.height);
+        const scanCnv = document.createElement('canvas');
+        scanCnv.width = scanW; scanCnv.height = scanH;
+        const scanCtx = scanCnv.getContext('2d');
+        await page.render({ canvasContext: scanCtx, viewport: scanVP, background: 'rgb(255,255,255)' }).promise;
+        const scanPx = scanCtx.getImageData(0, 0, scanW, scanH).data;
+
+        // Find bounding box of non-white pixels (= actual content)
+        let sMinX = scanW, sMinY = scanH, sMaxX = 0, sMaxY = 0;
+        for(let y = 0; y < scanH; y++){
+          for(let x = 0; x < scanW; x++){
+            const idx = (y * scanW + x) * 4;
+            if(scanPx[idx] < 250 || scanPx[idx+1] < 250 || scanPx[idx+2] < 250){
+              if(x < sMinX) sMinX = x;
+              if(x > sMaxX) sMaxX = x;
+              if(y < sMinY) sMinY = y;
+              if(y > sMaxY) sMaxY = y;
+            }
+          }
+        }
+
+        if(sMaxX > sMinX && sMaxY > sMinY){
+          // Add 5% margin (min 5 scan-pixels)
+          const mX = Math.max(5, Math.round((sMaxX - sMinX) * 0.05));
+          const mY = Math.max(5, Math.round((sMaxY - sMinY) * 0.05));
+          sMinX = Math.max(0, sMinX - mX);
+          sMinY = Math.max(0, sMinY - mY);
+          sMaxX = Math.min(scanW - 1, sMaxX + mX);
+          sMaxY = Math.min(scanH - 1, sMaxY + mY);
+
+          const cFrac = Math.max((sMaxX - sMinX + 1) / scanW, (sMaxY - sMinY + 1) / scanH);
+          if(cFrac < 0.8){
+            // Content uses <80% of page — content-aware render
+            contentW_pts = (sMaxX - sMinX + 1) / scanScale;
+            contentH_pts = (sMaxY - sMinY + 1) / scanScale;
+            const contentMaxPts = Math.max(contentW_pts, contentH_pts);
+
+            scale = 300 / 72;
+            if(contentMaxPts * scale > MAX_RENDER_PX) scale = MAX_RENDER_PX / contentMaxPts;
+
+            cropOffsetX = sMinX / scanScale;
+            cropOffsetY = sMinY / scanScale;
+            contentMmW = contentW_pts / 72 * 25.4;
+            contentMmH = contentH_pts / 72 * 25.4;
+            useContentCrop = true;
+
+            console.log(`[GSB] Content-aware scan "${name}": page=${baseViewport.width.toFixed(0)}×${baseViewport.height.toFixed(0)}pt, content=${contentW_pts.toFixed(0)}×${contentH_pts.toFixed(0)}pt (${(cFrac*100).toFixed(0)}%), scale=${scale.toFixed(2)}, output≈${Math.round(contentW_pts*scale)}×${Math.round(contentH_pts*scale)}px`);
+          }
+        }
+      } catch(scanErr){
+        console.warn(`[GSB] Content scan failed for "${name}", using full-page render:`, scanErr);
+      }
+    }
+
+    if(!useContentCrop){
+      if(maxDim * scale > MAX_RENDER_PX) scale = MAX_RENDER_PX / maxDim;
+    }
+
+    // Determine viewport and canvas dimensions
+    let viewport, ow, oh;
+    if(useContentCrop){
+      viewport = page.getViewport({
+        scale: scale,
+        offsetX: -cropOffsetX * scale,
+        offsetY: -cropOffsetY * scale
+      });
+      ow = Math.round(contentW_pts * scale);
+      oh = Math.round(contentH_pts * scale);
+    } else {
+      viewport = page.getViewport({ scale });
+      ow = Math.round(viewport.width);
+      oh = Math.round(viewport.height);
+    }
+
+    // Physical dimensions reference for placeImage (mm)
+    const _refMmW = useContentCrop ? contentMmW : (pdfPageW / 72 * 25.4);
+    const _refMmH = useContentCrop ? contentMmH : (pdfPageH / 72 * 25.4);
 
     // Dual-render to isolate page background from design
     const off1 = document.createElement('canvas');
@@ -1867,25 +1992,23 @@ async function loadPdfAsImage(arrayBuffer, name){
       autoCropRaster(img, (cropped, cw, ch)=>{
         cropped._vectorOrigin = 'pdf';
         cropped._hasGradients = true;
-        // Use actual PDF page dimensions (points → mm) for real-world size.
-        // CRITICAL: the raster was auto-cropped to the CONTENT bounds (cw×ch),
-        // so the physical target must be scaled by the crop fraction (cw/ow,
-        // ch/oh). Using the full page dims here squeezed cropped content into
-        // the artboard's aspect ratio (logo's werden in elkaar gedrukt).
-        let targetMmW = pdfPageW / 72 * 25.4 * (cw / ow);
-        let targetMmH = pdfPageH / 72 * 25.4 * (ch / oh);
+        // Physical size: use content-aware reference dims when available,
+        // otherwise fall back to full page dims. AutoCrop fraction (cw/ow)
+        // accounts for any remaining transparent border removal.
+        let targetMmW = _refMmW * (cw / ow);
+        let targetMmH = _refMmH * (ch / oh);
         // Clamp to 90% of sheet width if too large
         if(targetMmW > state.sheet.w * 0.9){
-          const scale = (state.sheet.w * 0.9) / targetMmW;
-          targetMmW *= scale;
-          targetMmH *= scale;
+          const sc = (state.sheet.w * 0.9) / targetMmW;
+          targetMmW *= sc;
+          targetMmH *= sc;
         }
         placeImage(cropped, name, targetMmW, targetMmH, cw, ch);
         pdfSourceBuffers.set(cropped._originalId, bufferForExport);
         cropped._pdfPageW = pdfPageW;
         cropped._pdfPageH = pdfPageH;
         hideLogoLoading();
-        console.log(`[GSB] PDF/AI "${name}" loaded as display-only (gradient), buffer stored, page=${pdfPageW}×${pdfPageH}`);
+        console.log(`[GSB] PDF/AI "${name}" loaded${useContentCrop?' (content-aware)':''}: ${ow}×${oh}px, ${targetMmW.toFixed(1)}×${targetMmH.toFixed(1)}mm`);
       });
     }, { crossOrigin:'anonymous' });
     /* gradient toast removed — color editor shows inline hint instead */
