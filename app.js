@@ -6059,17 +6059,11 @@ async function runPdfExport(withBackground = false){
             if(!srcBuffer) throw new Error('No source buffer for ' + oid);
             const srcDoc = await PDFDocument.load(srcBuffer);
 
-            let ep;
-            if(grp.sample._pdfCropBox){
-              // Bijgesneden vector-embed: alleen het content-gebied van de pagina
-              const [srcPage] = srcDoc.getPages();
-              ep = await finalDoc.embedPage(srcPage, grp.sample._pdfCropBox);
-              console.log(`[GSB] PDF embed (cropped): ${grp.sample._name || oid}`, grp.sample._pdfCropBox);
-            } else {
-              const [e0] = await finalDoc.embedPdf(srcDoc, [0]);
-              ep = e0;
-            }
-            embeddedPage = ep;
+            // ALTIJD de volledige pagina embedden — embedPage met een kader
+            // bleek content (o.a. tekstpaden) te kunnen verliezen. Het
+            // bijsnijden gebeurt nu bij het plaatsen, met een clip-kader.
+            const [e0] = await finalDoc.embedPdf(srcDoc, [0]);
+            embeddedPage = e0;
             pdfEmbedCache.set(oid, embeddedPage);
             console.log(`[GSB] PDF embed OK: ${grp.sample._name || oid} (${srcBuffer.byteLength} bytes)`);
           } catch(e){
@@ -6080,9 +6074,34 @@ async function runPdfExport(withBackground = false){
           }
         }
 
+        const cb = grp.sample._pdfCropBox || null;
         for(const tile of grp.tiles){
           try {
-            drawAtTile(embeddedPage, tile, true);
+            const ang = (((tile.angle || 0) % 360) + 360) % 360;
+            if(cb && (ang < 0.1 || ang > 359.9)){
+              // Content-gebied van de volledige pagina exact op de tegel schalen,
+              // met een clip-kader zodat de rest van het artboard wegvalt
+              const tX = tile.mmLeft * MM_TO_PT + offsetXPt;
+              const tY = pageHPt - (tile.mmTop + tile.mmH) * MM_TO_PT - offsetYPt;
+              const tW = tile.mmW * MM_TO_PT, tH = tile.mmH * MM_TO_PT;
+              const sx = tW / Math.max(cb.right - cb.left, 0.01);
+              const sy = tH / Math.max(cb.top - cb.bottom, 0.01);
+              const P = window.PDFLib;
+              page.pushOperators(
+                P.pushGraphicsState(),
+                P.moveTo(tX, tY), P.lineTo(tX + tW, tY), P.lineTo(tX + tW, tY + tH), P.lineTo(tX, tY + tH),
+                P.closePath(), P.clip(), P.endPath(),
+              );
+              page.drawPage(embeddedPage, {
+                x: tX - cb.left * sx,
+                y: tY - cb.bottom * sy,
+                width: embeddedPage.width * sx,
+                height: embeddedPage.height * sy,
+              });
+              page.pushOperators(P.popGraphicsState());
+            } else {
+              drawAtTile(embeddedPage, tile, true);
+            }
             vectorOk++;
           } catch(e){
             console.error('[GSB] drawPage failed for PDF tile:', e);
