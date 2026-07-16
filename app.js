@@ -1777,8 +1777,9 @@ async function pdfToSvg(arrayBuffer){
     '</svg>'
   ].join('\n');
 
-  console.log(`[GSB] pdfToSvg: ${pathCount} paths, ${textElements.length} text items, hasGradients=${hasGradients}, hasImages=${hasImages}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
-  return { svgText, pathCount, hasGradients, hasImages, tooManyPaths, pageW: W, pageH: H };
+  const hasText = textElements.length > 0 || textFillColors.length > 0;
+  console.log(`[GSB] pdfToSvg: ${pathCount} paths, ${textElements.length} text items, hasText=${hasText}, hasGradients=${hasGradients}, hasImages=${hasImages}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
+  return { svgText, pathCount, hasGradients, hasImages, hasText, tooManyPaths, pageW: W, pageH: H };
 }
 
 // Load a PDF/AI file — simple rules:
@@ -1801,7 +1802,7 @@ async function loadPdfAsImage(arrayBuffer, name){
   showLogoLoading(name ? `"${name}" laden…` : 'Logo laden…');
 
   // --- Step 1: Convert to SVG and detect gradients/images ---
-  let svgText = null, pdfHasGradients = false, pdfHasImages = false, svgPathCount = 0, pdfTooManyPaths = false;
+  let svgText = null, pdfHasGradients = false, pdfHasImages = false, pdfHasText = false, svgPathCount = 0, pdfTooManyPaths = false;
   let pdfPageW = 0, pdfPageH = 0;
   try {
     const t0 = performance.now();
@@ -1810,6 +1811,7 @@ async function loadPdfAsImage(arrayBuffer, name){
     svgPathCount = result.pathCount;
     pdfHasGradients = result.hasGradients;
     pdfHasImages = result.hasImages;
+    pdfHasText = result.hasText;
     pdfTooManyPaths = result.tooManyPaths;
     pdfPageW = result.pageW;
     pdfPageH = result.pageH;
@@ -1819,7 +1821,10 @@ async function loadPdfAsImage(arrayBuffer, name){
   }
 
   // --- PATH A: No gradients, no images, not too many paths, valid SVG → editable SVG group ---
-  if(svgPathCount > 0 && !pdfHasGradients && !pdfHasImages && !pdfTooManyPaths){
+  // PDF's met LIVE TEKST (embedded fonts, niet omgezet naar contouren) kunnen
+  // niet betrouwbaar naar SVG-paden — pdf.js rendert de fonts wél perfect,
+  // en de export embed de originele PDF (Track 2) of rastert op 300 DPI.
+  if(svgPathCount > 0 && !pdfHasGradients && !pdfHasImages && !pdfHasText && !pdfTooManyPaths){
     console.log(`[GSB] "${name}": no gradients, loading as editable SVG`);
     hideLogoLoading();
     loadSvg(svgText, name);
@@ -1841,7 +1846,7 @@ async function loadPdfAsImage(arrayBuffer, name){
   }
 
   // --- PATH B: Has gradients OR conversion failed → pdf.js canvas render (display only) ---
-  const reason = pdfTooManyPaths ? `too many paths (${svgPathCount}≥${PDF_MAX_SVG_PATHS})` : pdfHasImages ? 'embedded images detected' : pdfHasGradients ? 'gradients detected' : 'conversion failed';
+  const reason = pdfTooManyPaths ? `too many paths (${svgPathCount}≥${PDF_MAX_SVG_PATHS})` : pdfHasImages ? 'embedded images detected' : pdfHasText ? 'live text (fonts) detected' : pdfHasGradients ? 'gradients detected' : 'conversion failed';
   console.log(`[GSB] "${name}": ${reason}, loading as display-only raster`);
   try {
     const pdf = await pdfjsLib.getDocument({ data: bufferForRaster }).promise;

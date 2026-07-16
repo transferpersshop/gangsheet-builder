@@ -1,6 +1,6 @@
 /* ================================================================
    logo-editor.js — Per-logo bewerkingsmodal voor Gang Sheet Builder
-   v2.21.0 — retina-scherpe preview met vol-brede achtergrond,
+   v2.45.0 — retina-scherpe preview met vol-brede achtergrond,
    witte-achtergrond verwijdering (globaal + de-fringe),
    kleurclustering (vectorizer-stijl), SVG-natieve outline
    ================================================================ */
