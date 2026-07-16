@@ -791,6 +791,7 @@ function _openColorPop(input){
     + '<input id="cpHex" type="text" value="'+cur.toUpperCase()+'" style="flex:1;min-width:0;padding:5px 7px;border:1px solid #e5e7eb;border-radius:6px;font-size:.78rem;font-family:monospace">'
     + '<button id="cpMore" title="Vrij kiezen (kleurenwiel)" style="padding:5px 7px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:.72rem">&#127912;</button>'
     + '</div>'
+    + '<div id="cpCmyk" style="font-size:.68rem;font-family:monospace;color:#6b7280;margin:-4px 0 8px"></div>'
     + '<button id="cpApply" style="width:100%;padding:8px 0;border:none;border-radius:8px;background:linear-gradient(135deg,#1d9aaf,#65358c);color:#fff;font-weight:700;font-size:.8rem;cursor:pointer">Kies kleur</button>';
   document.body.appendChild(el);
   const r = input.getBoundingClientRect();
@@ -798,9 +799,19 @@ function _openColorPop(input){
   if(y + 200 > innerHeight) y = r.top - 208;
   el.style.left = Math.max(8, x) + 'px'; el.style.top = Math.max(8, y) + 'px';
   const hexIn = el.querySelector('#cpHex'), prev = el.querySelector('#cpPrev');
+  const cmykEl = el.querySelector('#cpCmyk');
   const norm = v => { v = (v||'').trim(); if(!v.startsWith('#')) v = '#'+v; return /^#[0-9a-fA-F]{6}$/.test(v) ? v : null; };
-  el.querySelectorAll('[data-c]').forEach(b => b.onclick = e => { e.stopPropagation(); hexIn.value = b.dataset.c.toUpperCase(); prev.style.background = b.dataset.c; });
-  hexIn.oninput = () => { const v = norm(hexIn.value); if(v) prev.style.background = v; };
+  const showCmyk = hex => {
+    if(!cmykEl || typeof rgbToCmyk !== 'function') return;
+    try{
+      const n = parseInt(hex.slice(1), 16);
+      const c = rgbToCmyk((n>>16)&255, (n>>8)&255, n&255);
+      cmykEl.textContent = 'CMYK ' + c.c + ' / ' + c.m + ' / ' + c.y + ' / ' + c.k;
+    }catch(_){ }
+  };
+  showCmyk(cur);
+  el.querySelectorAll('[data-c]').forEach(b => b.onclick = e => { e.stopPropagation(); hexIn.value = b.dataset.c.toUpperCase(); prev.style.background = b.dataset.c; showCmyk(b.dataset.c); });
+  hexIn.oninput = () => { const v = norm(hexIn.value); if(v){ prev.style.background = v; showCmyk(v); } };
   el.querySelector('#cpMore').onclick = e => {
     e.stopPropagation();
     input._gsbNative = true;
