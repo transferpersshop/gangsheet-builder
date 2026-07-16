@@ -515,7 +515,7 @@ const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
   '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients',
-  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_cmykColorMap'
+  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_pdfCropBox','_cmykColorMap'
 ];
 const FABRIC_UNDO_PROPS = FABRIC_EXTRA_PROPS.filter(p => p !== '_svgSource');
 
@@ -1990,6 +1990,23 @@ async function loadPdfAsImage(arrayBuffer, name){
       }
     }
 
+    // Content-bbox in PDF-punten bewaren: de export kan dan de ORIGINELE
+    // vector-PDF bijgesneden embedden i.p.v. te rasteren (artboard >> content)
+    let pdfCropBox = null;
+    try{
+      const bd = ctx1.getImageData(0, 0, ow, oh).data;
+      let mnX = ow, mnY = oh, mxX = -1, mxY = -1;
+      for(let y = 0; y < oh; y++) for(let x = 0; x < ow; x++){
+        if(bd[(y*ow+x)*4+3] > 10){ if(x<mnX)mnX=x; if(x>mxX)mxX=x; if(y<mnY)mnY=y; if(y>mxY)mxY=y; }
+      }
+      if(mxX >= mnX){
+        pdfCropBox = {
+          left: mnX / scale, right: (mxX + 1) / scale,
+          bottom: pdfPageH - (mxY + 1) / scale, top: pdfPageH - mnY / scale,
+        };
+      }
+    }catch(_){ }
+
     const dataUrl = off1.toDataURL('image/png');
     fabric.Image.fromURL(dataUrl, img=>{
       img._vectorOrigin = 'pdf';
@@ -2008,6 +2025,7 @@ async function loadPdfAsImage(arrayBuffer, name){
           targetMmW *= sc;
           targetMmH *= sc;
         }
+        if(pdfCropBox) cropped._pdfCropBox = pdfCropBox;
         placeImage(cropped, name, targetMmW, targetMmH, cw, ch);
         pdfSourceBuffers.set(cropped._originalId, bufferForExport);
         cropped._pdfPageW = pdfPageW;
@@ -5712,8 +5730,12 @@ async function runPdfExport(withBackground = false){
             const artboardMmW = s._pdfPageW * 25.4 / 72;
             const artboardMmH = s._pdfPageH * 25.4 / 72;
             if(contentMmW < artboardMmW * 0.8 || contentMmH < artboardMmH * 0.8){
-              useRaster = true;
-              console.log(`[GSB Export] ${s._name||oid}: gradient PDF, artboard >> content → Track 3 (raster)`);
+              if(s._pdfCropBox){
+                console.log(`[GSB Export] ${s._name||oid}: artboard >> content, maar cropbox bekend → Track 2 (bijgesneden vector-embed)`);
+              } else {
+                useRaster = true;
+                console.log(`[GSB Export] ${s._name||oid}: gradient PDF, artboard >> content → Track 3 (raster)`);
+              }
             }
           }
         }
@@ -6037,7 +6059,16 @@ async function runPdfExport(withBackground = false){
             if(!srcBuffer) throw new Error('No source buffer for ' + oid);
             const srcDoc = await PDFDocument.load(srcBuffer);
 
-            const [ep] = await finalDoc.embedPdf(srcDoc, [0]);
+            let ep;
+            if(grp.sample._pdfCropBox){
+              // Bijgesneden vector-embed: alleen het content-gebied van de pagina
+              const [srcPage] = srcDoc.getPages();
+              ep = await finalDoc.embedPage(srcPage, grp.sample._pdfCropBox);
+              console.log(`[GSB] PDF embed (cropped): ${grp.sample._name || oid}`, grp.sample._pdfCropBox);
+            } else {
+              const [e0] = await finalDoc.embedPdf(srcDoc, [0]);
+              ep = e0;
+            }
             embeddedPage = ep;
             pdfEmbedCache.set(oid, embeddedPage);
             console.log(`[GSB] PDF embed OK: ${grp.sample._name || oid} (${srcBuffer.byteLength} bytes)`);
