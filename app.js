@@ -515,7 +515,7 @@ const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
   '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients',
-  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_pdfCropBox','_cmykColorMap'
+  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_pdfCropBox','_pdfHasLayers','_cmykColorMap','_hiFiVector'
 ];
 const FABRIC_UNDO_PROPS = FABRIC_EXTRA_PROPS.filter(p => p !== '_svgSource');
 
@@ -791,7 +791,11 @@ function _openColorPop(input){
     + '<input id="cpHex" type="text" value="'+cur.toUpperCase()+'" style="flex:1;min-width:0;padding:5px 7px;border:1px solid #e5e7eb;border-radius:6px;font-size:.78rem;font-family:monospace">'
     + '<button id="cpMore" title="Vrij kiezen (kleurenwiel)" style="padding:5px 7px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:.72rem">&#127912;</button>'
     + '</div>'
-    + '<div id="cpCmyk" style="font-size:.68rem;font-family:monospace;color:#6b7280;margin:-4px 0 8px"></div>'
+    + '<div style="display:flex;gap:4px;align-items:center;margin:-2px 0 8px">'
+    + '<span style="font-size:.66rem;color:#6b7280;width:34px">CMYK</span>'
+    + ['c','m','y','k'].map(k => '<input data-cmyk="'+k+'" type="number" min="0" max="100" style="width:100%;min-width:0;padding:4px;border:1px solid #e5e7eb;border-radius:5px;font-size:.72rem">').join('')
+    + '</div>'
+    + '<div id="cpCmyk" style="display:none"></div>'
     + '<button id="cpApply" style="width:100%;padding:8px 0;border:none;border-radius:8px;background:linear-gradient(135deg,#1d9aaf,#65358c);color:#fff;font-weight:700;font-size:.8rem;cursor:pointer">Kies kleur</button>';
   document.body.appendChild(el);
   const r = input.getBoundingClientRect();
@@ -801,14 +805,22 @@ function _openColorPop(input){
   const hexIn = el.querySelector('#cpHex'), prev = el.querySelector('#cpPrev');
   const cmykEl = el.querySelector('#cpCmyk');
   const norm = v => { v = (v||'').trim(); if(!v.startsWith('#')) v = '#'+v; return /^#[0-9a-fA-F]{6}$/.test(v) ? v : null; };
+  const cmykIns = [...el.querySelectorAll('[data-cmyk]')];
   const showCmyk = hex => {
-    if(!cmykEl || typeof rgbToCmyk !== 'function') return;
     try{
       const n = parseInt(hex.slice(1), 16);
       const c = rgbToCmyk((n>>16)&255, (n>>8)&255, n&255);
-      cmykEl.textContent = 'CMYK ' + c.c + ' / ' + c.m + ' / ' + c.y + ' / ' + c.k;
+      const v = { c:c.c, m:c.m, y:c.y, k:c.k };
+      cmykIns.forEach(inp => inp.value = v[inp.dataset.cmyk]);
     }catch(_){ }
   };
+  const cmykToHex = () => {
+    const g = k => Math.max(0, Math.min(100, parseFloat((cmykIns.find(i=>i.dataset.cmyk===k)||{}).value) || 0)) / 100;
+    const c=g('c'), m=g('m'), y=g('y'), k=g('k');
+    const h = x => Math.round(255*(1-x)*(1-k)).toString(16).padStart(2,'0');
+    return ('#'+h(c)+h(m)+h(y)).toUpperCase();
+  };
+  cmykIns.forEach(inp => inp.oninput = () => { const v = cmykToHex(); hexIn.value = v; prev.style.background = v; });
   showCmyk(cur);
   el.querySelectorAll('[data-c]').forEach(b => b.onclick = e => { e.stopPropagation(); hexIn.value = b.dataset.c.toUpperCase(); prev.style.background = b.dataset.c; showCmyk(b.dataset.c); });
   hexIn.oninput = () => { const v = norm(hexIn.value); if(v){ prev.style.background = v; showCmyk(v); } };
@@ -1793,6 +1805,310 @@ async function pdfToSvg(arrayBuffer){
   return { svgText, pathCount, hasGradients, hasImages, hasText, tooManyPaths, pageW: W, pageH: H };
 }
 
+/* ============================================================
+   HI-FI VECTOR-ROUTE (pdf.js SVGGraphics) — v2.50.0
+   ------------------------------------------------------------
+   Voor PDF/AI-bestanden die pdfToSvg niet aankan (gradients,
+   ingesloten afbeeldingen, Illustrator-lagen, live tekst) proberen
+   we pdf.js' ingebouwde PDF→SVG-renderer (SVGGraphics, aanwezig
+   t/m pdf.js 3.11.x). Die ondersteunt wél gradients (lineair en
+   radiaal → echte SVG-gradients), afbeeldingen (als data-URI) en
+   laag-content.
+
+   LIVE TEKST IN LOGO'S: SVGGraphics schrijft tekst als <text>/
+   <tspan> met verwijzing naar ingebedde fonts — dat kan svg2pdf
+   (de vector-export) niet aan. Daarom zetten we hier elke glyph om
+   naar échte contouren (paths) via opentype.js, op basis van de
+   door pdf.js herbouwde fontdata (fontExtraProperties). De tspan
+   bevat per glyph een x-positie en het fontChar-teken dat 1-op-1
+   in de cmap van het herbouwde font zit. Lukt de omzetting niet
+   volledig → geen vector-route (fallback).
+   (Live tekst uit de TEKSTEDITOR gaat niet via deze route; die
+   wordt al bij het aanmaken via opentype.js naar paden omgezet en
+   exporteert als vector via Track 1.)
+
+   ZELF-CONTROLE (de sleutel van deze route): de resulterende SVG
+   wordt door de browser gerasterd en pixel-voor-pixel vergeleken
+   met de pdf.js canvas-referentie — exact het beeld dat op het vel
+   staat. Alleen bij een match krijgt het object een _svgSource en
+   gaat de export via Track 1 (svg2pdf → echte vector). Bij elke
+   twijfel: stille fallback naar het bestaande gedrag (embedPdf of
+   300 DPI raster). Deze route kan dus geen stille fouten
+   introduceren — hooguit een gemiste vector-kans.
+   Bekende bewuste fallbacks: mesh-gradients, tiling patterns,
+   stencil-masks (svg:mask), verticale tekst, Type3-fonts,
+   verborgen Illustrator-lagen (SVGGraphics tekent álles, de
+   referentie niet → pixelverschil → raster).
+   ============================================================ */
+const HIFI_MAX_SVG_BYTES  = 8 * 1024 * 1024; // >8MB SVG → onpraktisch (opslag/export)
+const HIFI_DIFF_MAX_RATIO = 0.005;           // max 0,5% afwijkende pixels
+const HIFI_DIFF_CHANNEL   = 40;              // kanaalverschil vanaf wanneer een pixel 'afwijkt'
+const HIFI_CMP_MAX_PX     = 1600;            // vergelijkingsresolutie (langste zijde) — hoog genoeg om AA-randruis onder de drempel te houden bij tekstrijke bestanden
+
+/* Zet alle <text>/<tspan> elementen in de SVGGraphics-uitvoer om naar
+   <path> contouren met opentype.js. Gooit een Error zodra iets niet
+   1-op-1 kan — de aanroeper valt dan terug op raster/embedPdf. */
+function _hifiOutlineText(svgRoot, commonObjs){
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const texts = Array.from(svgRoot.querySelectorAll('text'));
+  if(!texts.length) return 0;
+  if(typeof opentype === 'undefined' || !opentype.parse)
+    throw new Error('opentype.js niet geladen');
+
+  const fontCache = new Map(); // loadedName → opentype.Font | null
+  function getOtFont(loadedName){
+    if(fontCache.has(loadedName)) return fontCache.get(loadedName);
+    let ot = null;
+    try{
+      const fontObj = commonObjs.get(loadedName);
+      if(fontObj && fontObj.data && fontObj.data.length){
+        const u8 = fontObj.data;
+        ot = opentype.parse(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength));
+      }
+    }catch(e){
+      console.warn('[GSB HiFi] fontdata onbruikbaar voor', loadedName, e);
+      ot = null;
+    }
+    fontCache.set(loadedName, ot);
+    return ot;
+  }
+
+  let glyphCount = 0;
+  const doc = svgRoot.ownerDocument;
+  for(const txt of texts){
+    const g = doc.createElementNS(SVGNS, 'svg:g');
+    const tf = txt.getAttribute('transform');
+    if(tf) g.setAttribute('transform', tf);
+
+    for(const tspan of Array.from(txt.children)){
+      if(tspan.localName !== 'tspan') throw new Error('onverwacht element in tekst: ' + tspan.localName);
+      const chars = Array.from(tspan.textContent || '');
+      if(!chars.length) continue;
+
+      const yVals = (tspan.getAttribute('y') || '0').trim().split(/\s+/);
+      if(yVals.length > 1) throw new Error('verticale tekst wordt niet ondersteund');
+      const y = parseFloat(yVals[0]) || 0;
+
+      const xs = (tspan.getAttribute('x') || '').trim().split(/\s+/).map(Number);
+      if(xs.length !== chars.length || xs.some(v => !isFinite(v)))
+        throw new Error('glyph-posities lopen niet synchroon met tekens');
+
+      const fs = parseFloat(tspan.getAttribute('font-size')) || 0;
+      if(!(fs > 0)) continue;
+
+      const fam = tspan.getAttribute('font-family') || '';
+      const ot = getOtFont(fam);
+      if(!ot) throw new Error('geen bruikbare fontdata (' + fam + ')');
+
+      // NB: bewust NIET opentype's toPathData() — die bevat een
+      // optimalisatie-bug die bij bepaalde coördinaten NaN produceert.
+      // We serialiseren de path-commands zelf, met NaN-guard.
+      const fmt = v => {
+        if(!isFinite(v)) throw new Error('ongeldige coördinaat in glyph-pad');
+        return Math.round(v * 1000) / 1000;
+      };
+      let d = '';
+      for(let i = 0; i < chars.length; i++){
+        const ch = chars[i];
+        const glyph = ot.charToGlyph(ch);
+        // .notdef terwijl het teken geen spatie is = encoding-mismatch
+        if((!glyph || glyph.index === 0) && ch.trim())
+          throw new Error('glyph ontbreekt in font (encoding-mismatch)');
+        if(!glyph) continue;
+        // opentype tekent — net als de browser — met de baseline op y en
+        // Y-as omlaag; binnen de scale(…, -1) van het tekst-element is dat
+        // exact equivalent aan de oorspronkelijke <text>-rendering.
+        const gp = glyph.getPath(xs[i], y, fs);
+        for(const c of gp.commands){
+          if(c.type === 'M')      d += `M${fmt(c.x)} ${fmt(c.y)}`;
+          else if(c.type === 'L') d += `L${fmt(c.x)} ${fmt(c.y)}`;
+          else if(c.type === 'Q') d += `Q${fmt(c.x1)} ${fmt(c.y1)} ${fmt(c.x)} ${fmt(c.y)}`;
+          else if(c.type === 'C') d += `C${fmt(c.x1)} ${fmt(c.y1)} ${fmt(c.x2)} ${fmt(c.y2)} ${fmt(c.x)} ${fmt(c.y)}`;
+          else if(c.type === 'Z') d += 'Z';
+        }
+        glyphCount++;
+      }
+      if(!d.trim()) continue;
+
+      const path = doc.createElementNS(SVGNS, 'svg:path');
+      path.setAttribute('d', d.trim());
+      // Neem alle presentatie-attributen over (fill, opacity, stroke, …)
+      for(const attr of Array.from(tspan.attributes)){
+        if(/^(x|y|font-family|font-size|font-style|font-weight)$/.test(attr.name)) continue;
+        if(attr.name.indexOf('xml:') === 0) continue;
+        if(attr.value !== '') path.setAttribute(attr.name, attr.value);
+      }
+      if(!path.getAttribute('fill')) path.setAttribute('fill', '#000000');
+      g.appendChild(path);
+    }
+
+    if(g.childNodes.length) txt.parentNode.replaceChild(g, txt);
+    else txt.parentNode.removeChild(txt);
+  }
+  return glyphCount;
+}
+
+/* Pure pixelvergelijking van twee RGBA-buffers (op wit gecomposeerd).
+   Met 1px-buurtolerantie: anti-aliasing- en font-hinting-verschillen
+   verschuiven randpixels hooguit één positie — die tellen niet mee.
+   Een pixel is pas 'fout' als er in het ANDERE beeld binnen 1px geen
+   vergelijkbare pixel bestaat, in beide richtingen (dat vangt zowel
+   ontbrekende als toegevoegde content, ook dunne lijnen en tekst). */
+function _hifiDiffRatio(pa, pb, w, h){
+  const T = HIFI_DIFF_CHANNEL;
+  function same(bufA, i, bufB, j){
+    return Math.abs(bufA[i]   - bufB[j])   <= T &&
+           Math.abs(bufA[i+1] - bufB[j+1]) <= T &&
+           Math.abs(bufA[i+2] - bufB[j+2]) <= T;
+  }
+  let bad = 0;
+  for(let y = 0; y < h; y++){
+    for(let x = 0; x < w; x++){
+      const i = (y * w + x) * 4;
+      if(same(pa, i, pb, i)) continue;
+      let matchA = false, matchB = false;
+      for(let dy = -1; dy <= 1 && !(matchA && matchB); dy++){
+        const ny = y + dy; if(ny < 0 || ny >= h) continue;
+        for(let dx = -1; dx <= 1; dx++){
+          const nx = x + dx; if(nx < 0 || nx >= w) continue;
+          const j = (ny * w + nx) * 4;
+          if(!matchA && same(pa, i, pb, j)) matchA = true;
+          if(!matchB && same(pb, i, pa, j)) matchB = true;
+          if(matchA && matchB) break;
+        }
+      }
+      if(!(matchA && matchB)) bad++;
+    }
+  }
+  return bad / (w * h);
+}
+
+/* Zelf-controle: raster de SVG in de browser en vergelijk met het
+   pdf.js-referentiebeeld (regio in canvas-pixels). Beide op wit
+   gecomposeerd, geschaald naar max HIFI_CMP_MAX_PX. */
+async function _hifiVerify(svgText, refCanvas, region){
+  const cmpScale = Math.min(1, HIFI_CMP_MAX_PX / Math.max(region.w, region.h));
+  const cw = Math.max(1, Math.round(region.w * cmpScale));
+  const ch = Math.max(1, Math.round(region.h * cmpScale));
+
+  // Render de SVG exact op vergelijkingsresolutie. Zonder dit rastert
+  // Chrome het SVG-beeld op z'n intrinsieke grootte (viewBox-punten) en
+  // schaalt het daarna bitmap-matig op — wazige randen die de vergelijking
+  // onterecht laten falen (gemeten: 0,9% randruis op het Dave-bestand).
+  const svgForImg = svgText
+    .replace(/(<svg\b[^>]*?\s)width="[^"]*"/, `$1width="${cw}"`)
+    .replace(/(<svg\b[^>]*?\s)height="[^"]*"/, `$1height="${ch}"`);
+  const img = new Image();
+  const url = URL.createObjectURL(new Blob([svgForImg], { type: 'image/svg+xml' }));
+  try{
+    await new Promise((res, rej)=>{
+      img.onload = res;
+      img.onerror = ()=>rej(new Error('SVG rendert niet in de browser'));
+      img.src = url;
+    });
+  } finally {
+    // revoke pas ná decode-gebruik hieronder is niet nodig; drawImage
+    // gebruikt het al gedecodeerde beeld
+  }
+
+  const a = document.createElement('canvas'); a.width = cw; a.height = ch;
+  const actx = a.getContext('2d');
+  actx.fillStyle = '#fff'; actx.fillRect(0, 0, cw, ch);
+  actx.drawImage(img, 0, 0, cw, ch);
+  URL.revokeObjectURL(url);
+
+  const b = document.createElement('canvas'); b.width = cw; b.height = ch;
+  const bctx = b.getContext('2d');
+  bctx.fillStyle = '#fff'; bctx.fillRect(0, 0, cw, ch);
+  bctx.drawImage(refCanvas, region.x, region.y, region.w, region.h, 0, 0, cw, ch);
+
+  const pa = actx.getImageData(0, 0, cw, ch).data;
+  const pb = bctx.getImageData(0, 0, cw, ch).data;
+  const ratio = _hifiDiffRatio(pa, pb, cw, ch);
+  return { ratio, pass: ratio <= HIFI_DIFF_MAX_RATIO, cmpW: cw, cmpH: ch };
+}
+
+/* Hoofdfunctie van de route. Geeft de geverifieerde SVG-string terug,
+   of gooit een Error (→ aanroeper valt terug op embedPdf/raster).
+   opts: { refCanvas, renderScale, baseX, baseY, ow, oh, pxBbox } —
+   refCanvas is de pdf.js-render die ook op het vel komt; baseX/baseY
+   de content-crop offset in PDF-punten; pxBbox de alpha-bbox in
+   canvas-pixels (zelfde meting als pdfCropBox). */
+async function pdfToHiFiSvg(arrayBuffer, opts){
+  if(!window.pdfjsLib || !pdfjsLib.SVGGraphics)
+    throw new Error('SVGGraphics niet beschikbaar in deze pdf.js');
+
+  const t0 = performance.now();
+  // fontExtraProperties: nodig om bij de herbouwde fontdata te kunnen
+  // voor de tekst→contouren-omzetting
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, fontExtraProperties: true }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const opList = await page.getOperatorList();
+
+  // forceDataSchema=true → afbeeldingen als data-URI i.p.v. blob-URL,
+  // anders is de SVG na een pagina-refresh of projectopslag waardeloos
+  const gfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs, /*forceDataSchema*/ true);
+  gfx.embedFonts = false; // fonts worden hieronder naar contouren omgezet
+  const svgEl = await gfx.getSVG(opList, viewport);
+
+  // Tekst → contouren (gooit bij elke onzekerheid)
+  const glyphs = _hifiOutlineText(svgEl, page.commonObjs);
+
+  // viewBox: zelfde uitsnede als de getoonde raster (repliceert de
+  // beslisregel van autoCropRaster: pas croppen vanaf 3% marge)
+  const { baseX, baseY, ow, oh, renderScale, pxBbox } = opts;
+  let rx = 0, ry = 0, rw = ow, rh = oh;
+  if(pxBbox && pxBbox.mxX >= pxBbox.mnX){
+    const cropW = pxBbox.mxX - pxBbox.mnX + 1;
+    const cropH = pxBbox.mxY - pxBbox.mnY + 1;
+    const skip = pxBbox.mnX < ow * 0.03 && pxBbox.mnY < oh * 0.03 &&
+                 cropW > ow * 0.94 && cropH > oh * 0.94;
+    if(!skip && cropW > 0 && cropH > 0){ rx = pxBbox.mnX; ry = pxBbox.mnY; rw = cropW; rh = cropH; }
+  }
+  const vbX = baseX + rx / renderScale, vbY = baseY + ry / renderScale;
+  const vbW = rw / renderScale,        vbH = rh / renderScale;
+  svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+  svgEl.setAttribute('width', String(vbW));
+  svgEl.setAttribute('height', String(vbH));
+
+  // Serialiseren + svg:-prefix normaliseren (SVGGraphics maakt
+  // 'svg:path' e.d.; svg2pdf en <img>-rendering willen default-namespace)
+  let svgText = new XMLSerializer().serializeToString(svgEl);
+  svgText = svgText
+    .replace(/<(\/?)svg:/g, '<$1')
+    .replace(/\s+xmlns:svg="[^"]*"/g, '')
+    // lege presentatie-attributen (SVGGraphics laat ze soms leeg achter)
+    .replace(/\s+(stroke-dasharray|stroke-linecap|stroke-linejoin)=""/g, '');
+  if(!/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/.test(svgText))
+    svgText = svgText.replace(/<svg\b/, '<svg xmlns="http://www.w3.org/2000/svg"');
+  if(svgText.indexOf('xlink:href') !== -1 && !/xmlns:xlink=/.test(svgText))
+    svgText = svgText.replace(/<svg\b/, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+
+  // Compatibiliteits-wachters: alles wat svg2pdf niet kan → fallback
+  if(svgText.length > HIFI_MAX_SVG_BYTES)
+    throw new Error(`SVG te groot (${(svgText.length/1048576).toFixed(1)}MB)`);
+  if(/<(mask|pattern|foreignObject|text|tspan|style)[\s>]/.test(svgText))
+    throw new Error('bevat elementen die svg2pdf niet ondersteunt (mask/pattern/tekst)');
+  // <image>: end-to-end exporttest toonde aan dat svg2pdf ingesloten
+  // afbeeldingen niet betrouwbaar meeneemt. Bestanden met afbeeldingen
+  // houden hun bestaande verliesvrije route (embedPdf). Kandidaat om in
+  // een volgende versie in de browser te valideren en vrij te geven.
+  if(/<image[\s>]/.test(svgText))
+    throw new Error('bevat ingesloten afbeelding → embedPdf-route blijft beter');
+  if(svgText.indexOf('fill="null"') !== -1 || svgText.indexOf('fill="hotpink"') !== -1)
+    throw new Error('mesh-gradient of niet-ondersteund patroon');
+
+  // Zelf-controle tegen het referentiebeeld
+  const check = await _hifiVerify(svgText, opts.refCanvas, { x: rx, y: ry, w: rw, h: rh });
+  console.log(`[GSB HiFi] verificatie: ${(check.ratio*100).toFixed(3)}% pixelverschil op ${check.cmpW}×${check.cmpH} (drempel ${(HIFI_DIFF_MAX_RATIO*100).toFixed(1)}%), ${glyphs} glyphs omgezet, ${(performance.now()-t0).toFixed(0)}ms`);
+  if(!check.pass)
+    throw new Error(`pixelverificatie gefaald (${(check.ratio*100).toFixed(2)}% verschil)`);
+
+  try{ pdf.destroy(); }catch(_){ }
+  return svgText;
+}
+
 // Load a PDF/AI file — simple rules:
 //   1. Convert to SVG via pdfToSvg
 //   2. Detect gradients
@@ -1809,6 +2125,7 @@ async function loadPdfAsImage(arrayBuffer, name){
   const bufferForExport = arrayBuffer.slice(0);
   const bufferForSvg = arrayBuffer.slice(0);
   const bufferForRaster = arrayBuffer.slice(0);
+  const bufferForHiFi = arrayBuffer.slice(0); // hi-fi vector-route (SVGGraphics)
 
   showLogoLoading(name ? `"${name}" laden…` : 'Logo laden…');
 
@@ -1969,6 +2286,17 @@ async function loadPdfAsImage(arrayBuffer, name){
     const ctx1 = off1.getContext('2d');
     await page.render({ canvasContext: ctx1, viewport, background: 'rgb(255,255,255)' }).promise;
 
+    // Kopie van de KALE witte render voor de hi-fi verificatie. De
+    // achtergrondverwijdering hieronder erodeert de anti-aliasing-rand
+    // van elke vorm (randpixels verschillen tussen de wit- en magenta-
+    // render en worden transparant gemaakt), waardoor de referentie ~1px
+    // dunner is dan de SVG en de pixelcheck onterecht faalt.
+    // In de browser gemeten op het Dave-bestand: 0,94% (gefaald) tegen de
+    // geërodeerde render vs 0,001% (pixelperfect) tegen deze kale render.
+    const hifiRefCanvas = document.createElement('canvas');
+    hifiRefCanvas.width = ow; hifiRefCanvas.height = oh;
+    hifiRefCanvas.getContext('2d').drawImage(off1, 0, 0);
+
     const off2 = document.createElement('canvas');
     off2.width = ow; off2.height = oh;
     const ctx2 = off2.getContext('2d');
@@ -2004,6 +2332,7 @@ async function loadPdfAsImage(arrayBuffer, name){
     // Content-bbox in PDF-punten bewaren: de export kan dan de ORIGINELE
     // vector-PDF bijgesneden embedden i.p.v. te rasteren (artboard >> content)
     let pdfCropBox = null;
+    let pxBbox = null; // zelfde bbox in canvas-pixels, voor de hi-fi route
     try{
       const bd = ctx1.getImageData(0, 0, ow, oh).data;
       let mnX = ow, mnY = oh, mxX = -1, mxY = -1;
@@ -2015,8 +2344,27 @@ async function loadPdfAsImage(arrayBuffer, name){
           left: mnX / scale, right: (mxX + 1) / scale,
           bottom: pdfPageH - (mxY + 1) / scale, top: pdfPageH - mnY / scale,
         };
+        pxBbox = { mnX, mnY, mxX, mxY };
       }
     }catch(_){ }
+
+    // ── HI-FI VECTOR-ROUTE ── probeer een geverifieerde SVG te maken;
+    // bij succes exporteert dit bestand straks als echte vector (Track 1)
+    // in plaats van embedPdf/raster. Elke fout = stille fallback.
+    let hiFiSvg = null;
+    try{
+      showLogoLoading(name ? `"${name}": vector-route testen…` : 'Vector-route testen…');
+      hiFiSvg = await pdfToHiFiSvg(bufferForHiFi, {
+        refCanvas: hifiRefCanvas, renderScale: scale,
+        baseX: useContentCrop ? cropOffsetX : 0,
+        baseY: useContentCrop ? cropOffsetY : 0,
+        ow, oh, pxBbox
+      });
+      console.log(`%c[GSB] "${name}": hi-fi vector-route GESLAAGD (${(hiFiSvg.length/1024).toFixed(0)}kB SVG) → export als vector`, 'color:green;font-weight:bold');
+    }catch(hifiErr){
+      hiFiSvg = null;
+      console.log(`[GSB] "${name}": hi-fi vector-route niet mogelijk (${hifiErr && hifiErr.message}) → bestaande route (embedPdf/raster)`);
+    }
 
     const dataUrl = off1.toDataURL('image/png');
     fabric.Image.fromURL(dataUrl, img=>{
@@ -2037,6 +2385,24 @@ async function loadPdfAsImage(arrayBuffer, name){
           targetMmH *= sc;
         }
         if(pdfCropBox) cropped._pdfCropBox = pdfCropBox;
+        // Illustrator-lagen (/OCProperties): bij embedPdf raakt de document-
+        // brede lagen-administratie kwijt en verbergen viewers die content.
+        // Zulke bestanden gaan gegarandeerd correct via 300 DPI raster —
+        // tenzij de hi-fi vector-route hieronder slaagt (SVG bevat de
+        // laag-content zelf, dus geen lagen-administratie meer nodig).
+        try{
+          if(new TextDecoder('latin1').decode(bufferForExport).indexOf('/OCProperties') !== -1){
+            cropped._pdfHasLayers = true;
+            if(!hiFiSvg) console.log(`[GSB] "${name}": PDF met lagen (OCG) → export via raster`);
+          }
+        }catch(_){ }
+        // Hi-fi vector-route geslaagd → _svgSource zet dit object op
+        // Track 1 (svg2pdf, echte vector) bij de export. Weergave blijft
+        // de pixel-perfecte pdf.js-render hierboven.
+        if(hiFiSvg){
+          cropped._svgSource = hiFiSvg;
+          cropped._hiFiVector = true;
+        }
         placeImage(cropped, name, targetMmW, targetMmH, cw, ch);
         pdfSourceBuffers.set(cropped._originalId, bufferForExport);
         cropped._pdfPageW = pdfPageW;
@@ -5727,7 +6093,7 @@ async function runPdfExport(withBackground = false){
       const sSvgSrc = s._rasterEdited ? null : getSvgSource(s);
       if(canDoSvgVector && sSvgSrc && !s._embeddedRasterW){
         vectorSvgIds.add(oid);
-      } else if(pdfSourceBuffers.has(oid) && !s._recolored && !s._rasterEdited && !sSvgSrc){
+      } else if(pdfSourceBuffers.has(oid) && !s._recolored && !s._rasterEdited && !sSvgSrc && !s._pdfHasLayers){
         // AI/PDF PATH B: gradient logo, no _svgSource available.
         // embedPdf is the only way to preserve gradient/pattern fidelity.
         // Check if content is significantly smaller than artboard → fall back to raster.

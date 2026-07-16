@@ -1048,7 +1048,7 @@ function applyWhiteRemove(){
     _workCtx = _workCanvas.getContext('2d');
     _workCtx.drawImage(rebuilt, 0, 0);
   } else {
-    var result = _buildWhiteRemove(_workCanvas, t);
+    var result = _trimCanvas(_buildWhiteRemove(_workCanvas, t));
     _workCanvas.width = result.width;
     _workCanvas.height = result.height;
     _workCtx = _workCanvas.getContext('2d');
