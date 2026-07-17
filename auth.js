@@ -410,6 +410,18 @@ async function init(){
       }
       showApp();
       _fireReady();
+      // v2.54: sessieherstel telde nooit mee als login — gebruikers die
+      // ingelogd blijven hadden daardoor 0 logins in de statistieken
+      // terwijl ze wél gangsheets maakten. Log maximaal 1x per dag per
+      // gebruiker een login-event bij het herstellen van een sessie.
+      try{
+        const key = 'gsb_login_logged_' + _user.id;
+        const today = new Date().toISOString().substring(0, 10);
+        if(localStorage.getItem(key) !== today){
+          localStorage.setItem(key, today);
+          _logUsage('login', { restored: true });
+        }
+      }catch(_){ }
     } else {
       showLogin();
     }
@@ -531,6 +543,16 @@ async function approveUser(userId){
   if(!client) return { error: { message: 'Supabase niet geladen' } };
   if(!_isAdmin) return { error: { message: 'Alleen admins' } };
   const { error } = await client.from('profiles').update({ approved: true }).eq('id', userId);
+  // Goedkeuringsmail naar de gebruiker (edge function checkt server-side
+  // dat de aanroeper admin is en haalt het mailadres zelf op — niet te spoofen).
+  // Fire-and-forget: een mailfout mag de goedkeuring zelf niet blokkeren.
+  if(!error){
+    try{
+      client.functions.invoke('notify-approved', { body: { userId } })
+        .then(r => { if(r.error) console.warn('[GSB] goedkeuringsmail mislukt:', r.error); })
+        .catch(e => console.warn('[GSB] goedkeuringsmail mislukt:', e));
+    }catch(e){ console.warn('[GSB] goedkeuringsmail mislukt:', e); }
+  }
   return { error };
 }
 

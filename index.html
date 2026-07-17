@@ -336,6 +336,24 @@ window.addEventListener('load', ()=>{
   .item-info{flex:1;min-width:0}
   .item-info .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
   .item-info .meta{color:var(--muted);font-size:.7rem;margin-top:2px}
+  /* v2.53: item-kaart met actievoet — teller volle breedte, kopie/verwijder als vakjes */
+  .item-row.item-row-v3{display:block;padding:0;overflow:hidden}
+  .item-row.item-row-v3.selected{padding:0}
+  .item-row-v3 .item-top{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 10px 8px}
+  .item-row-v3 .item-top .item-thumb{width:48px;height:48px}
+  .item-row-v3 .item-info-v3{flex:1;min-width:0}
+  .item-row-v3 .item-info-v3 .name{min-width:0;font-weight:700;color:var(--text);line-height:1.3;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .item-row-v3 .item-meta-line{color:var(--muted);font-size:.7rem;margin:3px 0 0;padding:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-row-v3 .item-foot{display:flex;align-items:stretch;border-top:1px solid var(--border);background:#fff}
+  .item-row-v3 .item-foot .count-stepper{flex:1;display:flex;align-items:stretch;border:none;border-radius:0;background:transparent;overflow:visible}
+  .item-row-v3 .item-foot .count-stepper button{flex:0 0 40px;width:40px;height:34px;border:none;background:#f9fafb;color:var(--primary);font-size:1.05rem;font-weight:700;cursor:pointer;padding:0}
+  .item-row-v3 .item-foot .count-stepper button:hover{background:#e6f7fa}
+  .item-row-v3 .item-foot .count-stepper button:active{background:#d1f0f5}
+  .item-row-v3 .item-foot .count-stepper input{flex:1;min-width:0;height:34px;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:0;text-align:center;font-size:.8rem;font-weight:700;background:#fff;color:var(--text);padding:0;-moz-appearance:textfield}
+  .item-row-v3 .item-foot .row-dup,.item-row-v3 .item-foot .row-del{flex:0 0 40px;width:40px;height:34px;border:none;border-left:1px solid var(--border);border-radius:0;background:#f9fafb;color:var(--primary);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .item-row-v3 .item-foot .row-dup:hover,.item-row-v3 .item-foot .row-del:hover{background:#e6f7fa}
+  .item-row-v3 .item-foot .row-dup:active,.item-row-v3 .item-foot .row-del:active{background:#d1f0f5}
+  .item-row-v3 .item-foot svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
   .count-stepper{display:flex;align-items:center;gap:0;flex-shrink:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-subtle)}
   .count-stepper button{background:transparent;border:none;width:26px;height:28px;font-size:1rem;font-weight:800;color:var(--primary);cursor:pointer;padding:0}
   .count-stepper button:hover:not([disabled]){background:var(--bg-light)}
@@ -557,6 +575,14 @@ window.addEventListener('load', ()=>{
   .gsb-modal-body{flex:1;overflow-y:auto;padding:20px}
   .gsb-modal-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
 
+  /* ── Admin: volledige pagina i.p.v. popup (v2.54) ── */
+  #adminModal{padding:0;align-items:stretch;justify-content:stretch}
+  #adminModal .gsb-modal{width:100vw;height:100vh;max-width:none;max-height:none;border-radius:0;margin:0;display:flex;flex-direction:column}
+  #adminModal .gsb-modal-head{flex-shrink:0}
+  #adminModal .admin-layout{flex:1;min-height:0}
+  #adminModal .admin-content{max-height:none;height:100%}
+  #adminModal .admin-nav{padding-top:14px}
+
   /* ── Admin panel tabs ── */
   .admin-layout{display:flex;gap:0;min-height:420px}
   .admin-nav{width:180px;flex-shrink:0;border-right:1px solid var(--border);padding:8px 0;display:flex;flex-direction:column;gap:2px}
@@ -722,7 +748,7 @@ window.addEventListener('load', ()=>{
         <input type="text" class="project-title-input" id="projectTitleInput" placeholder="Bijv. borstlogo's bedrijf X" data-i18n-placeholder="projectTitlePlaceholder">
         <button class="btn export-btn-bg" style="width:100%;margin-top:8px;padding:10px 16px;font-size:.85rem;border-radius:8px;gap:6px;display:flex;align-items:center;justify-content:center" onclick="document.getElementById('gsbFileInput').click()">
           <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          Opdracht openen (.gsb)
+          <span data-i18n="loadProjectBtn">Opdracht openen (.gsb)</span>
         </button>
         <input type="file" id="gsbFileInput" accept=".gsb,.json" style="display:none" onchange="if(this.files[0])window.gsbImportProject(this.files[0]);this.value=''">
       </div>
@@ -743,7 +769,7 @@ window.addEventListener('load', ()=>{
         <div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px"><div style="flex:1;height:1px;background:var(--border)"></div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;white-space:nowrap">of</span><div style="flex:1;height:1px;background:var(--border)"></div></div>
         <button class="btn export-btn-bg" style="width:100%;padding:10px 16px;font-size:.85rem;border-radius:8px;gap:6px;display:flex;align-items:center;justify-content:center" onclick="gsbTextEditor.open()">
           <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M17 10H3"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M17 18H3"/></svg>
-          Tekst maken
+          <span data-i18n="makeTextBtn">Tekst maken</span>
         </button>
         <p class="help" id="uploadTipP"></p>
       </div>
@@ -884,7 +910,7 @@ window.addEventListener('load', ()=>{
           </button>
           <button class="btn export-btn-bg" id="saveProjectBtn" onclick="window.gsbExportProject()">
             <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Opdracht opslaan
+            <span data-i18n="saveProjectBtn">Opdracht opslaan</span>
           </button>
         </div>
         <button class="btn btn-grad-fill export-btn-big" id="exportBtn" data-i18n="exportBtn">Download print-ready PDF</button>
@@ -942,7 +968,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.50.2 · 16-07-2026</p>
+    <p class="version-tag">v2.54.2 · 17-07-2026</p>
   </div>
 </div>
 
@@ -1052,11 +1078,11 @@ window.addEventListener('load', ()=>{
         </button>
         <button class="admin-nav-item" onclick="gsLoginUI.adminTab('settings')">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-          Instellingen
+          <span data-i18n="navSettings">Instellingen</span>
         </button>
         <button class="admin-nav-item" onclick="gsLoginUI.adminTab('stats')">
           <svg viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-          Statistieken
+          <span data-i18n="navStats">Statistieken</span>
         </button>
       </nav>
       <div class="admin-content">
@@ -1073,7 +1099,7 @@ window.addEventListener('load', ()=>{
 <div class="gsb-modal-backdrop" id="textEditorModal" onclick="if(event.target===this)gsbTextEditor.close()">
   <div class="gsb-modal wide">
     <div class="gsb-modal-head">
-      <h3>Tekst maken</h3>
+      <h3 data-i18n="teTitle">Tekst maken</h3>
       <button class="gsb-modal-close" onclick="gsbTextEditor.close()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="gsb-modal-body" style="padding:0">
@@ -1081,7 +1107,7 @@ window.addEventListener('load', ()=>{
       <div class="le-sidebar">
         <button class="le-tool-btn active" id="teTabBtn_create" onclick="gsbTextEditor.selectPanel('create')">
           <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-          Tekst
+          <span data-i18n="teTabText">Tekst</span>
         </button>
         <button class="le-tool-btn" id="teTabBtn_fonts" onclick="gsbTextEditor.selectPanel('fonts')">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 16l3-8 3 8M10 13.5h4"/></svg>
@@ -1097,25 +1123,25 @@ window.addEventListener('load', ()=>{
 
           <!-- ── Font picker + upload row ── -->
           <div class="te-field">
-            <label>Lettertype</label>
+            <label data-i18n="teFont">Lettertype</label>
             <div style="display:flex;gap:8px;align-items:stretch">
               <div class="te-fp" style="flex:2">
                 <div class="te-fp-trigger" onclick="gsbTextEditor.togglePicker()">
-                  <span class="te-fp-label" id="teFontLabel">Kies een lettertype…</span>
+                  <span class="te-fp-label" id="teFontLabel" data-i18n="teChooseFont">Kies een lettertype…</span>
                   <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
                 </div>
                 <div class="te-fp-panel" id="teFontPanel">
-                  <input type="text" class="te-fp-search" id="teFontSearch" placeholder="Zoek lettertype…" oninput="gsbTextEditor.onSearch()" onclick="event.stopPropagation()">
+                  <input type="text" class="te-fp-search" id="teFontSearch" placeholder="Zoek lettertype…" data-i18n-placeholder="teSearchFont" oninput="gsbTextEditor.onSearch()" onclick="event.stopPropagation()">
                   <div class="te-fp-list" id="teFontList"></div>
                 </div>
               </div>
-              <button class="te-upload-btn" id="teLocalFontsBtn" style="display:none" onclick="gsbTextEditor.loadLocalFonts()" title="Kies uit de fonts die op deze computer geïnstalleerd zijn (Chrome/Edge)">
+              <button class="te-upload-btn" id="teLocalFontsBtn" style="display:none" onclick="gsbTextEditor.loadLocalFonts()" title="Kies uit de fonts die op deze computer geïnstalleerd zijn (Chrome/Edge)" data-i18n-title="teLocalFontsTitle">
                 <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-                Laad alle fonts
+                <span data-i18n="teLoadAllFonts">Laad alle fonts</span>
               </button>
               <button class="te-upload-btn" onclick="document.getElementById('teCustomFontInput').click()">
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload eigen font
+                <span data-i18n="teUploadOwnFont">Upload eigen font</span>
               </button>
             </div>
           </div>
@@ -1125,27 +1151,27 @@ window.addEventListener('load', ()=>{
           <!-- ── Kleurmodus + Kleur + Outline row ── -->
           <div class="te-row" style="align-items:flex-end">
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Kleurmodus</label>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teColorMode">Kleurmodus</label>
               <div class="te-mode-toggle" id="teColorModeToggle">
                 <button class="active" data-mode="rgb" onclick="gsbTextEditor.setColorMode('rgb')">RGB</button>
                 <button data-mode="cmyk" onclick="gsbTextEditor.setColorMode('cmyk')" style="border-left:1px solid var(--border)">CMYK</button>
               </div>
             </div>
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Tekstkleur</label>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teTextColor">Tekstkleur</label>
               <div class="te-color-wrap" title="Tekstkleur" style="height:38px">
                 <input type="color" id="teColor" value="#000000" oninput="gsbTextEditor.syncColor()">
                 <span class="te-color-hex" id="teColorHex">#000000</span>
               </div>
             </div>
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Outline kleur</label>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teOutlineColor">Outline kleur</label>
               <div class="te-color-wrap" title="Outline kleur" style="height:38px">
                 <input type="color" id="teStrokeColor" value="#FFFFFF" oninput="gsbTextEditor.syncStroke()">
               </div>
             </div>
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Outline dikte (mm)</label>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teOutlineWidth">Outline dikte (mm)</label>
               <input type="number" id="teStrokeWidth" class="te-input" value="0" min="0" max="20" step="0.5" style="width:64px;height:38px;padding:4px 6px;font-size:.8rem" oninput="gsbTextEditor.syncStroke()">
             </div>
           </div>
@@ -1163,19 +1189,19 @@ window.addEventListener('load', ()=>{
               </div>
             </div>
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Afmeting per</label>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teSizePer">Afmeting per</label>
               <div class="te-mode-toggle" id="teSizeModeToggle">
-                <button class="active" data-mode="height" onclick="gsbTextEditor.setSizeMode('height')">Font hoogte</button>
-                <button data-mode="width" onclick="gsbTextEditor.setSizeMode('width')" style="border-left:1px solid var(--border)">Font breedte</button>
+                <button class="active" data-mode="height" onclick="gsbTextEditor.setSizeMode('height')" data-i18n="teFontHeight">Font hoogte</button>
+                <button data-mode="width" onclick="gsbTextEditor.setSizeMode('width')" style="border-left:1px solid var(--border)" data-i18n="teFontWidth">Font breedte</button>
               </div>
             </div>
             <div class="te-field" style="flex:0 0 auto">
-              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px">Stijl</label>
+              <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teStyle">Stijl</label>
               <div class="te-tog-row" style="height:38px">
-                <button class="te-tog" id="teBtnBold" onclick="gsbTextEditor.toggleBold()" title="Vet"><b>B</b></button>
-                <button class="te-tog" id="teBtnItalic" onclick="gsbTextEditor.toggleItalic()" title="Cursief"><i>I</i></button>
-                <button class="te-tog" id="teBtnUnderline" onclick="gsbTextEditor.toggleUnderline()" title="Onderstreept"><u>U</u></button>
-                <button class="te-tog" id="teBtnCaps" onclick="gsbTextEditor.toggleAllCaps()" title="Hoofdletters">AA</button>
+                <button class="te-tog" id="teBtnBold" onclick="gsbTextEditor.toggleBold()" title="Vet" data-i18n-title="teBold"><b>B</b></button>
+                <button class="te-tog" id="teBtnItalic" onclick="gsbTextEditor.toggleItalic()" title="Cursief" data-i18n-title="teItalic"><i>I</i></button>
+                <button class="te-tog" id="teBtnUnderline" onclick="gsbTextEditor.toggleUnderline()" title="Onderstreept" data-i18n-title="teUnderline"><u>U</u></button>
+                <button class="te-tog" id="teBtnCaps" onclick="gsbTextEditor.toggleAllCaps()" title="Hoofdletters" data-i18n-title="teUppercase">AA</button>
               </div>
             </div>
           </div>
@@ -1184,14 +1210,14 @@ window.addEventListener('load', ()=>{
           <div style="display:flex;gap:24px;margin-bottom:14px">
             <div style="flex:0 1 220px">
               <div style="display:flex;align-items:center;gap:6px">
-                <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar.">Letter spacing &#9432;</label>
+                <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar." data-i18n="teLetterSpacingL" data-i18n-tip="teLetterSpacingTip">Letter spacing &#9432;</label>
                 <span id="teSpacingVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:20px;text-align:right">0</span>
               </div>
               <input type="range" id="teSpacing" min="-5" max="20" step="1" value="0" style="width:100%;accent-color:var(--primary);margin-top:4px" oninput="gsbTextEditor.onSpacingChange()">
             </div>
             <div style="flex:0 1 220px">
               <div style="display:flex;align-items:center;gap:6px">
-                <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Buigt de tekst langs een boog. Positief = boog omhoog, negatief = boog omlaag. Schuif door naar +360° of -360° om de tekst volledig rond te zetten (cirkel).">Tekst buiging &#9432;</label>
+                <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Buigt de tekst langs een boog. Positief = boog omhoog, negatief = boog omlaag. Schuif door naar +360° of -360° om de tekst volledig rond te zetten (cirkel)." data-i18n="teTextBendL" data-i18n-tip="teTextBendTip">Tekst buiging &#9432;</label>
                 <span id="teCurveVal" style="font-size:.72rem;font-weight:600;color:var(--fg);min-width:34px;text-align:right">0&deg;</span>
               </div>
               <input type="range" id="teCurve" min="-360" max="360" step="5" value="0" style="width:100%;accent-color:var(--primary);margin-top:4px" oninput="gsbTextEditor.onCurveChange()">
@@ -1200,20 +1226,20 @@ window.addEventListener('load', ()=>{
 
           <!-- ══════ Tekst invoer ══════ -->
             <div class="te-field">
-              <label>Tekst <span style="font-weight:400;opacity:.65">(nieuwe regel = nieuw los object)</span></label>
+              <label><span data-i18n="teText">Tekst</span> <span style="font-weight:400;opacity:.65" data-i18n="teNewLineHint">(nieuwe regel = nieuw los object)</span></label>
               <textarea id="teTextInput" class="te-input te-wysiwyg" rows="3" placeholder="Jan&#10;Piet&#10;Klaas" oninput="gsbTextEditor.updatePreview()"></textarea>
             </div>
             <div style="margin-top:4px">
               <button class="te-small-btn" onclick="document.getElementById('teCsvInput').click()">
                 <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Importeer CSV / Excel
+                <span data-i18n="teImportCsv">Importeer CSV / Excel</span>
               </button>
               <input type="file" id="teCsvInput" accept=".csv,.txt,.xlsx" style="display:none" onchange="gsbTextEditor.onCsvImport()">
             </div>
             <!-- Preview (shows stroke/styling) -->
             <div id="tePreviewWrap" style="margin-top:8px">
               <div id="tePreview" class="te-preview" style="min-height:40px">
-                <span style="color:#9ca3af;font-size:.82rem">Typ tekst hierboven</span>
+                <span style="color:#9ca3af;font-size:.82rem" data-i18n="teTypeAbove">Typ tekst hierboven</span>
               </div>
             </div>
 
@@ -1227,9 +1253,9 @@ window.addEventListener('load', ()=>{
       </div><!-- end tePanel_create -->
 
       <div id="tePanel_fonts" style="display:none">
-        <h4 style="font-size:.85rem;margin:0 0 10px">Fonts in deze opdracht</h4>
+        <h4 style="font-size:.85rem;margin:0 0 10px" data-i18n="teFontsInJob">Fonts in deze opdracht</h4>
         <div id="teUsedFonts" style="min-height:16px">
-          <span style="color:#9ca3af;font-size:.78rem">Nog geen teksten op het vel</span>
+          <span style="color:#9ca3af;font-size:.78rem" data-i18n="teNoTexts">Nog geen teksten op het vel</span>
         </div>
       </div>
 
@@ -1254,7 +1280,7 @@ window.addEventListener('load', ()=>{
   .le-tool-btn.active svg{opacity:1}
   .le-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;max-height:78vh}
   /* Preview area — achtergrond (checker/zwart) loopt over de VOLLE breedte */
-  .le-preview-wrap{padding:12px;display:flex;align-items:center;justify-content:center;height:clamp(280px,46vh,560px);flex-shrink:0;position:relative;border-bottom:1px solid var(--border);overflow:hidden}
+  .le-preview-wrap{padding:12px;display:flex;align-items:center;justify-content:center;height:clamp(280px,46vh,560px);flex-shrink:0;position:relative;margin:14px 16px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
   .le-preview-wrap.le-checker{background-color:#fff;background-image:linear-gradient(45deg,#e8e8e8 25%,transparent 25%),linear-gradient(-45deg,#e8e8e8 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e8e8e8 75%),linear-gradient(-45deg,transparent 75%,#e8e8e8 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
   .le-preview-wrap.le-dark{background:#000}
   .le-preview-wrap.le-dark .le-file-name{color:#fff;opacity:.75}
@@ -1296,7 +1322,7 @@ window.addEventListener('load', ()=>{
 <div class="gsb-modal-backdrop" id="logoEditorModal" onclick="if(event.target===this)gsbLogoEditor.close()">
   <div class="gsb-modal wide">
     <div class="gsb-modal-head">
-      <h3>Logo bewerken</h3>
+      <h3 data-i18n="leTitle">Logo bewerken</h3>
       <button class="gsb-modal-close" onclick="gsbLogoEditor.close()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="le-body">
@@ -1304,15 +1330,15 @@ window.addEventListener('load', ()=>{
       <div class="le-sidebar">
         <button class="le-tool-btn" data-tool="color" onclick="gsbLogoEditor.selectTool('color')">
           <svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.2-.3-.4-.6-.4-1 0-.9.8-1.7 1.7-1.7H17c3 0 5.5-2.5 5.5-5.5C22.5 5.5 17.8 2 12 2z"/><circle cx="6.5" cy="11.5" r="1.5" fill="currentColor" opacity=".4"/><circle cx="10" cy="7.5" r="1.5" fill="currentColor" opacity=".4"/><circle cx="15" cy="7.5" r="1.5" fill="currentColor" opacity=".4"/><circle cx="18" cy="11.5" r="1.5" fill="currentColor" opacity=".4"/></svg>
-          Kleur
+          <span data-i18n="leToolColor">Kleur</span>
         </button>
         <button class="le-tool-btn" data-tool="bgremove" id="leToolBgRemove" onclick="gsbLogoEditor.selectTool('bgremove')">
           <svg viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5z" stroke-dasharray="4 2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18" opacity=".15"/></svg>
-          BG weg
+          <span data-i18n="leToolBgRemove">BG weg</span>
         </button>
         <button class="le-tool-btn" data-tool="outline" onclick="gsbLogoEditor.selectTool('outline')">
           <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
-          Outline
+          <span data-i18n="leToolOutline">Outline</span>
         </button>
         <button class="le-tool-btn" data-tool="upscale" id="leToolUpscale" onclick="gsbLogoEditor.selectTool('upscale')">
           <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><line x1="21" y1="3" x2="14" y2="10"/><polyline points="9 21 3 21 3 15"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -1331,41 +1357,41 @@ window.addEventListener('load', ()=>{
         <!-- Placeholder -->
         <div class="le-placeholder le-tool-panel active" id="lePanel_">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-          <p>Kies een tool links om het logo te bewerken</p>
+          <p data-i18n="leChooseTool">Kies een tool links om het logo te bewerken</p>
         </div>
 
         <!-- ═══ 1. Kleur aanpassen ═══ -->
         <div class="le-tool-panel" id="lePanel_color">
-          <h4>Snel omzetten</h4>
+          <h4 data-i18n="leQuickConvert">Snel omzetten</h4>
           <div style="display:flex;gap:8px;margin-bottom:14px">
-            <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px">Maak zwart</button>
-            <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.78rem;padding:8px 0;border:1px solid #ddd;border-radius:8px">Maak wit</button>
+            <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px" data-i18n="leMakeBlackBtn">Maak zwart</button>
+            <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.78rem;padding:8px 0;border:1px solid #ddd;border-radius:8px" data-i18n="leMakeWhiteBtn">Maak wit</button>
           </div>
 
           <div style="border-top:1px solid var(--border);padding-top:12px">
-          <h4>Kleur vervangen</h4>
+          <h4 data-i18n="leColorReplaceTitle">Kleur vervangen</h4>
 
           <div style="margin-bottom:12px">
-            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">1</span>Kies de kleur die je wilt vervangen — klik een kleur of gebruik de pipet</label>
+            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">1</span><span data-i18n="leColorPickHelp">Kies de kleur die je wilt vervangen — klik een kleur of gebruik de pipet</span></label>
             <div style="display:flex;align-items:center;gap:8px">
               <div class="le-color-chips" id="leColorSwatches" style="margin:0"></div>
               <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.startPick()" style="margin-left:auto;padding:6px 10px;flex-shrink:0">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:3px"><path d="M2 22l1-6.5L16 2.5l5.5 5.5L8.5 21z"/><path d="M15 5l4 4"/></svg>
-                Pipet
+                <span data-i18n="lePipette">Pipet</span>
               </button>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
               <div class="le-swatch" id="lePickedSwatch" style="background:repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 50%/10px 10px;border-color:#ddd"></div>
-              <span class="le-swatch-hex" id="lePickedHex">Nog geen kleur gekozen</span>
+              <span class="le-swatch-hex" id="lePickedHex" data-i18n="leNoColorPicked">Nog geen kleur gekozen</span>
               <span class="le-cmyk" id="lePickedCmyk" style="margin:0"></span>
             </div>
           </div>
 
           <div style="margin-bottom:12px">
-            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">2</span>Kies de nieuwe kleur</label>
+            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">2</span><span data-i18n="leNewColor">Kies de nieuwe kleur</span></label>
             <div style="display:flex;align-items:center;gap:8px">
-              <input type="color" id="leReplColor" value="#FF0000" title="Klik om een kleur te kiezen">
-              <span style="font-size:.72rem;color:var(--muted)">Klik om een kleur te kiezen</span>
+              <input type="color" id="leReplColor" value="#FF0000" title="Klik om een kleur te kiezen" data-i18n-title="leClickPickColor">
+              <span style="font-size:.72rem;color:var(--muted)" data-i18n="leClickPickColor">Klik om een kleur te kiezen</span>
               <div class="te-mode-toggle" id="leColorModeToggle" style="margin-left:auto;height:28px">
                 <button class="active" data-mode="rgb" onclick="gsbLogoEditor.setColorMode('rgb')" style="padding:3px 10px;font-size:.68rem">RGB</button>
                 <button data-mode="cmyk" onclick="gsbLogoEditor.setColorMode('cmyk')" style="border-left:1px solid var(--border);padding:3px 10px;font-size:.68rem">CMYK</button>
@@ -1374,47 +1400,47 @@ window.addEventListener('load', ()=>{
             <span class="le-cmyk" id="leReplCmyk" style="margin:4px 0 0"></span>
           </div>
 
-          <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">3</span>Pas toe</label>
+          <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">3</span><span data-i18n="leApplyShort">Pas toe</span></label>
           <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%">Kleur vervangen</button>
           </div>
         </div>
 
         <!-- ═══ 2. BG Remove (bitmap only) ═══ -->
         <div class="le-tool-panel" id="lePanel_bgremove">
-          <h4>Witte achtergrond verwijderen</h4>
+          <h4 data-i18n="leWhiteBgTitle">Witte achtergrond verwijderen</h4>
           <div class="le-row">
-            <label>Drempel</label>
+            <label data-i18n="leThreshold">Drempel</label>
             <input type="range" id="leWhiteThresh" min="2" max="30" step="1" value="12" oninput="gsbLogoEditor.previewWhiteRemove()">
             <span class="le-val" id="leWhiteThreshVal">12</span>
           </div>
-          <p style="font-size:.72rem;color:var(--muted);margin:0 0 10px">Verwijdert wit overal — ook binnenin letters — met gladde randen. Schuif de drempel hoger als er witte resten achterblijven.</p>
-          <button class="le-btn le-btn-sub" id="leWhiteRemoveBtn" onclick="gsbLogoEditor.applyWhiteRemove()" style="width:100%">Verwijder wit</button>
+          <p style="font-size:.72rem;color:var(--muted);margin:0 0 10px" data-i18n="leWhiteRemoveHelp">Verwijdert wit overal — ook binnenin letters — met gladde randen. Schuif de drempel hoger als er witte resten achterblijven.</p>
+          <button class="le-btn le-btn-sub" id="leWhiteRemoveBtn" onclick="gsbLogoEditor.applyWhiteRemove()" style="width:100%" data-i18n="leRemoveWhiteBtn">Verwijder wit</button>
           <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
-            <h4 style="margin:0 0 8px">AI-verwijdering (foto's / gekleurde achtergrond)</h4>
-            <button class="le-btn le-btn-pick" id="leBgRemoveBtn" onclick="gsbLogoEditor.applyBgRemove()" style="width:100%">AI achtergrond verwijderen</button>
+            <h4 style="margin:0 0 8px" data-i18n="leAiRemoveTitle">AI-verwijdering (foto's / gekleurde achtergrond)</h4>
+            <button class="le-btn le-btn-pick" id="leBgRemoveBtn" onclick="gsbLogoEditor.applyBgRemove()" style="width:100%" data-i18n="leAiRemoveBtn">AI achtergrond verwijderen</button>
           </div>
           <div class="le-status" id="leBgStatus"></div>
         </div>
 
         <!-- ═══ 3. Outline ═══ -->
         <div class="le-tool-panel" id="lePanel_outline">
-          <h4>Outline toevoegen</h4>
+          <h4 data-i18n="leOutlineAddTitle">Outline toevoegen</h4>
           <div class="le-row">
-            <label>Kleur</label>
-            <input type="color" id="leOutColor" value="#FFFFFF" title="Klik om een kleur te kiezen">
-            <label style="min-width:auto;margin-left:12px">Dikte (mm)</label>
+            <label data-i18n="leToolColor">Kleur</label>
+            <input type="color" id="leOutColor" value="#FFFFFF" title="Klik om een kleur te kiezen" data-i18n-title="leClickPickColor">
+            <label style="min-width:auto;margin-left:12px" data-i18n="leThickness">Dikte (mm)</label>
             <input type="range" id="leOutWidth" min="0" max="10" step="0.25" value="0" oninput="gsbLogoEditor.previewOutline()">
             <span class="le-val" id="leOutWidthVal" style="min-width:38px">0 mm</span>
           </div>
-          <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px">Wit is standaard voor DTF. De dikte is in millimeters op ware printgrootte.</p>
-          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyOutline()" style="width:100%;margin-top:4px">Outline toepassen</button>
+          <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px" data-i18n="leOutlineHelp">Wit is standaard voor DTF. De dikte is in millimeters op ware printgrootte.</p>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyOutline()" style="width:100%;margin-top:4px" data-i18n="leOutlineApplyBtn">Outline toepassen</button>
         </div>
 
         <!-- ═══ 4. Upscale (bitmap only) ═══ -->
         <div class="le-tool-panel" id="lePanel_upscale">
-          <h4>Afbeelding opschalen</h4>
+          <h4 data-i18n="leUpscaleTitle">Afbeelding opschalen</h4>
           <div class="le-row">
-            <label>Factor</label>
+            <label data-i18n="leFactor">Factor</label>
             <select id="leUpFactor" onchange="gsbLogoEditor.previewUpscale()">
               <option value="2">2×</option>
               <option value="3">3×</option>
@@ -1423,18 +1449,18 @@ window.addEventListener('load', ()=>{
             <span class="le-info" id="leUpInfo" style="margin:0;font-weight:700"></span>
           </div>
           <div class="le-row">
-            <label>Verscherpen</label>
+            <label data-i18n="leSharpen">Verscherpen</label>
             <input type="range" id="leSharpAmount" min="0" max="3" step="0.1" value="0.5" oninput="gsbLogoEditor.onSharpChange()">
             <span class="le-val" id="leSharpVal">0.5</span>
           </div>
-          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyUpscale()" style="width:100%;margin-top:8px">Opschalen</button>
+          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyUpscale()" style="width:100%;margin-top:8px" data-i18n="leUpscaleBtn">Opschalen</button>
         </div>
       </div>
     </div>
     <div class="gsb-modal-foot">
-      <button class="le-btn" style="background:transparent;color:var(--muted);border:1px solid var(--border);margin-right:auto" onclick="gsbLogoEditor.reset()">Reset</button>
-      <button class="le-btn" style="background:#fff;border:1px solid var(--border);color:var(--fg)" onclick="gsbLogoEditor.close()">Annuleren</button>
-      <button class="le-btn le-btn-apply" onclick="gsbLogoEditor.apply()">Toepassen</button>
+      <button class="le-btn" style="background:transparent;color:var(--muted);border:1px solid var(--border);margin-right:auto" onclick="gsbLogoEditor.reset()" data-i18n="leReset">Reset</button>
+      <button class="le-btn" style="background:#fff;border:1px solid var(--border);color:var(--fg)" onclick="gsbLogoEditor.close()" data-i18n="leCancel">Annuleren</button>
+      <button class="le-btn le-btn-apply" onclick="gsbLogoEditor.apply()" data-i18n="leApply">Toepassen</button>
     </div>
   </div>
 </div>
@@ -1443,10 +1469,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.50.2"></script>
-<script src="./login-ui.js?v=2.50.2"></script>
-<script src="./app.js?v=2.50.2"></script>
-<script src="./text-editor.js?v=2.50.2"></script>
-<script src="./logo-editor.js?v=2.50.2"></script>
+<script src="./auth.js?v=2.54.2"></script>
+<script src="./login-ui.js?v=2.54.2"></script>
+<script src="./app.js?v=2.54.2"></script>
+<script src="./text-editor.js?v=2.54.2"></script>
+<script src="./logo-editor.js?v=2.54.2"></script>
 </body>
 </html>

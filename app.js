@@ -13,6 +13,82 @@ window.addEventListener('unhandledrejection', (e) => {
    ========================================================= */
 const I18N = {
   nl: {
+    /* ── v2.53: volledige editor-vertalingen ── */
+    leWhiteBgRemovedToast:'Witte achtergrond verwijderd',
+    leAiProcessing:(p)=>`AI verwerkt… ${p}%`,
+    leQuickConvert:'Snel omzetten', leColorReplaceTitle:'Kleur vervangen',
+    leColorPickHelp:'Kies de kleur die je wilt vervangen — klik een kleur of gebruik de pipet',
+    lePipette:'Pipet', leNoColorPicked:'Nog geen kleur gekozen', leNewColor:'Kies de nieuwe kleur',
+    leClickPickColor:'Klik om een kleur te kiezen', leApplyShort:'Pas toe',
+    leWhiteBgTitle:'Witte achtergrond verwijderen', leThreshold:'Drempel',
+    leWhiteRemoveHelp:'Verwijdert wit overal — ook binnenin letters — met gladde randen. Schuif de drempel hoger als er wit achterblijft.',
+    leRemoveWhiteBtn:'Verwijder wit',
+    leAiRemoveTitle:"AI-verwijdering (foto's / gekleurde achtergrond)", leAiRemoveBtn:'AI achtergrond verwijderen',
+    leOutlineAddTitle:'Outline toevoegen', leThickness:'Dikte (mm)',
+    leOutlineHelp:'Wit is standaard voor DTF. De dikte is in millimeters op ware printgrootte.',
+    leOutlineApplyBtn:'Outline toepassen', leUpscaleTitle:'Afbeelding opschalen',
+    leFactor:'Factor', leSharpen:'Verscherpen', leUpscaleBtn:'Opschalen',
+    lePickBelow:'Kies hieronder of gebruik pipet',
+    leWhiteRemoved:(p)=>`Wit verwijderd (drempel ${p}%)`,
+    leRemovingBg:'Achtergrond verwijderen…', leSharpening:'Randen verscherpen…',
+    teLoadAllFonts:'Laad alle fonts', teUploadOwnFont:'Upload eigen font',
+    teImportCsv:'Importeer CSV / Excel', teNewLineHint:'(nieuwe regel = nieuw los object)',
+    teLocalFontsTitle:'Kies uit de fonts die op deze computer geïnstalleerd zijn (Chrome/Edge)',
+    teNoPreview:'Geen preview', tePreviewError:'Preview fout: ',
+    navSettings:'Instellingen', navStats:'Statistieken',
+    /* ── v2.52: opdracht/editor/teksteditor vertalingen ── */
+    leMakeBlackBtn:'Maak zwart', leMakeWhiteBtn:'Maak wit', leToolBgRemove:'BG weg',
+    teLetterSpacingL:'Letter spacing ⓘ', teTextBendL:'Tekst buiging ⓘ',
+    teLetterSpacingTip:'Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar.',
+    teTextBendTip:'Buigt de tekst langs een boog. Positief = boog omhoog, negatief = boog omlaag. Schuif door naar +360° of -360° om de tekst volledig rond te zetten (cirkel).',
+    loadProjectBtn:'Opdracht openen (.gsb)', saveProjectBtn:'Opdracht opslaan', makeTextBtn:'Tekst maken',
+    leTitle:'Logo bewerken', leToolColor:'Kleur', leToolOutline:'Outline',
+    leChooseTool:'Kies een tool links om het logo te bewerken',
+    leReset:'Reset', leCancel:'Annuleren', leApply:'Toepassen',
+    leColorReplaced:'Kleur vervangen', leMadeBlack:'Logo zwart gemaakt', leMadeWhite:'Logo wit gemaakt',
+    leResetDone:'Reset naar origineel', leUpdated:'Logo bijgewerkt', leOutlineApplied:'Outline toegepast — vector behouden',
+    teTitle:'Tekst maken', teTabText:'Tekst', teTabFonts:'Fonts',
+    teFont:'Lettertype', teSearchFont:'Zoek lettertype…', teChooseFont:'Kies een lettertype…',
+    teColorMode:'Kleurmodus', teTextColor:'Tekstkleur', teOutlineColor:'Outline kleur', teOutlineWidth:'Outline dikte (mm)',
+    teFontHeight:'Font hoogte', teFontWidth:'Font breedte', teSizePer:'Afmeting per', teStyle:'Stijl',
+    teLetterSpacing:'Letter spacing', teTextBend:'Tekst buiging', teText:'Tekst',
+    teTypeAbove:'Typ tekst hierboven', teFontsInJob:'Fonts in deze opdracht', teNoTexts:'Nog geen teksten op het vel',
+    teBold:'Vet', teItalic:'Cursief', teUnderline:'Onderstreept', teUppercase:'Hoofdletters',
+    teAddToSheet:'Tekst toevoegen aan vel', teUpdateText:'Tekst bijwerken',
+    teChooseFontPreview:'Kies een lettertype om preview te zien', teChooseFontShort:'Kies een lettertype',
+    /* ── v2.51: voorheen hardcoded strings ── */
+    rowDupNewLogo:'Dupliceer als nieuw logo (bijv. voor een 2e kleur)',
+    dupSuffix:'kopie',
+    dupNeedsPlaced:'Plaats eerst minimaal één exemplaar op het vel om te kunnen dupliceren.',
+    toastLogoDuplicated:(n)=>`Logo gedupliceerd als "${n}" — pas nu bijv. de kleur aan`,
+    editLogo:'Logo bewerken', editText:'Tekst bewerken',
+    toastEpsFailed:(m)=>`EPS conversie mislukt: ${m}. Probeer het bestand als PDF of AI op te slaan.`,
+    toastPdfjsMissing:'PDF.js niet geladen — kan PDF/AI niet openen.',
+    toastPdfRasterFallback:'PDF opgeslagen als 300 DPI raster (vector embedding mislukt — zie console)',
+    toastPdfRaster:'PDF opgeslagen (300 DPI raster)',
+    toastPdfExportFailed:(m)=>`PDF export mislukt: ${m}`,
+    toastProjectSavedFile:'Project opgeslagen als bestand',
+    toastInvalidProject:'Ongeldig projectbestand',
+    toastFileReadError:(m)=>`Kan bestand niet lezen: ${m}`,
+    toastLocalFontsUnsupported:'Deze browser ondersteunt lokale fonts niet — gebruik Chrome of Edge, of upload een .ttf',
+    toastLocalFontsDenied:'Geen toegang tot lokale fonts — toestemming geweigerd of niet ondersteund',
+    toastTextConvertFailed:'Tekst kon niet worden omgezet',
+    toastTextConvertNone:'Geen tekst kon worden omgezet — controleer het lettertype',
+    toastNoPlayersFound:'Geen spelers gevonden in bestand',
+    toastExcelReadError:'Fout bij lezen Excel bestand',
+    toastProjectSaved:'Project opgeslagen',
+    toastPwMismatch:'De wachtwoorden komen niet overeen',
+    toastPwChangeFailed:(m)=>`Wachtwoord wijzigen mislukt: ${m}`,
+    toastProfileSaved:'Profiel opgeslagen',
+    toastRoleChangeFailed:(m)=>`Rol wijzigen mislukt: ${m}`,
+    toastSetFailed:(m)=>`Instellen mislukt: ${m}`,
+    toastDeleteFailed:(m)=>`Verwijderen mislukt: ${m}`,
+    toastAccountDeleted:'Account verwijderd',
+    toastSettingSaved:'Instelling opgeslagen',
+    toastLogoReadFailed:(m)=>`Logo kon niet worden gelezen: ${m}`,
+    toastLogoSaveFailed:(m)=>`Opslaan mislukt: ${m} — probeer een kleiner bestand`,
+    toastProofLogoSaved:'Drukproef-logo opgeslagen — wordt gebruikt in je volgende drukproef',
+    toastOwnLogoRemoved:'Eigen logo verwijderd — TPS-logo wordt gebruikt',
     appTitle:'Gang Sheet Builder', appSubtitle:'Transferpersshop · 300 DPI print-ready',
     projectTitleLabel:'Opdracht naam', projectTitlePlaceholder:"Bijv. borstlogo's bedrijf X",
     clear:'Leegmaken', clearSheet:'Vel leegmaken',
@@ -162,6 +238,82 @@ const I18N = {
     printPreview:'Preview', previewTitle:'Print preview',
   },
   en: {
+    /* ── v2.53: complete editor translations ── */
+    leWhiteBgRemovedToast:'White background removed',
+    leAiProcessing:(p)=>`AI processing… ${p}%`,
+    leQuickConvert:'Quick convert', leColorReplaceTitle:'Replace color',
+    leColorPickHelp:'Choose the color you want to replace — click a color or use the eyedropper',
+    lePipette:'Eyedropper', leNoColorPicked:'No color picked yet', leNewColor:'Choose the new color',
+    leClickPickColor:'Click to pick a color', leApplyShort:'Apply',
+    leWhiteBgTitle:'Remove white background', leThreshold:'Threshold',
+    leWhiteRemoveHelp:'Removes white everywhere — including inside letters — with smooth edges. Raise the threshold if white remains.',
+    leRemoveWhiteBtn:'Remove white',
+    leAiRemoveTitle:'AI removal (photos / colored background)', leAiRemoveBtn:'AI remove background',
+    leOutlineAddTitle:'Add outline', leThickness:'Width (mm)',
+    leOutlineHelp:'White is the default for DTF. The width is in millimeters at true print size.',
+    leOutlineApplyBtn:'Apply outline', leUpscaleTitle:'Upscale image',
+    leFactor:'Factor', leSharpen:'Sharpen', leUpscaleBtn:'Upscale',
+    lePickBelow:'Pick below or use the eyedropper',
+    leWhiteRemoved:(p)=>`White removed (threshold ${p}%)`,
+    leRemovingBg:'Removing background…', leSharpening:'Sharpening edges…',
+    teLoadAllFonts:'Load all fonts', teUploadOwnFont:'Upload custom font',
+    teImportCsv:'Import CSV / Excel', teNewLineHint:'(new line = new separate object)',
+    teLocalFontsTitle:'Choose from the fonts installed on this computer (Chrome/Edge)',
+    teNoPreview:'No preview', tePreviewError:'Preview error: ',
+    navSettings:'Settings', navStats:'Statistics',
+    /* ── v2.52: project/editor/text editor translations ── */
+    leMakeBlackBtn:'Make black', leMakeWhiteBtn:'Make white', leToolBgRemove:'Remove BG',
+    teLetterSpacingL:'Letter spacing ⓘ', teTextBendL:'Text bend ⓘ',
+    teLetterSpacingTip:'Extra space between letters, as % of the letter height. Negative = letters closer together.',
+    teTextBendTip:'Bends the text along an arc. Positive = arc up, negative = arc down. Slide to +360° or -360° to set the text in a full circle.',
+    loadProjectBtn:'Load project (.gsb)', saveProjectBtn:'Save project', makeTextBtn:'Add text',
+    leTitle:'Edit logo', leToolColor:'Color', leToolOutline:'Outline',
+    leChooseTool:'Choose a tool from the menu to edit the logo',
+    leReset:'Reset', leCancel:'Cancel', leApply:'Save',
+    leColorReplaced:'Color replaced', leMadeBlack:'Logo made black', leMadeWhite:'Logo made white',
+    leResetDone:'Reset to original', leUpdated:'Logo updated', leOutlineApplied:'Outline applied — vector preserved',
+    teTitle:'Add text', teTabText:'Text', teTabFonts:'Fonts',
+    teFont:'Font', teSearchFont:'Search font…', teChooseFont:'Choose a font…',
+    teColorMode:'Color mode', teTextColor:'Text color', teOutlineColor:'Outline color', teOutlineWidth:'Outline width (mm)',
+    teFontHeight:'Font height', teFontWidth:'Font width', teSizePer:'Size based on', teStyle:'Style',
+    teLetterSpacing:'Letter spacing', teTextBend:'Text bend', teText:'Text',
+    teTypeAbove:'Type your text above', teFontsInJob:'Fonts in this project', teNoTexts:'No texts on the sheet yet',
+    teBold:'Bold', teItalic:'Italic', teUnderline:'Underlined', teUppercase:'Uppercase',
+    teAddToSheet:'Add text to sheet', teUpdateText:'Update text',
+    teChooseFontPreview:'Choose a font to see a preview', teChooseFontShort:'Choose a font',
+    /* ── v2.51: previously hardcoded strings ── */
+    rowDupNewLogo:'Duplicate as new logo (e.g. for a 2nd color)',
+    dupSuffix:'copy',
+    dupNeedsPlaced:'Place at least one copy on the sheet first to duplicate.',
+    toastLogoDuplicated:(n)=>`Logo duplicated as "${n}" — now adjust the color, for example`,
+    editLogo:'Edit logo', editText:'Edit text',
+    toastEpsFailed:(m)=>`EPS conversion failed: ${m}. Try saving the file as PDF or AI.`,
+    toastPdfjsMissing:'PDF.js not loaded — cannot open PDF/AI.',
+    toastPdfRasterFallback:'PDF saved as 300 DPI raster (vector embedding failed — see console)',
+    toastPdfRaster:'PDF saved (300 DPI raster)',
+    toastPdfExportFailed:(m)=>`PDF export failed: ${m}`,
+    toastProjectSavedFile:'Project saved as file',
+    toastInvalidProject:'Invalid project file',
+    toastFileReadError:(m)=>`Cannot read file: ${m}`,
+    toastLocalFontsUnsupported:'This browser does not support local fonts — use Chrome or Edge, or upload a .ttf',
+    toastLocalFontsDenied:'No access to local fonts — permission denied or not supported',
+    toastTextConvertFailed:'Text could not be converted',
+    toastTextConvertNone:'No text could be converted — check the font',
+    toastNoPlayersFound:'No players found in file',
+    toastExcelReadError:'Error reading Excel file',
+    toastProjectSaved:'Project saved',
+    toastPwMismatch:'The passwords do not match',
+    toastPwChangeFailed:(m)=>`Password change failed: ${m}`,
+    toastProfileSaved:'Profile saved',
+    toastRoleChangeFailed:(m)=>`Role change failed: ${m}`,
+    toastSetFailed:(m)=>`Setting failed: ${m}`,
+    toastDeleteFailed:(m)=>`Delete failed: ${m}`,
+    toastAccountDeleted:'Account deleted',
+    toastSettingSaved:'Setting saved',
+    toastLogoReadFailed:(m)=>`Logo could not be read: ${m}`,
+    toastLogoSaveFailed:(m)=>`Saving failed: ${m} — try a smaller file`,
+    toastProofLogoSaved:'Proof logo saved — it will be used in your next proof',
+    toastOwnLogoRemoved:'Custom logo removed — TPS logo will be used',
     appTitle:'Gang Sheet Builder', appSubtitle:'Transferpersshop · 300 DPI print-ready',
     projectTitleLabel:'Project name', projectTitlePlaceholder:'E.g. chest logos company X',
     clear:'Clear', clearSheet:'Clear sheet',
@@ -356,6 +508,11 @@ const pdfSourceBuffers = new Map();
 // Saves ~100s of MB with many logo copies.
 const svgSourceStore = new Map();
 /** Lookup SVG source: object-level override first, then shared store. */
+/* Originele (onbewerkte) SVG-bron per logo — voor de Reset-knop in de
+   logo-editor. Wordt één keer gezet bij het laden en daarna NOOIT gemuteerd
+   (svgSourceStore verandert wél mee met verkleuringen). */
+const pristineSvgStore = new Map();
+
 function getSvgSource(obj) {
   return obj._svgSource || (obj._originalId && svgSourceStore.get(obj._originalId)) || null;
 }
@@ -1440,7 +1597,7 @@ function handleFiles(files){
         } catch(err){
           hideLogoLoading();
           console.error('[GSB] EPS WASM conversion error:', err);
-          toast('EPS conversie mislukt: ' + (err.message||'onbekende fout') + '. Probeer het bestand als PDF of AI op te slaan.', 'warn', 8000);
+          toast(t('toastEpsFailed', err.message||'?'), 'warn', 8000);
         }
       };
       reader.readAsArrayBuffer(file);
@@ -2127,7 +2284,7 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
 //   5. Always store original buffer for lossless PDF export via embedPdf
 async function loadPdfAsImage(arrayBuffer, name){
   if(!window.pdfjsLib){
-    toast('PDF.js niet geladen — kan PDF/AI niet openen.', 'error');
+    toast(t('toastPdfjsMissing'), 'error');
     throw new Error('pdf.js not loaded');
   }
 
@@ -2469,7 +2626,15 @@ function loadSvg(svgText, name, extra){
     const docSize = parseSvgDocSize(croppedSvgText);
 
     fabric.loadSVGFromString(croppedSvgText, (objects, options)=>{
-      const group = fabric.util.groupSVGElements(objects, options);
+      let group = fabric.util.groupSVGElements(objects, options);
+      // groupSVGElements geeft bij een SVG met ÉÉN element dat element los
+      // terug (type 'path' i.p.v. 'group'). Alle bewerk-features (Logo
+      // bewerken-knop, kleuren, recolor) checken op type 'group'/'image',
+      // waardoor single-path logo's onbewerkbaar leken. Wikkel ze daarom
+      // altijd in een echte groep.
+      if(group.type !== 'group'){
+        group = new fabric.Group([group]);
+      }
       // Disable object caching for vector quality at any zoom level
       group.objectCaching = false;
       if(group._objects) group._objects.forEach(child => { child.objectCaching = false; });
@@ -2699,6 +2864,7 @@ function placeImage(obj, name, mmW, mmH, naturalW, naturalH){
   obj._mmW = mmW;
   obj._mmH = mmH;
   if(obj._svgSource) svgSourceStore.set(id, obj._svgSource);
+  if(obj._svgSource && !pristineSvgStore.has(id)) pristineSvgStore.set(id, obj._svgSource);
   obj._mmLeft = spot.x;
   obj._mmTop  = spot.y;
   obj.set({ originX:'left', originY:'top' });
@@ -4108,7 +4274,7 @@ function renderSelectedPanel(){
     <!-- ── Logo bewerken (prominent) ── -->
     <button data-act="edit-logo" style="width:100%;padding:10px 16px;margin-bottom:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#F97316,#EA580C);color:#fff;font-size:.88rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;box-shadow:0 2px 8px rgba(249,115,22,.25)" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter=''">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      ${obj._textParams ? 'Tekst bewerken' : 'Logo bewerken'}
+      ${obj._textParams ? t('editText') : t('editLogo')}
     </button>` : ''}
 
     <!-- ── TRANSFORM group ── -->
@@ -4790,6 +4956,74 @@ function duplicate(obj){
   });
 }
 
+/* ── Dupliceer als NIEUW logo (eigen bestand in de lijst) ──
+   Anders dan duplicate() krijgt de kopie een EIGEN originalId en
+   registry-entry. Use case: één vector logo dat 1x zwart en 1x wit
+   op het vel moet — elke kopie is daarna apart te verkleuren, zonder
+   het bestand twee keer te hoeven uploaden. Bronnen (SVG-source en
+   originele PDF-buffer) worden meegekopieerd zodat de kopie dezelfde
+   vector-export houdt. */
+function _dupLogoName(base){
+  const suffix = t('dupSuffix');
+  const existing = new Set([..._logoRegistry.values()].map(r => r.name));
+  let name = `${base} (${suffix})`;
+  let n = 2;
+  while(existing.has(name)){ name = `${base} (${suffix} ${n})`; n++; }
+  return name;
+}
+
+function duplicateAsNewLogo(g){
+  const src = g.sampleObj;
+  if(!src){ toast(t('dupNeedsPlaced'), 'warn'); return; }
+  const mmW = src._mmW, mmH = src._mmH;
+  const natW = src.width, natH = src.height;
+  const spot = ensureSpotOnAnySheet(mmW, mmH);
+  if(!spot) return;
+  const newName = _dupLogoName(g.name || 'logo');
+
+  const srcJson = src.toJSON(FABRIC_EXTRA_PROPS);
+  fabric.util.enlivenObjects([srcJson], ([clone])=>{
+    const newOid = ++idCounter;
+    clone._id = newOid;
+    clone._originalId = newOid;    // eigen identiteit = eigen bestand in de lijst
+    clone._name = newName;
+    clone._naturalW = src._naturalW;
+    clone._naturalH = src._naturalH;
+    clone._mmW = mmW;
+    clone._mmH = mmH;
+    clone._mmLeft = spot.x;
+    clone._mmTop  = spot.y;
+    // bronnen meekopiëren: vector-export en (her)bewerking blijven werken
+    const svgSrc = src._rasterEdited ? null : getSvgSource(src);
+    if(svgSrc){ clone._svgSource = svgSrc; svgSourceStore.set(newOid, svgSrc); }
+    const pris = pristineSvgStore.get(g.originalId) || svgSrc;
+    if(pris) pristineSvgStore.set(newOid, pris);
+    if(pdfSourceBuffers.has(g.originalId)) pdfSourceBuffers.set(newOid, pdfSourceBuffers.get(g.originalId));
+    clone.set({
+      originX:'left', originY:'top',
+      angle: 0, flipX:false, flipY:false,
+      scaleX: (mmW * displayPxPerMm) / natW,
+      scaleY: (mmH * displayPxPerMm) / natH,
+      left: spot.x * displayPxPerMm,
+      top:  spot.y * displayPxPerMm,
+    });
+    clone.objectCaching = false;
+    if(clone._objects) clone._objects.forEach(c => { c.objectCaching = false; });
+    attachObjListeners(clone);
+    canvas.add(clone);
+    registerLogo(clone);
+    canvas.setActiveObject(clone);
+    state.selectedId = clone._id;
+    canvas.requestRenderAll();
+    renderItemList();
+    renderSelectedPanel();
+    updateInfoBar();
+    updateSummary();
+    pushUndo();
+    toast(t('toastLogoDuplicated', newName), 'success', 3000);
+  });
+}
+
 function removeObj(obj){
   if(state.fillTemplate && obj._originalId === state.fillTemplate.originalId){
     state.fillTemplate = null;
@@ -4919,19 +5153,24 @@ function renderItemList(){
     const globalCount = globalCounts.get(g.originalId) || 0;
 
     const row = document.createElement('div');
-    row.className = 'item-row' + (isSelected ? ' selected' : '') + (globalCount === 0 ? ' item-row-empty' : '');
+    row.className = 'item-row item-row-v3' + (isSelected ? ' selected' : '') + (globalCount === 0 ? ' item-row-empty' : '');
     row.innerHTML = `
-      <div class="item-thumb"></div>
-      <div class="item-info">
-        <div class="name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</div>
-        <div class="meta">${sizeLabel} · <span class="dpi-pill ${dpi.cls}" style="font-size:.6rem">${dpi.label}</span></div>
+      <div class="item-top">
+        <div class="item-thumb"></div>
+        <div class="item-info-v3">
+          <div class="name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</div>
+          <div class="item-meta-line meta">${sizeLabel} · <span class="dpi-pill ${dpi.cls}" style="font-size:.6rem">${dpi.label}</span></div>
+        </div>
       </div>
-      <div class="count-stepper" data-oid="${g.originalId}">
-        <button type="button" data-act="dec">−</button>
-        <input type="number" min="0" value="${globalCount}" />
-        <button type="button" data-act="inc">+</button>
+      <div class="item-foot">
+        <div class="count-stepper" data-oid="${g.originalId}">
+          <button type="button" data-act="dec" aria-label="−">−</button>
+          <input type="number" min="0" value="${globalCount}" />
+          <button type="button" data-act="inc" aria-label="+">+</button>
+        </div>
+        <button type="button" class="row-dup" title="${t('rowDupNewLogo')}" aria-label="${t('rowDupNewLogo')}"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <button type="button" class="row-del" title="${t('tbDel')}" aria-label="${t('tbDel')}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
-      <button type="button" class="row-del" title="${t('tbDel')}" aria-label="${t('tbDel')}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     `;
     row.addEventListener('click', e=>{
       if(e.target.closest('.count-stepper')) return;
@@ -4968,6 +5207,10 @@ function renderItemList(){
       clearTimeout(_stepperTimer);
       const v = Math.max(0, parseInt(inp.value,10) || 0);
       changeGroupCount(g.originalId, v);
+    };
+    row.querySelector('.row-dup').onclick = (e)=>{
+      e.stopPropagation();
+      duplicateAsNewLogo(g);
     };
     row.querySelector('.row-del').onclick = (e)=>{
       e.stopPropagation();
@@ -6612,16 +6855,16 @@ async function runPdfExport(withBackground = false){
     if(vectorOk > 0){
       toast(`PDF opgeslagen: ${vectorOk} vector, ${rasterTiles} raster (300 DPI)`, 'success', 5000);
     } else if(vectorFail > 0){
-      toast('PDF opgeslagen als 300 DPI raster (vector embedding mislukt — zie console)', 'warn', 5000);
+      toast(t('toastPdfRasterFallback'), 'warn', 5000);
     } else {
-      toast('PDF opgeslagen (300 DPI raster)', 'success', 3000);
+      toast(t('toastPdfRaster'), 'success', 3000);
     }
     try{ if(window.gsAuth && gsAuth.logUsage) gsAuth.logUsage('export_pdf', { format: state.sheetFormat, proof: !!withBackground }); }catch(_){}
     showPdfProgress(false, `${filename} ${t('pdfSaved')}`);
   } catch(err){
     console.error('PDF export error:', err);
     showPdfProgress(false, 'Export mislukt');
-    toast('PDF export mislukt: ' + (err.message || err), 'warn');
+    toast(t('toastPdfExportFailed', err.message || err), 'warn');
   }
 }
 
@@ -7292,6 +7535,18 @@ function applyI18n(){
     const val = I18N[state.lang][key];
     if(typeof val === 'string') el.textContent = val;
   });
+  // Translate data-tip attributes (tooltips)
+  document.querySelectorAll('[data-i18n-tip]').forEach(el=>{
+    const key = el.dataset.i18nTip;
+    const val = I18N[state.lang][key];
+    if(typeof val === 'string') el.setAttribute('data-tip', val);
+  });
+  // Translate title attributes
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{
+    const key = el.dataset.i18nTitle;
+    const val = I18N[state.lang][key];
+    if(typeof val === 'string') el.title = val;
+  });
   // Translate placeholder attributes
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{
     const key = el.dataset.i18nPlaceholder;
@@ -7499,7 +7754,7 @@ window.gsbExportProject = function(){
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast('Project opgeslagen als bestand', 'success');
+  toast(t('toastProjectSavedFile'), 'success');
 };
 
 window.gsbImportProject = function(file){
@@ -7509,7 +7764,7 @@ window.gsbImportProject = function(file){
     try {
       const data = JSON.parse(ev.target.result);
       if(!data._gsb || !data.canvasJson){
-        toast('Ongeldig projectbestand', 'error');
+        toast(t('toastInvalidProject'), 'error');
         return;
       }
       window.gsbLoadProject({
@@ -7520,7 +7775,7 @@ window.gsbImportProject = function(file){
       });
     } catch(e){
       console.error('[GSB] Import error:', e);
-      toast('Kan bestand niet lezen: ' + (e.message||'onbekende fout'), 'error');
+      toast(t('toastFileReadError', e.message||'?'), 'error');
     }
   };
   reader.readAsText(file);

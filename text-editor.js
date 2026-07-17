@@ -96,7 +96,7 @@ function open(){
   var _r7 = document.getElementById('teCurve'); if(_r7) _r7.value = 0;
   var _r7v = document.getElementById('teCurveVal'); if(_r7v) _r7v.textContent = '0\u00b0';
   ['Bold','Italic','Underline','Caps'].forEach(function(k){ var b = document.getElementById('teBtn'+k); if(b) b.classList.remove('active'); });
-  var _r8 = document.querySelector('#tePanel_create .btn-grad-fill'); if(_r8) _r8.textContent = 'Tekst toevoegen aan vel';
+  var _r8 = document.querySelector('#tePanel_create .btn-grad-fill'); if(_r8) _r8.textContent = t('teAddToSheet');
   var lfb = document.getElementById('teLocalFontsBtn');
   if(lfb) lfb.style.display = ('queryLocalFonts' in window) ? '' : 'none';
   // Donkere modus: zet de standaard tekstkleur op wit (preview-veld blijft licht)
@@ -134,7 +134,7 @@ function close(){
   if(m) m.classList.remove('open');
   _editTarget = null;
   var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
-  if(addBtn) addBtn.textContent = 'Tekst toevoegen aan vel';
+  if(addBtn) addBtn.textContent = t('teAddToSheet');
   _closePicker();
 }
 
@@ -297,7 +297,7 @@ var _localMode = false;
 
 async function loadLocalFonts(){
   if(!('queryLocalFonts' in window)){
-    if(window.toast) window.toast('Deze browser ondersteunt lokale fonts niet — gebruik Chrome of Edge, of upload een .ttf', 'warn', 5000);
+    if(window.toast) window.toast(t('toastLocalFontsUnsupported'), 'warn', 5000);
     return;
   }
   try{
@@ -322,7 +322,7 @@ async function loadLocalFonts(){
     _renderLocalFontList('');
   }catch(e){
     _setStatus('Geen toegang tot lokale fonts' + (e && e.message ? ': ' + e.message : ''), '#ef4444');
-    if(window.toast) window.toast('Geen toegang tot lokale fonts \u2014 toestemming geweigerd of niet ondersteund', 'warn', 5000);
+    if(window.toast) window.toast(t('toastLocalFontsDenied'), 'warn', 5000);
   }
 }
 
@@ -559,21 +559,14 @@ function _cleanD(d){
 }
 
 function _pd(path){
-  // 1. toPathData
-  try{ if(typeof path.toPathData==='function'){
-    var d = path.toPathData(2);
-    if(typeof d==='string' && d.length>1) return _cleanD(d);
-    d = path.toPathData({decimalPlaces:2});
-    if(typeof d==='string' && d.length>1) return _cleanD(d);
-  }}catch(_){}
-  // 2. parse toSVG
-  try{ if(typeof path.toSVG==='function'){
-    var svg = path.toSVG(2); if(typeof svg!=='string') svg = path.toSVG();
-    if(typeof svg==='string'){ var m=svg.match(/d="([^"]*)"/); if(m&&m[1].length>1) return _cleanD(m[1]); }
-  }}catch(_){}
-  // 3. manual from commands
+  // v2.54: EERST handmatig serialiseren vanuit path.commands. opentype's
+  // toPathData() heeft een optimalisatie-bug die bij bepaalde coördinaten
+  // NaN's in het pad injecteert; _cleanD gooide die commando's weg waardoor
+  // contouren vervormden (outline-gaten, halve letters — de LENSELINK-bug).
+  // De commands zelf zijn altijd schoon.
   try{ if(path.commands&&path.commands.length){
     var s='';
+    var ok = true;
     path.commands.forEach(function(c){
       switch(c.type){
         case 'M': s+='M'+_r(c.x)+' '+_r(c.y); break;
@@ -583,7 +576,19 @@ function _pd(path){
         case 'Z': s+='Z'; break;
       }
     });
-    if(s.length>1) return _cleanD(s);
+    if(s.indexOf('NaN') >= 0){ ok = false; console.warn('[TE] NaN in font-commands — fallback'); }
+    if(ok && s.length>1) return s;
+  }}catch(_){}
+  // Fallbacks (alleen als commands ontbreken)
+  try{ if(typeof path.toPathData==='function'){
+    var d = path.toPathData(2);
+    if(typeof d==='string' && d.length>1) return _cleanD(d);
+    d = path.toPathData({decimalPlaces:2});
+    if(typeof d==='string' && d.length>1) return _cleanD(d);
+  }}catch(_){}
+  try{ if(typeof path.toSVG==='function'){
+    var svg = path.toSVG(2); if(typeof svg!=='string') svg = path.toSVG();
+    if(typeof svg==='string'){ var m=svg.match(/d="([^"]*)"/); if(m&&m[1].length>1) return _cleanD(m[1]); }
   }}catch(_){}
   return '';
 }
@@ -775,7 +780,7 @@ function _isLightColor(hex){
 function _refreshPreview(){
   var el = document.getElementById('tePreview');
   if(!el) return;
-  if(!_currentFont){ el.innerHTML = '<span style="color:#9ca3af;font-size:.82rem">Kies een lettertype om preview te zien</span>'; return; }
+  if(!_currentFont){ el.innerHTML = '<span style="color:#9ca3af;font-size:.82rem">'+t('teChooseFontPreview')+'</span>'; return; }
   var ta = document.getElementById('teTextInput');
   var text = ((ta?ta.value:'')||'').split('\n')[0] || 'Voorbeeld';
   var ci = document.getElementById('teColor');
@@ -820,7 +825,7 @@ function _refreshPreview(){
     try{
       if(Math.abs(extraSp) > 0.01){
         var result = _renderGlyphs(font, text, 0, fontSize, extraSp);
-        if(!result){ el.innerHTML='<span style="color:#9ca3af">Geen preview</span>'; return; }
+        if(!result){ el.innerHTML='<span style="color:#9ca3af">'+t('teNoPreview')+'</span>'; return; }
         dAttr = result.d; bb = result.bb;
       } else {
         var path = font.getPath(text, 0, 0, fontSize);
@@ -830,13 +835,13 @@ function _refreshPreview(){
     } catch(gsubErr){
       try{
         var fbR = _renderGlyphs(font, text, 0, fontSize, extraSp);
-        if(!fbR){ el.innerHTML='<span style="color:#9ca3af">Geen preview</span>'; return; }
+        if(!fbR){ el.innerHTML='<span style="color:#9ca3af">'+t('teNoPreview')+'</span>'; return; }
         dAttr = fbR.d; bb = fbR.bb;
-      } catch(_){ el.innerHTML='<span style="color:#9ca3af">Geen preview</span>'; return; }
+      } catch(_){ el.innerHTML='<span style="color:#9ca3af">'+t('teNoPreview')+'</span>'; return; }
     }
-    if(!dAttr||dAttr.length<2){ el.innerHTML='<span style="color:#9ca3af">Geen preview</span>'; return; }
+    if(!dAttr||dAttr.length<2){ el.innerHTML='<span style="color:#9ca3af">'+t('teNoPreview')+'</span>'; return; }
     var w = bb.x2-bb.x1, h = bb.y2-bb.y1;
-    if(w<=0||h<=0){ el.innerHTML='<span style="color:#9ca3af">Geen preview</span>'; return; }
+    if(w<=0||h<=0){ el.innerHTML='<span style="color:#9ca3af">'+t('teNoPreview')+'</span>'; return; }
     var tx = -bb.x1+2, ty = -bb.y1+2;
     var vw = w+4, vh = h+4;
     var transforms = 'translate('+_r(tx)+','+_r(ty)+')';
@@ -887,7 +892,7 @@ function _refreshPreview(){
     svgH += '</svg>';
     el.innerHTML = svgH;
   } catch(e){
-    el.innerHTML = '<span style="color:#ef4444;font-size:.82rem">Preview fout: '+_esc(e.message||'')+'</span>';
+    el.innerHTML = '<span style="color:#ef4444;font-size:.82rem">'+t('tePreviewError')+_esc(e.message||'')+'</span>';
   }
 }
 
@@ -1023,7 +1028,7 @@ async function openEdit(obj){
   _refreshAll();
   if(window.toast) window.toast('Tekst bewerken — pas aan en klik "Tekst bijwerken"', 'info', 2500);
   var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
-  if(addBtn) addBtn.textContent = 'Tekst bijwerken';
+  if(addBtn) addBtn.textContent = t('teUpdateText');
 }
 
 function _replaceTextObject(obj, svgText, params, mmW, mmH){
@@ -1088,7 +1093,7 @@ async function addTexts(){
   // Bewerk-modus: vervang het bestaande object in-place (eerste regel)
   if(_editTarget){
     var eResult = _textToSvg(lines[0], font, sizeMm, color, svgOpts);
-    if(!eResult){ if(window.toast) window.toast('Tekst kon niet worden omgezet', 'warn'); return; }
+    if(!eResult){ if(window.toast) window.toast(t('toastTextConvertFailed'), 'warn'); return; }
     var eParams = { text:lines[0], fontName:_currentName, fontId:_currentId, sizeMm:sizeMm, color:color,
       bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
       strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve, sizeMode:_sizeMode,
@@ -1113,7 +1118,7 @@ async function addTexts(){
     if(window.toast) window.toast(added+' tekst'+(added>1?'en':'')+' toegevoegd','success');
     close();
   } else {
-    if(window.toast) window.toast('Geen tekst kon worden omgezet — controleer het lettertype','warn');
+    if(window.toast) window.toast(t('toastTextConvertNone'),'warn');
   }
 }
 
@@ -1122,7 +1127,7 @@ function _showUsedFonts(){
   var el = document.getElementById('teUsedFonts');
   if(!el) return;
   var fonts = _getUsedFontsFromCanvas();
-  if(!fonts.length){ el.innerHTML = '<span style="color:#9ca3af;font-size:.78rem">Nog geen teksten op het vel</span>'; return; }
+  if(!fonts.length){ el.innerHTML = '<span style="color:#9ca3af;font-size:.78rem">'+t('teNoTexts')+'</span>'; return; }
   el.innerHTML = fonts.map(function(f){
     return '<span class="te-used-tag" style="font-family:\''+f+'\',sans-serif">'+_esc(f)+'</span>';
   }).join('');
@@ -1310,11 +1315,11 @@ function jImportExcel(){
           if(window.toast) window.toast(newRows.length+' spelers geïmporteerd','success');
           _jRefreshPreview();
         } else {
-          if(window.toast) window.toast('Geen spelers gevonden in bestand','warn');
+          if(window.toast) window.toast(t('toastNoPlayersFound'),'warn');
         }
       }catch(e){
         console.error('[TE] XLSX parse error:', e);
-        if(window.toast) window.toast('Fout bij lezen Excel bestand','error');
+        if(window.toast) window.toast(t('toastExcelReadError'),'error');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -1434,7 +1439,7 @@ function _curvedTextSvg(text, font, heightMm, color, arcWidthMm, opts){
 function _jRefreshPreview(){
   var el = document.getElementById('jPreview');
   if(!el) return;
-  if(!_currentFont){ el.innerHTML='<span style="color:#9ca3af;font-size:.82rem">Kies een lettertype</span>'; return; }
+  if(!_currentFont){ el.innerHTML='<span style="color:#9ca3af;font-size:.82rem">'+t('teChooseFontShort')+'</span>'; return; }
 
   // Read from rows
   var name = (_jerseyRows[0] && _jerseyRows[0].name) || '';
@@ -1467,7 +1472,7 @@ function _jRefreshPreview(){
     var pGap = gap * previewScale;
 
     var numResult = _previewPath(font, num, pNumH);
-    if(!numResult){ el.innerHTML='<span style="color:#9ca3af">Geen preview</span>'; return; }
+    if(!numResult){ el.innerHTML='<span style="color:#9ca3af">'+t('teNoPreview')+'</span>'; return; }
     var nameResult = !JD.curved ? _previewPath(font, name, pNameH) : null;
 
     var strokeExpand = (_strokeColor && _strokeColor!=='none' && _strokeWidth>0) ? (_strokeWidth + _strokeOffset)*previewScale + 4 : 0;
@@ -1531,7 +1536,7 @@ function _jRefreshPreview(){
 
     el.innerHTML = '<svg viewBox="0 0 '+_r(svgW)+' '+_r(yOffset)+'" style="max-width:100%;max-height:280px;display:block;margin:0 auto;overflow:visible" xmlns="http://www.w3.org/2000/svg">'+svgContent+'</svg>';
   }catch(e){
-    el.innerHTML = '<span style="color:#ef4444;font-size:.82rem">Preview fout: '+_esc(e.message||'')+'</span>';
+    el.innerHTML = '<span style="color:#ef4444;font-size:.82rem">'+t('tePreviewError')+_esc(e.message||'')+'</span>';
   }
 }
 

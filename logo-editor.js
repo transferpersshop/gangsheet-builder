@@ -20,6 +20,11 @@ var _origCanvasH = 0;
 var _liveTimer = null;
 var _isRaster  = false;
 var _isVector  = false;
+/* v2.52: svg-backed raster-objecten (hi-fi vector route) — kleurbewerkingen
+   worden gespiegeld in deze werk-SVG zodat de export vector blijft.
+   Elke pixel-only bewerking (BG weg, upscale, outline) maakt hem ongeldig. */
+var _svgWork = null;
+var _svgWorkValid = false;
 
 // Color replace state
 var _pickMode   = false;
@@ -125,6 +130,7 @@ function open(fabricObj){
   _outlineColor = '#FFFFFF';
   _vectorMult = 3;
 
+  _svgWork = null; _svgWorkValid = false;
   // Detect vector vs raster
   _isVector = (fabricObj.type === 'group' && !!fabricObj._objects);
   _isRaster = !_isVector;
@@ -200,6 +206,12 @@ function open(fabricObj){
     _workCanvas.width = nw; _workCanvas.height = nh;
     _workCtx = _workCanvas.getContext('2d');
     _workCtx.drawImage(trimmed2, 0, 0);
+
+    // svg-backed? (hi-fi vector route: fabric.Image met _svgSource)
+    if(fabricObj.type === 'image' && !fabricObj._rasterEdited){
+      var swSrc = _getSvgSrc(fabricObj);
+      if(swSrc){ _svgWork = swSrc; _svgWorkValid = true; }
+    }
   }
 
   var m = document.getElementById('logoEditorModal');
@@ -747,7 +759,7 @@ function _updatePickedSwatch(){
   } else {
     sw.style.background = 'repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 50%/10px 10px';
     sw.style.borderColor = '#ddd';
-    txt.textContent = 'Kies hieronder of gebruik pipet';
+    txt.textContent = t('lePickBelow');
     var cmykEl = document.getElementById('lePickedCmyk');
     if(cmykEl) cmykEl.textContent = '';
   }
@@ -765,7 +777,81 @@ function _updateCmykDisplay(elementId, hex){
 }
 
 /* ══════════ Reset ══════════ */
+/* v2.52: Reset herstelt naar het ORIGINEEL GEÜPLOADE bestand (pristine),
+   ook na eerder toegepaste bewerkingen en heropenen van de editor.
+   Zonder pristine-bron valt hij terug op het open-moment (oude gedrag). */
 function reset(){
+  var oid = _fabricObj && (_fabricObj._originalId || _fabricObj._id);
+  var pristine = (typeof pristineSvgStore !== 'undefined' && oid) ? pristineSvgStore.get(oid) : null;
+
+  // svg-backed raster (hi-fi): werk-SVG en preview terug naar origineel
+  if(pristine && !_isVector && _fabricObj){
+    _svgWork = pristine;
+    _svgWorkValid = true;
+    _modified = true; // Toepassen schrijft het origineel terug naar alle kopieën
+    _pickedRGB = null;
+    _hasOutline = false;
+    _preOutlineCanvas = null;
+    _resetToolPanels();
+    _renderSvgSourceToCanvas(pristine, 2000, function(c){
+      if(!c || !_workCanvas) return;
+      var tr = _trimCanvas(c);
+      _origCanvasW = tr.width; _origCanvasH = tr.height;
+      _workCanvas.width = tr.width; _workCanvas.height = tr.height;
+      _workCtx = _workCanvas.getContext('2d');
+      _workCtx.drawImage(tr, 0, 0);
+      _drawPreview(_workCanvas);
+      _extractColors();
+    });
+    if(window.toast) window.toast(t('leResetDone'), 'info', 1200);
+    return;
+  }
+
+  // vector-groep: fills terugzetten vanuit de pristine SVG
+  if(pristine && _isVector && _fabricObj){
+    try{
+      var parser = new DOMParser();
+      var doc = parser.parseFromString(pristine, 'image/svg+xml');
+      if(!doc.querySelector('parsererror')){
+        _fabricObj._svgSource = pristine;
+        if(typeof svgSourceStore !== 'undefined') svgSourceStore.set(oid, pristine);
+        // fabric-children her-inkleuren vanuit de pristine bron: herlaad de groep
+        fabric.loadSVGFromString(pristine, function(objects, options){
+          var fresh = fabric.util.groupSVGElements(objects, options);
+          if(fresh.type !== 'group') fresh = new fabric.Group([fresh]);
+          var flat = [];
+          (function walk(objs){ objs.forEach(function(o){ if(o._objects) walk(o._objects); else flat.push(o); }); })(fresh._objects || []);
+          var cur = [];
+          (function walk2(objs){ objs.forEach(function(o){ if(o._objects) walk2(o._objects); else cur.push(o); }); })(_fabricObj._objects || []);
+          if(flat.length === cur.length){
+            for(var i2 = 0; i2 < cur.length; i2++){
+              cur[i2].set('fill', flat[i2].fill);
+              cur[i2].set('stroke', flat[i2].stroke);
+              cur[i2].set('strokeWidth', flat[i2].strokeWidth || 0);
+              cur[i2].dirty = true;
+            }
+            _fabricObj.dirty = true;
+            _vectorOrigState = _saveVectorState(_fabricObj);
+            _modified = true;
+            _refreshVectorPreview();
+            _extractColors();
+            _resetToolPanels();
+            var cnv = window._gsbCanvas; if(cnv) cnv.requestRenderAll();
+            if(window.toast) window.toast(t('leResetDone'), 'info', 1200);
+          } else {
+            // structuur wijkt af (bijv. outline toegevoegd) → val terug op open-moment
+            _legacyReset();
+          }
+        });
+        return;
+      }
+    }catch(e){ console.warn('[LE] pristine reset mislukt:', e); }
+  }
+
+  _legacyReset();
+}
+
+function _legacyReset(){
   if(_isVector && _fabricObj && _vectorOrigState){
     _restoreVectorState(_fabricObj, _vectorOrigState);
     _fabricObj.dirty = true;
@@ -779,7 +865,7 @@ function reset(){
     _preOutlineCanvas = null;
     _resetToolPanels();
     _extractColors();
-    if(window.toast) window.toast('Reset naar origineel', 'info', 1200);
+    if(window.toast) window.toast(t('leResetDone'), 'info', 1200);
     return;
   }
   if(!_origImg || !_workCanvas) return;
@@ -793,7 +879,7 @@ function reset(){
   _resetToolPanels();
   _drawPreview(_workCanvas);
   _extractColors();
-  if(window.toast) window.toast('Reset naar origineel', 'info', 1200);
+  if(window.toast) window.toast(t('leResetDone'), 'info', 1200);
 }
 
 /* ══════════════════════════════════════════
@@ -849,7 +935,7 @@ function applyColorReplace(){
     _extractColors();
     _pickedRGB = null;
     _updatePickedSwatch();
-    if(window.toast) window.toast('Kleur vervangen', 'success', 1200);
+    if(window.toast) window.toast(t('leColorReplaced'), 'success', 1200);
     return;
   }
 
@@ -858,6 +944,11 @@ function applyColorReplace(){
   var tol = _pickedTol;
   var result = _buildColorReplace(_workCanvas, picked, replHex, tol);
   _workCtx.drawImage(result, 0, 0);
+  // v2.52: spiegel de kleurvervanging in de werk-SVG → export blijft vector
+  if(_svgWorkValid && _svgWork && typeof recolorSvgSourceString === 'function'){
+    try{ _svgWork = recolorSvgSourceString(_svgWork, oldHex, replHex, tol); }
+    catch(e){ console.warn('[LE] svg-recolor mislukt — export wordt raster:', e); _svgWorkValid = false; }
+  }
   _modified = true;
   _pickedRGB = null;
   _updatePickedSwatch();
@@ -869,7 +960,7 @@ function applyColorReplace(){
     var pctx = _preOutlineCanvas.getContext('2d');
     pctx.drawImage(prResult, 0, 0);
   }
-  if(window.toast) window.toast('Kleur vervangen', 'success', 1200);
+  if(window.toast) window.toast(t('leColorReplaced'), 'success', 1200);
 }
 
 function _makeAllColor(r, g, b, label){
@@ -910,6 +1001,11 @@ function _makeAllColor(r, g, b, label){
     px[i] = r; px[i+1] = g; px[i+2] = b;
   }
   _workCtx.putImageData(data, 0, 0);
+  // v2.52: mono-verkleuring ook in de werk-SVG → export blijft vector
+  if(_svgWorkValid && _svgWork && typeof _makeMonoSvgSource === 'function'){
+    try{ _svgWork = _makeMonoSvgSource(_svgWork, hexColor) || _svgWork; }
+    catch(e){ console.warn('[LE] svg-mono mislukt — export wordt raster:', e); _svgWorkValid = false; }
+  }
   _modified = true;
   // Update pre-outline snapshot too
   if(_preOutlineCanvas){
@@ -925,8 +1021,8 @@ function _makeAllColor(r, g, b, label){
   _extractColors();
   if(window.toast) window.toast(label, 'success', 1200);
 }
-function makeAllBlack(){ _makeAllColor(0, 0, 0, 'Logo zwart gemaakt'); }
-function makeAllWhite(){ _makeAllColor(255, 255, 255, 'Logo wit gemaakt'); }
+function makeAllBlack(){ _makeAllColor(0, 0, 0, t('leMadeBlack')); }
+function makeAllWhite(){ _makeAllColor(255, 255, 255, t('leMadeWhite')); }
 
 function _updateSvgSourceAllColor(hexColor){
   if(!_fabricObj || !_fabricObj._svgSource) return;
@@ -1029,15 +1125,16 @@ function _liveWhiteRemove(){
 }
 
 function applyWhiteRemove(){
+  _svgWorkValid = false; // pixel-bewerking: SVG kan niet meer mee
   if(!_workCanvas) return;
   var s = document.getElementById('leWhiteThresh');
-  var t = parseFloat(s ? s.value : 12) || 12;
+  var thr = parseFloat(s ? s.value : 12) || 12;
   var status = document.getElementById('leBgStatus');
 
   if(_hasOutline && _preOutlineCanvas){
     // Outline al toegepast: wit verwijderen uit de pre-outline bron
     // en de outline daarna opnieuw opbouwen (anders wist dit de outline)
-    var cleaned = _buildWhiteRemove(_preOutlineCanvas, t);
+    var cleaned = _buildWhiteRemove(_preOutlineCanvas, thr);
     _preOutlineCanvas.width = cleaned.width;
     _preOutlineCanvas.height = cleaned.height;
     _preOutlineCanvas.getContext('2d').drawImage(cleaned, 0, 0);
@@ -1048,7 +1145,7 @@ function applyWhiteRemove(){
     _workCtx = _workCanvas.getContext('2d');
     _workCtx.drawImage(rebuilt, 0, 0);
   } else {
-    var result = _trimCanvas(_buildWhiteRemove(_workCanvas, t));
+    var result = _trimCanvas(_buildWhiteRemove(_workCanvas, thr));
     _workCanvas.width = result.width;
     _workCanvas.height = result.height;
     _workCtx = _workCanvas.getContext('2d');
@@ -1058,13 +1155,14 @@ function applyWhiteRemove(){
   _modified = true;
   _drawPreview(_workCanvas);
   _extractColors();
-  if(status) status.textContent = 'Wit verwijderd (drempel ' + t + ')';
-  if(window.toast) window.toast('Witte achtergrond verwijderd', 'success', 1500);
+  if(status) status.textContent = t('leWhiteRemoved', thr);
+  if(window.toast) window.toast(t('leWhiteBgRemovedToast'), 'success', 1500);
 }
 
 var _bgRemoveLib = null;
 
 async function applyBgRemove(){
+  _svgWorkValid = false; // pixel-bewerking: SVG kan niet meer mee
   var btn = document.getElementById('leBgRemoveBtn');
   var status = document.getElementById('leBgStatus');
   if(btn) btn.disabled = true;
@@ -1081,12 +1179,12 @@ async function applyBgRemove(){
       }
     }
     if(_bgRemoveLib){
-      if(status) status.textContent = 'Achtergrond verwijderen…';
+      if(status) status.textContent = t('leRemovingBg');
       var blob = await new Promise(function(resolve){ _workCanvas.toBlob(resolve, 'image/png'); });
       var resultBlob = await _bgRemoveLib(blob, {
         output: { format: 'image/png', quality: 1 },
         progress: function(key, current, total){
-          if(status && key === 'compute:inference') status.textContent = 'AI verwerkt… ' + Math.round((current/total)*100) + '%';
+          if(status && key === 'compute:inference') status.textContent = t('leAiProcessing', Math.round((current/total)*100));
         }
       });
       var resultUrl = URL.createObjectURL(resultBlob);
@@ -1095,10 +1193,10 @@ async function applyBgRemove(){
       _workCanvas.width = resultImg.width; _workCanvas.height = resultImg.height;
       _workCtx.clearRect(0, 0, resultImg.width, resultImg.height);
       _workCtx.drawImage(resultImg, 0, 0);
-      if(status) status.textContent = 'Randen verscherpen…';
+      if(status) status.textContent = t('leSharpening');
       _dtfPostProcess();
     } else {
-      if(status) status.textContent = 'Achtergrond verwijderen…';
+      if(status) status.textContent = t('leRemovingBg');
       _fallbackBgRemove();
       _dtfPostProcess();
     }
@@ -1324,6 +1422,58 @@ function _applySvgOutlineToSource(svgStr, outlinePx, refCanvasW, color){
     outlineG.setAttribute('data-gsb-outline', '1');
     kids.forEach(function(k){ outlineG.appendChild(k.cloneNode(true)); });
 
+    // v2.54.2: elementen met een clip-path kregen geen outline — de clip
+    // snijdt alles buiten de vorm af (hi-fi logo's: iconen zijn clipvormen
+    // met een gradientvlak erin). Vervang zulke elementen in de outline-
+    // laag door de clipvorm ZELF (die wordt hieronder geverfd en aangedikt).
+    // Paginagrote bijsnijkaders worden alleen verwijderd, zodat de outline
+    // niet wordt afgesneden.
+    var vbArea = vbW * vbH;
+    var coarseBBoxArea = function(clipEl){
+      var mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity,found=false;
+      var els = clipEl.querySelectorAll('path,rect,polygon,polyline,circle,ellipse');
+      for(var ci=0; ci<els.length; ci++){
+        var ce=els[ci];
+        if(ce.nodeName.toLowerCase()==='rect'){
+          var rx=parseFloat(ce.getAttribute('x'))||0, ry=parseFloat(ce.getAttribute('y'))||0;
+          var rw2=parseFloat(ce.getAttribute('width'))||0, rh2=parseFloat(ce.getAttribute('height'))||0;
+          mnX=Math.min(mnX,rx);mnY=Math.min(mnY,ry);mxX=Math.max(mxX,rx+rw2);mxY=Math.max(mxY,ry+rh2);found=true;
+        } else {
+          var nums=(ce.getAttribute('d')||ce.getAttribute('points')||'').match(/-?[\d.]+/g);
+          if(nums){ for(var ni=0;ni+1<nums.length;ni+=2){ var xx=+nums[ni], yy=+nums[ni+1]; if(isFinite(xx)&&isFinite(yy)){ mnX=Math.min(mnX,xx);mnY=Math.min(mnY,yy);mxX=Math.max(mxX,xx);mxY=Math.max(mxY,yy);found=true; } } }
+        }
+      }
+      return found ? Math.max(0,(mxX-mnX))*Math.max(0,(mxY-mnY)) : 0;
+    };
+    var clipped = outlineG.querySelectorAll('[clip-path]');
+    for(i = 0; i < clipped.length; i++){
+      var cEl = clipped[i];
+      var mId = /url\(["']?#([^"')]+)/.exec(cEl.getAttribute('clip-path')||'');
+      var clipDef = mId ? doc.getElementById(mId[1]) : null;
+      if(!clipDef){ cEl.removeAttribute('clip-path'); continue; }
+      var clipArea = coarseBBoxArea(clipDef);
+      if(clipArea >= vbArea * 0.85){
+        cEl.removeAttribute('clip-path');
+      } else if(clipArea < vbArea * 0.0005){
+        if(cEl.parentNode) cEl.parentNode.removeChild(cEl);
+      } else {
+        var sub = doc.createElementNS(SVGNS, 'g');
+        sub.setAttribute('data-gsb-clipsub', '1');
+        var ct = clipDef.getAttribute('transform');
+        if(ct) sub.setAttribute('transform', ct);
+        for(var cj = 0; cj < clipDef.childNodes.length; cj++){
+          var cn = clipDef.childNodes[cj];
+          if(cn.nodeType !== 1) continue;
+          var cc = cn.cloneNode(true);
+          var cr = cc.getAttribute('clip-rule');
+          if(cr){ cc.setAttribute('fill-rule', cr); cc.removeAttribute('clip-rule'); }
+          cc.setAttribute('fill', color);
+          sub.appendChild(cc);
+        }
+        if(cEl.parentNode) cEl.parentNode.replaceChild(sub, cEl);
+      }
+    }
+
     // Force solid outline paint on every descendant
     var all = [outlineG].concat(Array.prototype.slice.call(outlineG.querySelectorAll('*')));
     all.forEach(function(el){
@@ -1354,6 +1504,11 @@ function _applySvgOutlineToSource(svgStr, outlinePx, refCanvasW, color){
       el.removeAttribute('filter');
       if(el.getAttribute('opacity')) el.setAttribute('opacity', '1');
     });
+
+    // Substituut-clipvormen: butt-caps — ronde caps maken van lege
+    // subpaadjes in clip-geometrie zichtbare bolletjes
+    var subs = outlineG.querySelectorAll('[data-gsb-clipsub] *');
+    for(i = 0; i < subs.length; i++) subs[i].setAttribute('stroke-linecap', 'butt');
 
     // Insert BEHIND the original content (before first graphic element)
     root.insertBefore(outlineG, kids[0]);
@@ -1438,7 +1593,7 @@ function _replaceVectorWithOutlinedSvg(obj, res){
     }
     _propagateOutlineToSiblings(group, res);
     if(typeof window.autoDarkBgForWhiteLogo === 'function') window.autoDarkBgForWhiteLogo(group);
-    if(window.toast) window.toast('Outline toegepast — vector behouden', 'success');
+    if(window.toast) window.toast(t('leOutlineApplied'), 'success');
   });
 }
 
@@ -1504,6 +1659,8 @@ function _propagateOutlineToSiblings(primary, res){
 }
 
 function applyOutline(){
+  // v2.54.1: outline op svg-backed logo's wordt bij Toepassen SVG-natief
+  // opgebouwd (_applySvgOutlineToSource) — de werk-SVG blijft dus geldig.
   var ow = document.getElementById('leOutWidth');
   var oc = document.getElementById('leOutColor');
   var width = parseFloat(ow ? ow.value : 0) || 0;
@@ -1562,6 +1719,10 @@ function applyOutline(){
   var result = _buildOutline(sourceForOutline, _outlineMmToPx(width, sourceForOutline.width), color);
   _workCanvas.width = result.width; _workCanvas.height = result.height;
   _workCtx.drawImage(result, 0, 0);
+  // v2.54.1: parameters ook in de raster-tak bewaren — nodig voor de
+  // SVG-natieve outline bij Toepassen (vector behouden) én voor re-apply
+  _outlineWidth = width;
+  _outlineColor = color;
   _hasOutline = true;
   _modified = true;
   _drawPreview(_workCanvas);
@@ -1579,6 +1740,7 @@ function previewOutline(){
    TOOL 4: UPSCALE (bitmap only)
    ══════════════════════════════════════════ */
 function applyUpscale(){
+  _svgWorkValid = false; // pixel-bewerking: SVG kan niet meer mee
   var sel = document.getElementById('leUpFactor');
   var factor = parseInt(sel ? sel.value : 2, 10);
   var sharp = document.getElementById('leSharpAmount');
@@ -1668,7 +1830,7 @@ function previewUpscale(){ _livePreview(); }
 
 /* Raster-bewerking (outline, kleur, upscale) doorvoeren naar alle
    kopieën van hetzelfde logo — element-swap in-place, posities blijven. */
-function _propagateRasterEditToSiblings(primary, dataUrl, ratioW, ratioH){
+function _propagateRasterEditToSiblings(primary, dataUrl, ratioW, ratioH, svgSource){
   var canvas = window._gsbCanvas;
   if(!canvas) return;
   var oid = primary._originalId || primary._id;
@@ -1683,8 +1845,9 @@ function _propagateRasterEditToSiblings(primary, dataUrl, ratioW, ratioH){
       if(sib.type === 'image'){
         sib.setElement(newImg.getElement());
         sib._mmW = nmW; sib._mmH = nmH;
-        sib._recolored = true; sib._rasterEdited = true;
-        sib._svgSource = null;
+        sib._recolored = true;
+        if(svgSource){ sib._svgSource = svgSource; }
+        else { sib._rasterEdited = true; sib._svgSource = null; }
         sib.scaleX = (nmW * pxPerMm) / sib.width;
         sib.scaleY = (nmH * pxPerMm) / sib.height;
         sib.dirty = true;
@@ -1706,7 +1869,9 @@ function _propagateRasterEditToSiblings(primary, dataUrl, ratioW, ratioH){
         newImg._mmLeft = sib._mmLeft; newImg._mmTop = sib._mmTop;
         if(sib._vectorOrigin) newImg._vectorOrigin = sib._vectorOrigin;
         if(sib._isFillTile) newImg._isFillTile = sib._isFillTile;
-        newImg._recolored = true; newImg._rasterEdited = true;
+        newImg._recolored = true;
+        if(svgSource){ newImg._svgSource = svgSource; }
+        else { newImg._rasterEdited = true; }
         if(typeof window.attachObjListeners === 'function') window.attachObjListeners(newImg);
         canvas.remove(sib);
         canvas.add(newImg);
@@ -1820,7 +1985,7 @@ function apply(){
           if(typeof window.renderItemList === 'function') window.renderItemList();
           if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
         }
-        if(window.toast) window.toast('Logo bijgewerkt', 'success');
+        if(window.toast) window.toast(t('leUpdated'), 'success');
       }, { crossOrigin: 'anonymous' });
 
       close(true);
@@ -1838,16 +2003,56 @@ function apply(){
       if(typeof window.renderItemList === 'function') window.renderItemList();
       if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
     }
-    if(window.toast) window.toast('Logo bijgewerkt', 'success');
+    if(window.toast) window.toast(t('leUpdated'), 'success');
     close(true);
     return;
   }
 
   // Raster path: create new fabric.Image
-  var dataUrl = _workCanvas.toDataURL('image/png');
   var obj = _fabricObj;
-  var nw = _workCanvas.width, nh = _workCanvas.height;
 
+  // v2.52: alle bewerkingen waren kleur-ops die in de werk-SVG gespiegeld
+  // zijn → render de weergave VANUIT die SVG (weergave == export) en
+  // behoud de vector-bron. Export blijft Track 1 (echte vector).
+  if(_svgWorkValid && _svgWork){
+    var svgFinal = _svgWork;
+    // Outline SVG-natief toevoegen zodat het logo vector blijft.
+    if(_hasOutline && _outlineWidth > 0){
+      var refWsb = _preOutlineCanvas ? _preOutlineCanvas.width : _workCanvas.width;
+      var opxSb = _outlineMmToPx(_outlineWidth, refWsb);
+      var resSb = _applySvgOutlineToSource(svgFinal, opxSb, refWsb, _outlineColor);
+      if(resSb && resSb.svg){
+        svgFinal = resSb.svg;
+      } else {
+        console.warn('[LE] SVG-outline op svg-backed logo mislukt — raster-fallback');
+        svgFinal = null;
+      }
+    }
+    if(svgFinal){
+    var targetPx = Math.max(_workCanvas.width, _workCanvas.height, 1200);
+    // snapshot vóór close() — close() maakt _workCanvas null
+    var fallbackC = document.createElement('canvas');
+    fallbackC.width = _workCanvas.width; fallbackC.height = _workCanvas.height;
+    fallbackC.getContext('2d').drawImage(_workCanvas, 0, 0);
+    _renderSvgSourceToCanvas(svgFinal, targetPx, function(c){
+      var use = c ? _trimCanvas(c) : fallbackC;
+      // geen SVG-render mogelijk → raster-fallback zonder vectorclaim
+      _finishRasterApply(obj, use.toDataURL('image/png'), use.width, use.height, c ? svgFinal : null);
+    });
+    close(true);
+    return;
+    }
+  }
+
+  var dataUrl = _workCanvas.toDataURL('image/png');
+  var nw = _workCanvas.width, nh = _workCanvas.height;
+  _finishRasterApply(obj, dataUrl, nw, nh, null);
+  close(true);
+}
+
+/* Gemeenschappelijke afronding van het raster-pad. svgSource=null →
+   klassiek gedrag (raster-export); svgSource gezet → vector behouden. */
+function _finishRasterApply(obj, dataUrl, nw, nh, svgSource){
   fabric.Image.fromURL(dataUrl, function(newImg){
     var ratioW = (_origCanvasW > 0) ? nw / _origCanvasW : 1;
     var ratioH = (_origCanvasH > 0) ? nh / _origCanvasH : 1;
@@ -1879,11 +2084,20 @@ function apply(){
     if(obj._pdfPageH) newImg._pdfPageH = obj._pdfPageH;
     if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
 
-    // Clear SVG source — raster edits are not reflected in SVG,
-    // so export must use raster track (Track 3)
-    // Do NOT copy _svgSource to newImg
-    newImg._recolored = true;    // export: prefer this sample, skip embedPdf (Track 2)
-    newImg._rasterEdited = true; // export: force Track 3 — edits (incl. outline) zitten in de pixels
+    if(svgSource){
+      // v2.52: kleur-ops zijn in de SVG gespiegeld → vector behouden
+      newImg._svgSource = svgSource;
+      if(obj._hiFiVector) newImg._hiFiVector = obj._hiFiVector;
+      newImg._recolored = true;   // export: eigen sample, geen embedPdf
+      if(newImg._originalId && typeof svgSourceStore !== 'undefined'){
+        svgSourceStore.set(newImg._originalId, svgSource);
+      }
+    } else {
+      // Clear SVG source — raster edits are not reflected in SVG,
+      // so export must use raster track (Track 3)
+      newImg._recolored = true;    // export: prefer this sample, skip embedPdf (Track 2)
+      newImg._rasterEdited = true; // export: force Track 3 — edits (incl. outline) zitten in de pixels
+    }
 
     var canvas = window._gsbCanvas;
     if(canvas){
@@ -1898,12 +2112,10 @@ function apply(){
       if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
     }
     // Zelfde bewerking doorvoeren naar alle kopieën van dit logo
-    _propagateRasterEditToSiblings(newImg, dataUrl, ratioW, ratioH);
+    _propagateRasterEditToSiblings(newImg, dataUrl, ratioW, ratioH, svgSource);
     if(typeof window.autoDarkBgForWhiteLogo === 'function') window.autoDarkBgForWhiteLogo(newImg);
-    if(window.toast) window.toast('Logo bijgewerkt', 'success');
+    if(window.toast) window.toast(t('leUpdated'), 'success');
   }, { crossOrigin: 'anonymous' });
-
-  close(true);
 }
 
 /* ══════════ Kleurmodus (RGB / CMYK) ══════════ */

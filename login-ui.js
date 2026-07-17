@@ -227,7 +227,7 @@ async function confirmSave(){
     avatar.addEventListener('animationend', () => avatar.classList.remove('save-pulse'), { once: true });
   }
 
-  if(window.toast) window.toast('Project opgeslagen', 'success');
+  if(window.toast) window.toast(t('toastProjectSaved'), 'success');
 }
 
 // Backward-compatible alias
@@ -276,9 +276,9 @@ async function handleProfileSave(e){
   const pw2 = (document.getElementById('profPw2') || {}).value || '';
   if(pw1 || pw2){
     if(pw1.length < 6){ if(window.toast) toast('Wachtwoord moet minimaal 6 tekens zijn', 'error', 4000); return; }
-    if(pw1 !== pw2){ if(window.toast) toast('De wachtwoorden komen niet overeen', 'error', 4000); return; }
+    if(pw1 !== pw2){ if(window.toast) toast(t('toastPwMismatch'), 'error', 4000); return; }
     const { error: pwErr } = await gsAuth.supabase.auth.updateUser({ password: pw1 });
-    if(pwErr){ if(window.toast) toast('Wachtwoord wijzigen mislukt: ' + (pwErr.message || 'onbekend'), 'error', 5000); return; }
+    if(pwErr){ if(window.toast) toast(t('toastPwChangeFailed', pwErr.message || '?'), 'error', 5000); return; }
     if(window.toast) toast('Wachtwoord gewijzigd', 'success', 2500);
     document.getElementById('profPw1').value = '';
     document.getElementById('profPw2').value = '';
@@ -291,7 +291,7 @@ async function handleProfileSave(e){
   if(el) el.textContent = name ? name.charAt(0).toUpperCase() : '?';
   const nameEl = document.getElementById('userMenuName');
   if(nameEl) nameEl.textContent = name;
-  if(window.toast) window.toast('Profiel opgeslagen', 'success');
+  if(window.toast) window.toast(t('toastProfileSaved'), 'success');
 }
 
 /* ── Admin panel ── */
@@ -410,7 +410,7 @@ async function adminCreateUser(){
 
 async function changeRole(userId, role){
   const { error } = await gsAuth.updateUserRole(userId, role);
-  if(error){ if(window.toast) toast('Rol wijzigen mislukt: ' + (error.message || 'onbekend'), 'error', 5000); }
+  if(error){ if(window.toast) toast(t('toastRoleChangeFailed', error.message || '?'), 'error', 5000); }
   else { if(window.toast) toast('Rol bijgewerkt', 'success', 1500); }
   _loadAdminUsers();
 }
@@ -425,7 +425,7 @@ async function setTempPassword(userId, name){
   for(let i = 0; i < 8; i++) pw += chars[rnd[i] % chars.length];
   const { error } = await gsAuth.adminSetPassword(userId, pw);
   if(error){
-    if(window.toast) toast('Instellen mislukt: ' + (error.message || 'onbekende fout'), 'error', 5000);
+    if(window.toast) toast(t('toastSetFailed', error.message || '?'), 'error', 5000);
     return;
   }
   prompt('Tijdelijk wachtwoord voor "' + name + '" — kopieer en deel dit veilig.\nAdvies: laat de gebruiker het direct wijzigen via Profiel of "Wachtwoord vergeten".', pw);
@@ -436,10 +436,10 @@ async function deleteUser(userId, name){
   if(!sure) return;
   const { error } = await gsAuth.adminDeleteUser(userId);
   if(error){
-    if(window.toast) toast('Verwijderen mislukt: ' + (error.message || 'onbekende fout'), 'error', 5000);
+    if(window.toast) toast(t('toastDeleteFailed', error.message || '?'), 'error', 5000);
     return;
   }
-  if(window.toast) toast('Account verwijderd', 'success');
+  if(window.toast) toast(t('toastAccountDeleted'), 'success');
   _loadAdminUsers();
 }
 
@@ -526,7 +526,7 @@ async function saveSetting(key, value){
   // Parse numbers
   if(key === 'default_gap_mm' || key === 'max_file_size_mb') value = Number(value);
   await gsAuth.updateSetting(key, JSON.stringify(value));
-  if(window.toast) window.toast('Instelling opgeslagen', 'success', 1500);
+  if(window.toast) window.toast(t('toastSettingSaved'), 'success', 1500);
 }
 
 async function _loadAdminStats(){
@@ -667,26 +667,26 @@ async function onProofLogoUpload(){
       out = c.toDataURL('image/png');
     }
   }catch(err){
-    if(window.toast) toast('Logo kon niet worden gelezen: ' + (err.message || 'onbekend'), 'error', 5000);
+    if(window.toast) toast(t('toastLogoReadFailed', err.message || '?'), 'error', 5000);
     inp.value = '';
     return;
   }
   const { error } = await gsAuth.updateProfile({ proof_logo: out });
   if(error){
-    if(window.toast) toast('Opslaan mislukt: ' + (error.message || 'onbekende fout') + ' \u2014 probeer een kleiner bestand', 'error', 6000);
+    if(window.toast) toast(t('toastLogoSaveFailed', error.message || '?'), 'error', 6000);
     inp.value = '';
     return;
   }
   const fresh = (gsAuth.profile && gsAuth.profile.proof_logo) || out;
   const prev = document.getElementById('profProofLogoPreview');
   if(prev){ prev.src = fresh; prev.style.display = ''; }
-  if(window.toast) toast('Drukproef-logo opgeslagen \u2014 wordt gebruikt in je volgende drukproef', 'success', 3000);
+  if(window.toast) toast(t('toastProofLogoSaved'), 'success', 3000);
 }
 async function removeProofLogo(){
   await gsAuth.updateProfile({ proof_logo: null });
   const prev = document.getElementById('profProofLogoPreview');
   if(prev) prev.style.display = 'none';
-  if(window.toast) toast('Eigen logo verwijderd \u2014 TPS-logo wordt gebruikt', 'info');
+  if(window.toast) toast(t('toastOwnLogoRemoved'), 'info');
 }
 
 window.gsLoginUI = {
