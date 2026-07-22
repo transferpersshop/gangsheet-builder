@@ -14,6 +14,9 @@ window.addEventListener('unhandledrejection', (e) => {
 const I18N = {
   nl: {
     /* ── v2.53: volledige editor-vertalingen ── */
+    whiteWarnSuffix:'bevat een groot wit vlak dat als wítte inkt wordt meegeprint. Bedoeld? Zo niet: open de logo-editor en gebruik \'Verwijder wit\'.',
+    infoTipThin:'Minimale lijndikte', infoTipThinBody:'Houd lijnen, letters en details minimaal 0,5 mm dik op ware printgrootte. Dunner dan dat wordt de witte onderlaag van de DTF-print onbetrouwbaar. De builder waarschuwt automatisch als een logo hieronder komt — vergroot dan het logo of maak lijnen dikker.',
+    thinWarnPrefix:'Let op:', thinWarnSuffix:'valt onder de minimale 0,5 mm lijndikte — dunne details worden mogelijk niet (wit) geprint. Vergroot het logo of maak lijnen dikker.',
     leWhiteBgRemovedToast:'Witte achtergrond verwijderd',
     leAiProcessing:(p)=>`AI verwerkt… ${p}%`,
     leQuickConvert:'Snel omzetten', leColorReplaceTitle:'Kleur vervangen',
@@ -239,6 +242,9 @@ const I18N = {
   },
   en: {
     /* ── v2.53: complete editor translations ── */
+    whiteWarnSuffix:'contains a large white area that will be printed as white ink. Intended? If not: open the logo editor and use \'Remove white\'.',
+    infoTipThin:'Minimum line width', infoTipThinBody:'Keep lines, letters and details at least 0.5 mm thick at true print size. Below that, the white underbase of the DTF print becomes unreliable. The builder warns automatically when a logo drops below this — enlarge the logo or thicken the lines.',
+    thinWarnPrefix:'Warning:', thinWarnSuffix:'falls below the minimum 0.5 mm line width — thin details may not print (in white). Enlarge the logo or thicken the lines.',
     leWhiteBgRemovedToast:'White background removed',
     leAiProcessing:(p)=>`AI processing… ${p}%`,
     leQuickConvert:'Quick convert', leColorReplaceTitle:'Replace color',
@@ -1676,6 +1682,13 @@ async function pdfToSvg(arrayBuffer){
   const OPS = pdfjsLib.OPS;
   const W = viewport.width, H = viewport.height;
 
+  // Verborgen Illustrator-lagen (optional content, v2.56.0): lees de
+  // standaard-zichtbaarheid per laag uit de PDF. Content van lagen die
+  // in Illustrator uit staan wordt in de operator-lus overgeslagen —
+  // anders verschijnt die tóch in de builder én in de export.
+  let ocConfig = null;
+  try{ ocConfig = await pdf.getOptionalContentConfig(); }catch(_){ }
+
   // Color helpers
   function toHex(r,g,b){
     const h=v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0');
@@ -1772,9 +1785,35 @@ async function pdfToSvg(arrayBuffer){
   }
 
   // Process operator list — bail out early if too many paths
+  let ocHidden = 0; // >0 = binnen content van een verborgen laag (OCG)
   for(let i=0;i<opList.fnArray.length;i++){
     if(tooManyPaths) break; // early exit: skip remaining operators entirely
     const fn=opList.fnArray[i], args=opList.argsArray[i];
+    // Lagen-administratie: BDC /OC van een verborgen laag → alles tot de
+    // bijbehorende EMC overslaan (genest meetellen). save/restore blijven
+    // verwerkt zodat de <g>-balans in de SVG klopt, en showText krijgt een
+    // markering zodat de tekst-extractie hieronder synchroon blijft én
+    // tekst uit verborgen lagen overslaat.
+    if(fn === OPS.beginMarkedContentProps){
+      if(ocHidden > 0){ ocHidden++; }
+      else if(ocConfig && args && args[0] === 'OC' && args[1]){
+        let vis = true;
+        try{ vis = ocConfig.isVisible(args[1]); }catch(_){ }
+        if(vis === false) ocHidden = 1;
+      }
+      continue;
+    }
+    if(fn === OPS.beginMarkedContent){ if(ocHidden > 0) ocHidden++; continue; }
+    if(fn === OPS.endMarkedContent){ if(ocHidden > 0) ocHidden--; continue; }
+    if(ocHidden > 0){
+      if(fn === OPS.save){ pushGState(); elements.push('<g>'); }
+      else if(fn === OPS.restore){ popGState(); elements.push('</g>'); }
+      else if(fn === OPS.showText || fn === OPS.showSpacedText ||
+              fn === OPS.nextLineShowText || fn === OPS.nextLineSetSpacingShowText){
+        textFillColors.push('__gsbHiddenLayer');
+      }
+      continue;
+    }
     switch(fn){
       case OPS.save: pushGState(); elements.push('<g>'); break;
       case OPS.restore: popGState(); elements.push('</g>'); break;
@@ -1907,6 +1946,8 @@ async function pdfToSvg(arrayBuffer){
       // Always increment textIdx to stay in sync with showText operator list,
       // even for empty/skipped items (they still have a showText in the oplist)
       if(!item.str || !item.str.trim()){ textIdx++; continue; }
+      // Tekst uit een verborgen laag → overslaan (markering uit de operator-lus)
+      if(textFillColors[textIdx] === '__gsbHiddenLayer'){ textIdx++; continue; }
       // item.transform = [scaleX, skewY, skewX, scaleY, tx, ty] in PDF coords (origin bottom-left, Y up)
       const [a, b, c, d, tx, ty] = item.transform;
       const fontSize = Math.sqrt(a*a + b*b);
@@ -1993,9 +2034,10 @@ async function pdfToSvg(arrayBuffer){
    300 DPI raster). Deze route kan dus geen stille fouten
    introduceren — hooguit een gemiste vector-kans.
    Bekende bewuste fallbacks: mesh-gradients, tiling patterns,
-   stencil-masks (svg:mask), verticale tekst, Type3-fonts,
-   verborgen Illustrator-lagen (SVGGraphics tekent álles, de
-   referentie niet → pixelverschil → raster).
+   stencil-masks (svg:mask), verticale tekst, Type3-fonts.
+   Verborgen Illustrator-lagen worden sinds v2.56.0 vóór SVGGraphics
+   uit de operator-lijst gefilterd (zelfde zichtbaarheid als de
+   pdf.js-referentie) — die blokkeren de route dus niet meer.
    ============================================================ */
 const HIFI_MAX_SVG_BYTES  = 8 * 1024 * 1024; // >8MB SVG → onpraktisch (opslag/export)
 const HIFI_DIFF_MAX_RATIO = 0.005;           // max 0,5% afwijkende pixels
@@ -2203,6 +2245,36 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
   const viewport = page.getViewport({ scale: 1 });
   const opList = await page.getOperatorList();
 
+  // Verborgen Illustrator-lagen (optional content, v2.56.0) wegfilteren
+  // vóórdat SVGGraphics tekent. SVGGraphics kent geen lagen en tekent
+  // anders álles — de pixelverificatie zou dat afvangen (raster-fallback),
+  // maar filteren op dezelfde zichtbaarheid als de pdf.js-referentie maakt
+  // deze bestanden gewoon vector-geschikt.
+  try{
+    const ocCfg = await pdf.getOptionalContentConfig();
+    const _OPS = pdfjsLib.OPS;
+    const fnA = [], argA = [];
+    let hid = 0, dropped = 0;
+    for(let i = 0; i < opList.fnArray.length; i++){
+      const fn = opList.fnArray[i], args = opList.argsArray[i];
+      if(fn === _OPS.beginMarkedContentProps){
+        if(hid > 0){ hid++; dropped++; continue; }
+        let vis = true;
+        try{ if(args && args[0] === 'OC' && args[1]) vis = ocCfg.isVisible(args[1]); }catch(_){ }
+        if(vis === false){ hid = 1; dropped++; continue; }
+      } else if(fn === _OPS.beginMarkedContent){
+        if(hid > 0){ hid++; dropped++; continue; }
+      } else if(fn === _OPS.endMarkedContent){
+        if(hid > 0){ hid--; dropped++; continue; }
+      } else if(hid > 0){ dropped++; continue; }
+      fnA.push(fn); argA.push(args);
+    }
+    if(dropped){
+      opList.fnArray = fnA; opList.argsArray = argA;
+      console.log(`[GSB HiFi] ${dropped} operator(en) uit verborgen lagen gefilterd`);
+    }
+  }catch(_){ }
+
   // forceDataSchema=true → afbeeldingen als data-URI i.p.v. blob-URL,
   // anders is de SVG na een pagina-refresh of projectopslag waardeloos
   const gfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs, /*forceDataSchema*/ true);
@@ -2332,6 +2404,13 @@ async function loadPdfAsImage(arrayBuffer, name){
           pdfSourceBuffers.set(objs[i]._originalId, bufferForExport);
           objs[i]._pdfPageW = _pdfPW;
           objs[i]._pdfPageH = _pdfPH;
+          // Lagen-detectie ook voor PATH A: mocht dit object ooit op de
+          // embedPdf-route belanden (svgSource kwijt), dan is raster daar
+          // het veilige pad — embedPdf zou verborgen lagen tonen.
+          try{
+            if(new TextDecoder('latin1').decode(bufferForExport).indexOf('/OCProperties') !== -1)
+              objs[i]._pdfHasLayers = true;
+          }catch(_){ }
           console.log(`[GSB] Stored PDF buffer for "${name}" (oid=${objs[i]._originalId}, page=${_pdfPW}×${_pdfPH})`);
           break;
         }
@@ -6066,6 +6145,181 @@ function collectAllSheetStats(){
   return stats;
 }
 
+/* =========================================================
+   DUNNE-LIJNEN-CHECK (v2.55)
+   ---------------------------------------------------------
+   DTF-wit wordt onbetrouwbaar onder ±0,4 mm lijndikte. Per uniek logo:
+   render op printformaat, erodeer het alpha-masker met 0,2 mm en meet
+   wat er wegvalt ("opening"). Waarschuwen bij >2% van het ontwerp óf
+   >3 mm² verloren detail. Cache per (logo, formaat); herberekent dus
+   automatisch na schalen. Resultaat in het Samenvatting-blok, klikbaar.
+   ========================================================= */
+const THIN_LINE_MM   = 0.5;  // praktijkgrens witlaag (op verzoek 0,5 i.p.v. 0,4)
+const THIN_PCT_LIMIT = 2.5;  // % dunner dan de drempel; gemeten marge boven de ruis (~2%) van gezonde logo's
+// NB: geen absolute mm²-grens — randruis schaalt met de omtrek en zou
+// grote logo's altijd onterecht vlaggen (gemeten: 26 mm² pure randruis
+// op een gezond logo van 12,5 cm)
+const THIN_MAX_PX    = 1400; // rendercap — hoog genoeg voor een zuivere 0,2mm-erosieradius
+const _thinCache = new Map();   // oid → { key, risk:{pct,mm2}|null }
+let _thinQueue = [];
+let _thinBusy = false;
+
+function _thinErodeOrDilate(m, w, h, r, erode){
+  // separabel; erode=true → minimum, anders maximum
+  const t = new Uint8Array(w*h), o = new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    let v = erode ? 1 : 0;
+    for(let d=-r; d<=r; d++){
+      const nx = x+d;
+      const px = (nx<0||nx>=w) ? 0 : m[y*w+nx];
+      if(erode){ if(!px){ v=0; break; } } else if(px){ v=1; break; }
+    }
+    t[y*w+x]=v;
+  }
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    let v = erode ? 1 : 0;
+    for(let d=-r; d<=r; d++){
+      const ny = y+d;
+      const px = (ny<0||ny>=h) ? 0 : t[ny*w+x];
+      if(erode){ if(!px){ v=0; break; } } else if(px){ v=1; break; }
+    }
+    o[y*w+x]=v;
+  }
+  return o;
+}
+
+function _thinCheckObject(sample){
+  try{
+    const mmW = sample._mmW || 1;
+    const dispW = Math.max(sample.width * (sample.scaleX||1), 1);
+    // Renderresolutie afgestemd op een EXACTE erosieradius: bij 10 px/mm is
+    // 0,2 mm precies 2 px, zodat de drempel exact 0,4 mm is. Afronding van
+    // de radius op andere resoluties verschoof de drempel naar 0,34–0,47 mm
+    // en gaf gemiste én valse waarschuwingen. Grote logo's (>220 mm) meten
+    // op 5 px/mm met radius 1 (zelfde exacte drempel).
+    // 0,25 mm radius exact in hele pixels: 8 px/mm → r=2 (drempel exact 0,5 mm)
+    let wantPxPerMm = 8, rWant = 2;
+    if(mmW * 8 > 2200){ wantPxPerMm = 4; rWant = 1; }
+    const targetPx = Math.round(mmW * wantPxPerMm);
+    const mult = targetPx / dispW;
+    const cnv = sample.toCanvasElement({ multiplier: Math.max(0.05, Math.min(mult, 12)) });
+    const w = cnv.width, h = cnv.height;
+    if(!w || !h) return null;
+    const pxPerMm = w / mmW;
+    const r = rWant;
+    const px = cnv.getContext('2d').getImageData(0,0,w,h).data;
+    const m = new Uint8Array(w*h);       // alle inkt
+    const mc = new Uint8Array(w*h);      // alleen gekleurde inkt (zonder puur wit)
+    let total = 0, totalC = 0, witPx = 0;
+    for(let i=0;i<w*h;i++){
+      if(px[i*4+3] > 40){
+        m[i]=1; total++;
+        const isWit = px[i*4] > 245 && px[i*4+1] > 245 && px[i*4+2] > 245;
+        if(isWit) witPx++;
+        else { mc[i]=1; totalC++; }
+      }
+    }
+    if(!total) return null;
+    // Wit-vlak-detectie: geverfd wit is bij DTF échte inkt (witte onderlaag
+    // + witte toplaag). Een groot puur-wit vlak in een aangeleverd bestand
+    // is vrijwel altijd een vergeten achtergrond — en maskeert bovendien de
+    // dunne-lijnen-meting omdat alles er in het masker aan vastkleeft.
+    const witFrac = witPx / total;
+    function opening(mask, tot){
+      if(!tot) return 0;
+      const er = _thinErodeOrDilate(mask, w, h, r, true);
+      const op = _thinErodeOrDilate(er, w, h, r, false);
+      let kept = 0;
+      for(let i=0;i<w*h;i++) if(op[i] && mask[i]) kept++;
+      return (tot - kept) / tot * 100;
+    }
+    // meet op ALLE inkt én op alleen-kleur: een wit vlak achter dunne
+    // gekleurde details mag die details niet onzichtbaar maken voor de check
+    const pctAll = opening(m, total);
+    const pctKleur = (totalC > total * 0.05) ? opening(mc, totalC) : 0;
+    const pct = Math.max(pctAll, pctKleur);
+    const risk = pct > THIN_PCT_LIMIT ? { pct } : null;
+    const whiteArea = witFrac > 0.25 ? { pct: witFrac * 100 } : null;
+    return (risk || whiteArea) ? { thin: risk, white: whiteArea } : null;
+  }catch(e){ console.warn('[GSB] dunne-lijnen-check mislukt:', e); return null; }
+}
+
+function _thinProcessQueue(){
+  if(_thinBusy) return;
+  const job = _thinQueue.shift();
+  if(!job) { _renderThinWarnings(); return; }
+  _thinBusy = true;
+  setTimeout(()=>{
+    const risk = _thinCheckObject(job.sample);
+    _thinCache.set(job.oid, { key: job.key, risk });
+    _thinBusy = false;
+    _thinProcessQueue();
+  }, 30);
+}
+
+let _thinDebounce = null;
+function _scheduleThinChecks(){
+  // debounce: meet pas als het canvas tot rust is gekomen — een meting
+  // tijdens plaatsen/slepen geeft een halfklare weergave en dus valse
+  // waarschuwingen
+  clearTimeout(_thinDebounce);
+  _thinDebounce = setTimeout(_runThinChecks, 1200);
+}
+function _runThinChecks(){
+  const seen = new Set();
+  canvas.getObjects().forEach(o=>{
+    if(!o._mmW) return;
+    const oid = o._originalId ?? o._id;
+    if(seen.has(oid)) return;
+    seen.add(oid);
+    const key = Math.round((o._mmW||0) * 5) + ':' + (o._recolored?1:0) + ':' + (o._rasterEdited?1:0);
+    const c = _thinCache.get(oid);
+    if(c && c.key === key) return;
+    if(!_thinQueue.some(j=>j.oid===oid)) _thinQueue.push({ oid, key, sample: o });
+  });
+  // cache opschonen voor verwijderde logo's
+  for(const oid of [..._thinCache.keys()]) if(!seen.has(oid)) _thinCache.delete(oid);
+  _thinProcessQueue();
+}
+function _renderThinWarnings(){
+  const el = document.getElementById('sumThinWarn');
+  if(!el) return;
+  const groups = new Map();
+  canvas.getObjects().forEach(o=>{
+    if(!o._mmW) return;
+    const oid = o._originalId ?? o._id;
+    if(!groups.has(oid)) groups.set(oid, o);
+  });
+  const warns = [];
+  for(const [oid, sample] of groups){
+    const c = _thinCache.get(oid);
+    if(c && c.risk){
+      if(c.risk.thin)  warns.push({ oid, name: sample._name || 'logo', soort: 'thin' });
+      if(c.risk.white) warns.push({ oid, name: sample._name || 'logo', soort: 'white' });
+    }
+  }
+  if(!warns.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='';
+  el.innerHTML = warns.map(wn =>
+    wn.soort === 'thin'
+      ? `<button type="button" class="thin-warn-row" data-oid="${wn.oid}">⚠ ${t('thinWarnPrefix')} <strong>${escapeHtml(wn.name)}</strong> ${t('thinWarnSuffix')}</button>`
+      : `<button type="button" class="thin-warn-row" data-oid="${wn.oid}">⚠ ${t('thinWarnPrefix')} <strong>${escapeHtml(wn.name)}</strong> ${t('whiteWarnSuffix')}</button>`
+  ).join('');
+  el.querySelectorAll('.thin-warn-row').forEach(btn=>{
+    btn.onclick = ()=>{
+      const oid = btn.dataset.oid;
+      const target = canvas.getObjects().find(o=>(o._originalId ?? o._id) == oid);
+      if(target){
+        canvas.setActiveObject(target);
+        state.selectedId = target._id;
+        canvas.requestRenderAll();
+        renderSelectedPanel();
+        renderItemList();
+      }
+    };
+  });
+}
+
 function updateSummary(){
   const s = collectAllSheetStats();
   document.getElementById('sumUnique').textContent = s.unique.size;
@@ -6079,6 +6333,8 @@ function updateSummary(){
   else if(s.midDpi > 0) dpiTxt = `⚠ ${s.midDpi} matig`;
   else dpiTxt = `✓ 300+`;
   document.getElementById('sumDpi').textContent = dpiTxt;
+  _scheduleThinChecks();
+
   const isDTF = SHEET_FORMATS[state.sheetFormat]?.isDTF;
   const sumLengthEl = document.getElementById('sumLength');
   if(isDTF){
@@ -7724,6 +7980,7 @@ window.gsbGetProjectData = function(){
     id: _currentProjectId,
     name: document.getElementById('projectTitleInput')?.value || 'Naamloos project',
     sheetFormat: state.sheetFormat,
+    rollLengthM: state.rollLengthM,
     canvasJson: canvas.toJSON(FABRIC_EXTRA_PROPS),
     logoCount: new Set(objs.map(o => o._originalId)).size,
     sheetCount: 1,
@@ -7771,6 +8028,7 @@ window.gsbImportProject = function(file){
         id: null,
         name: data.name || 'Geïmporteerd project',
         sheet_format: data.sheetFormat,
+        roll_length_m: data.rollLengthM,
         canvas_json: data.canvasJson,
       });
     } catch(e){
@@ -7811,6 +8069,29 @@ window.gsbLoadProject = function(project){
           o._svgSource = svgSourceStore.get(o._originalId);
         }
       });
+      // Rollengte herstellen (v2.55.1) — en ALTIJD defensief verlengen tot
+      // alle content past: oudere projecten sloegen de rollengte niet op,
+      // waardoor het vel op 1m stond terwijl logo's tot ver daarbuiten
+      // lagen — met een te korte drukproef/print als gevolg.
+      const fmtNow = SHEET_FORMATS[state.sheetFormat];
+      if(fmtNow && fmtNow.isDTF){
+        let needM = project.roll_length_m || 1;
+        let maxBottom = 0;
+        canvas.getObjects().forEach(o => {
+          if(!o._mmW) return;
+          const ang = ((o.angle || 0) % 360 + 360) % 360;
+          const visH = (Math.abs(ang - 90) < 1 || Math.abs(ang - 270) < 1) ? o._mmW : o._mmH;
+          maxBottom = Math.max(maxBottom, (o._mmTop || 0) + visH);
+        });
+        needM = Math.max(needM, Math.ceil(maxBottom / 1000 * 10) / 10);
+        if(needM > state.rollLengthM){
+          state.rollLengthM = needM;
+          state.sheet.h = needM * 1000;
+          const rli = document.getElementById('rollLengthInput');
+          if(rli) rli.value = needM;
+          resizeSheet();
+        }
+      }
       canvas.requestRenderAll();
       renderItemList();
       updateInfoBar();

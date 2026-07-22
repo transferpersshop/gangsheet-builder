@@ -554,21 +554,66 @@ async function _loadAdminStats(){
     `<div class="stat-card"><div class="sc-val">${c.val}</div><div class="sc-label">${c.label}</div></div>`
   ).join('')}</div>`;
 
-  // Company table
+  // Company table — sorteerbaar op elke kolom (v2.55)
+  _companyStatsData = companies;
   html += `<div style="height:1px;background:var(--border);margin:18px 0 14px"></div>`;
   html += `<h4 style="margin:0 0 10px;font-size:.82rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Per bedrijf</h4>`;
   if(companies.length === 0){
     html += `<p style="color:var(--muted);font-size:.85rem">Nog geen activiteit geregistreerd.</p>`;
-  } else {
-    html += `<table class="admin-table"><thead><tr><th>Bedrijf</th><th>Gangsheets</th><th>Logins</th><th>Laatste activiteit</th></tr></thead><tbody>`;
-    companies.forEach(c => {
-      const lastDate = c.lastActivity ? new Date(c.lastActivity).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
-      html += `<tr><td>${_esc(c.company)}</td><td><strong>${c.gangsheets}</strong></td><td>${c.logins}</td><td>${lastDate}</td></tr>`;
-    });
-    html += `</tbody></table>`;
+    container.innerHTML = html;
+    return;
   }
-
+  html += `<div id="companyStatsTable"></div>`;
   container.innerHTML = html;
+  _renderCompanyTable();
+}
+
+/* ── Sorteerbare bedrijventabel ── */
+var _companyStatsData = [];
+var _companySort = { col: 'gangsheets', dir: -1 };
+
+function _renderCompanyTable(){
+  const wrap = document.getElementById('companyStatsTable');
+  if(!wrap) return;
+  const cols = [
+    { key:'company',      label:'Bedrijf',            type:'str'  },
+    { key:'gangsheets',   label:'Gangsheets',         type:'num'  },
+    { key:'logins',       label:'Logins',             type:'num'  },
+    { key:'lastActivity', label:'Laatste activiteit', type:'date' },
+  ];
+  const s = _companySort;
+  const rows = [..._companyStatsData].sort((a, b) => {
+    let av = a[s.col], bv = b[s.col];
+    // dir 1 = oplopend, -1 = aflopend
+    if(s.col === 'company'){
+      av = (av||'').toLowerCase(); bv = (bv||'').toLowerCase();
+      return av < bv ? -s.dir : av > bv ? s.dir : 0;
+    }
+    if(s.col === 'lastActivity'){
+      av = av || ''; bv = bv || '';
+      return av < bv ? -s.dir : av > bv ? s.dir : 0;
+    }
+    return ((av||0) - (bv||0)) * s.dir;
+  });
+  let html = `<table class="admin-table"><thead><tr>` + cols.map(c => {
+    const active = s.col === c.key;
+    const arrow = active ? (s.dir === -1 ? ' ▼' : ' ▲') : '';
+    return `<th data-sort="${c.key}" style="cursor:pointer;user-select:none${active ? ';color:var(--primary)' : ''}">${c.label}${arrow}</th>`;
+  }).join('') + `</tr></thead><tbody>`;
+  rows.forEach(c => {
+    const lastDate = c.lastActivity ? new Date(c.lastActivity).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+    html += `<tr><td>${_esc(c.company)}</td><td><strong>${c.gangsheets}</strong></td><td>${c.logins}</td><td>${lastDate}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('th[data-sort]').forEach(th => {
+    th.onclick = () => {
+      const key = th.dataset.sort;
+      if(_companySort.col === key) _companySort.dir = -_companySort.dir;
+      else _companySort = { col: key, dir: key === 'company' ? 1 : -1 };
+      _renderCompanyTable();
+    };
+  });
 }
 
 /* ── HTML escape ── */
