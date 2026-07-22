@@ -1755,7 +1755,7 @@ async function pdfToSvg(arrayBuffer){
     if(pathCount >= PDF_MAX_SVG_PATHS){ tooManyPaths = true; }
   }
 
-  let firstFillSeen=false, clipCount=0;
+  let clipCount=0;
   const textFillColors=[]; // capture fill color at each showText call
 
   // Expand pdf.js 3.x batched constructPath operator
@@ -1874,22 +1874,19 @@ async function pdfToSvg(arrayBuffer){
       case OPS.setLineJoin: lineJoin=args[0]; break;
       case OPS.setMiterLimit: miterLimit=args[0]; break;
       // Path painting
-      case OPS.fill: {
-        if(!firstFillSeen && fillColor==='#ffffff'){
-          const m=pathD.trim().match(/^M([\d.-]+)\s+([\d.-]+)\s+L([\d.-]+)\s+([\d.-]+)\s+L([\d.-]+)\s+([\d.-]+)\s+L([\d.-]+)\s+([\d.-]+)\s+Z$/);
-          if(m){
-            const xs=[+m[1],+m[3],+m[5],+m[7]], ys=[+m[2],+m[4],+m[6],+m[8]];
-            if((Math.max(...xs)-Math.min(...xs))>=W*0.95 && (Math.max(...ys)-Math.min(...ys))>=H*0.95){
-              pathD=''; firstFillSeen=true; break;
-            }
-          }
-        }
-        firstFillSeen=true; emitPath(true,false,'nonzero'); break;
-      }
-      case OPS.eoFill: firstFillSeen=true; emitPath(true,false,'evenodd'); break;
+      // (v2.56.1) De oude regel "eerste witte paginavullende rechthoek =
+      // artboard-achtergrond → weggooien" is bewust verwijderd. Een geverfd
+      // wit (of gekleurd) achtervlak is een bewuste ontwerpkeuze en moet
+      // blijven staan — precies zoals de raster-route dat ook doet (die
+      // verwijdert alleen échte transparantie). De regel was bovendien
+      // willekeurig: hij raakte alleen 'fill', niet 'eoFill', waardoor
+      // identieke bestanden zich verschillend gedroegen. Grote witte
+      // vlakken krijgen wél de wit-inkt-waarschuwing in de samenvatting.
+      case OPS.fill: emitPath(true,false,'nonzero'); break;
+      case OPS.eoFill: emitPath(true,false,'evenodd'); break;
       case OPS.stroke: emitPath(false,true,null); break;
-      case OPS.fillStroke: firstFillSeen=true; emitPath(true,true,'nonzero'); break;
-      case OPS.eoFillStroke: firstFillSeen=true; emitPath(true,true,'evenodd'); break;
+      case OPS.fillStroke: emitPath(true,true,'nonzero'); break;
+      case OPS.eoFillStroke: emitPath(true,true,'evenodd'); break;
       case OPS.endPath: pathD=''; break;
       case OPS.closeStroke: pathD+='Z '; emitPath(false,true,null); break;
       // Clipping — skip full-page clip rectangles (they serve no purpose
