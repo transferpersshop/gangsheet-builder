@@ -6233,7 +6233,27 @@ function _thinCheckObject(sample){
     // meet op ALLE inkt én op alleen-kleur: een wit vlak achter dunne
     // gekleurde details mag die details niet onzichtbaar maken voor de check
     const pctAll = opening(m, total);
-    const pctKleur = (totalC > total * 0.05) ? opening(mc, totalC) : 0;
+    // Kleur-meting (v2.56.2): dunne gekleurde details tellen alleen mee als
+    // ze VRIJSTAAND zijn. Details die op dekkend geverfd wit liggen (bewust
+    // wit achtervlak, zoals GoGrip) worden volledig gedragen door de witte
+    // onderlaag — de choke van de witlaag speelt daar niet, dus geen risico.
+    // Semi-transparant wit (zoals het SR-bestand) is géén dekkende drager
+    // en telt niet als dekking — die bestanden blijven dus waarschuwen.
+    let pctKleur = 0;
+    if(totalC > total * 0.05){
+      const erC = _thinErodeOrDilate(mc, w, h, r, true);
+      const opC = _thinErodeOrDilate(erC, w, h, r, false);
+      const mw = new Uint8Array(w*h); // dekkend wit ink
+      let anyWit = false;
+      for(let i=0;i<w*h;i++){
+        if(px[i*4+3] > 200 && px[i*4] > 245 && px[i*4+1] > 245 && px[i*4+2] > 245){ mw[i]=1; anyWit = true; }
+      }
+      // iets uitdijen zodat details óp (de rand van) het witte vlak als gedekt tellen
+      const mwDil = anyWit ? _thinErodeOrDilate(mw, w, h, r, false) : mw;
+      let lostVrij = 0;
+      for(let i=0;i<w*h;i++) if(mc[i] && !opC[i] && !mwDil[i]) lostVrij++;
+      pctKleur = lostVrij / totalC * 100;
+    }
     const pct = Math.max(pctAll, pctKleur);
     const risk = pct > THIN_PCT_LIMIT ? { pct } : null;
     const whiteArea = witFrac > 0.25 ? { pct: witFrac * 100 } : null;
