@@ -1654,7 +1654,7 @@ function loadRaster(dataUrl, name, dpi){
       }
       placeImage(cropped, name, targetMmW, targetMmH, cw, ch);
       hideLogoLoading();
-    });
+    }, { pxPerMm: (dpi && dpi >= 72) ? dpi / 25.4 : 0 });
     // Revoke object URL to free memory
     if(dataUrl.startsWith('blob:')) URL.revokeObjectURL(dataUrl);
   }, { crossOrigin:'anonymous' });
@@ -2281,15 +2281,17 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
   // Tekst → contouren (gooit bij elke onzekerheid)
   const glyphs = _hifiOutlineText(svgEl, page.commonObjs);
 
-  // viewBox: zelfde uitsnede als de getoonde raster (repliceert de
-  // beslisregel van autoCropRaster: pas croppen vanaf 3% marge)
+  // viewBox: zelfde uitsnede als de getoonde raster. Dit MOET dezelfde
+  // beslisregel gebruiken als autoCropRaster, anders wijkt de vector-export
+  // af van de preview. pxBbox is op hetzelfde canvas en dezelfde schaal
+  // gemeten, dus dezelfde pxPerMm geldt.
   const { baseX, baseY, ow, oh, renderScale, pxBbox } = opts;
   let rx = 0, ry = 0, rw = ow, rh = oh;
   if(pxBbox && pxBbox.mxX >= pxBbox.mnX){
     const cropW = pxBbox.mxX - pxBbox.mnX + 1;
     const cropH = pxBbox.mxY - pxBbox.mnY + 1;
-    const skip = pxBbox.mnX < ow * 0.03 && pxBbox.mnY < oh * 0.03 &&
-                 cropW > ow * 0.94 && cropH > oh * 0.94;
+    const pxPerMm = renderScale * 72 / 25.4;
+    const skip = autocropBorderNegligible(pxBbox.mnX, pxBbox.mnY, pxBbox.mxX, pxBbox.mxY, ow, oh, pxPerMm);
     if(!skip && cropW > 0 && cropH > 0){ rx = pxBbox.mnX; ry = pxBbox.mnY; rw = cropW; rh = cropH; }
   }
   const vbX = baseX + rx / renderScale, vbY = baseY + ry / renderScale;
@@ -2583,9 +2585,15 @@ async function loadPdfAsImage(arrayBuffer, name){
         if(bd[(y*ow+x)*4+3] > 10){ if(x<mnX)mnX=x; if(x>mxX)mxX=x; if(y<mnY)mnY=y; if(y>mxY)mxY=y; }
       }
       if(mxX >= mnX){
+        // Canvas-pixels → PDF-punten. Bij content-aware render ligt de
+        // canvas-oorsprong niet op de pagina-oorsprong maar op de
+        // scan-offset; die moet erbij, anders staat de cropbox scheef en
+        // exporteert Track 2 het verkeerde stuk van het artboard.
+        const oX = useContentCrop ? cropOffsetX : 0;
+        const oY = useContentCrop ? cropOffsetY : 0;
         pdfCropBox = {
-          left: mnX / scale, right: (mxX + 1) / scale,
-          bottom: pdfPageH - (mxY + 1) / scale, top: pdfPageH - mnY / scale,
+          left: oX + mnX / scale, right: oX + (mxX + 1) / scale,
+          bottom: pdfPageH - oY - (mxY + 1) / scale, top: pdfPageH - oY - mnY / scale,
         };
         pxBbox = { mnX, mnY, mxX, mxY };
       }
@@ -2651,8 +2659,8 @@ async function loadPdfAsImage(arrayBuffer, name){
         cropped._pdfPageW = pdfPageW;
         cropped._pdfPageH = pdfPageH;
         hideLogoLoading();
-        console.log(`[GSB] PDF/AI "${name}" loaded${useContentCrop?' (content-aware)':''}: ${ow}×${oh}px, ${targetMmW.toFixed(1)}×${targetMmH.toFixed(1)}mm`);
-      });
+        console.log(`[GSB] PDF/AI "${name}" loaded${useContentCrop?' (content-aware)':''}: ${ow}×${oh}px, ${targetMmW.toFixed(1)}×${targetMmH.toFixed(1)}mm (crop ${(cw/ow*100).toFixed(1)}%×${(ch/oh*100).toFixed(1)}%)`);
+      }, { pxPerMm: scale * 72 / 25.4 });
     }, { crossOrigin:'anonymous' });
     /* gradient toast removed — color editor shows inline hint instead */
   } catch(err2){
@@ -2767,10 +2775,34 @@ function detectEmbeddedRaster(svgText){
   return maxW > 0 ? { w: maxW, h: maxH } : null;
 }
 
+/* Witrand (in mm) die we nog als anti-aliasing-ruis beschouwen. Alles
+   daarboven is echte loze ruimte en moet weg.
+
+   WAAROM ABSOLUUT EN NIET PROCENTUEEL (fix v2.56.3):
+   tot v2.56.2 gold een drempel van 3% van de paginabreedte. Die schaalt
+   mee met het artboard en is daardoor onbruikbaar voor print: op een
+   artboard van 247 mm is 3% ruim 7 mm. Een klantbestand met 247 mm
+   artboard en 239,4 mm inkt (1,6% witrand) bleef zo ongecropt staan —
+   de klant bestelde 24,7 cm en kreeg 24,0 cm bedrukking. Bij print telt
+   de absolute afwijking in mm, niet de verhouding tot het artboard. */
+const AUTOCROP_TOLERANCE_MM = 0.3;
+
+/* Is de gemeten transparante rand klein genoeg om te negeren?
+   Controleert alle VIER de zijden apart (de oude regel keek alleen naar
+   links/boven plus de totale breedte, waardoor een brede rand rechts kon
+   wegvallen tegen een smalle rand links).
+   pxPerMm onbekend → 3px, wat neerkomt op een pure anti-aliasing-rand. */
+function autocropBorderNegligible(minX, minY, maxX, maxY, w, h, pxPerMm){
+  const tolPx = (pxPerMm && pxPerMm > 0) ? AUTOCROP_TOLERANCE_MM * pxPerMm : 3;
+  return minX <= tolPx && minY <= tolPx &&
+         (w - 1 - maxX) <= tolPx && (h - 1 - maxY) <= tolPx;
+}
+
 /* Auto-crop: detect transparent bounding box and trim empty space.
    Works for both raster images and SVG groups.
+   opts.pxPerMm — canvasresolutie, bepaalt de tolerantie in pixels.
    Callback receives (croppedObj, newNaturalW, newNaturalH). */
-function autoCropRaster(obj, callback){
+function autoCropRaster(obj, callback, opts){
   // SVG groups are now cropped via autoCropSvg (viewBox adjustment) before Fabric loading
   if(obj.type !== 'image'){
     callback(obj, obj.width, obj.height);
@@ -2797,12 +2829,17 @@ function autoCropRaster(obj, callback){
       }
     }
   }
-  // Only crop if we'd remove at least 3% of the area on any side
+  // Croppen zodra de witrand groter is dan AUTOCROP_TOLERANCE_MM
   const cropW = maxX - minX + 1;
   const cropH = maxY - minY + 1;
-  const marginPct = 0.03;
-  if(minX < w * marginPct && minY < h * marginPct && cropW > w * (1-marginPct*2) && cropH > h * (1-marginPct*2)){
-    // Negligible transparent border — skip
+  const pxPerMm = (opts && opts.pxPerMm) || 0;
+  if(maxX < minX || maxY < minY){
+    // Volledig transparant — niets te croppen
+    callback(obj, w, h);
+    return;
+  }
+  if(autocropBorderNegligible(minX, minY, maxX, maxY, w, h, pxPerMm)){
+    // Verwaarloosbare rand (anti-aliasing) — overslaan, scheelt een re-encode
     callback(obj, w, h);
     return;
   }
@@ -2869,18 +2906,21 @@ function autoCropSvg(svgText, callback){
     }
     if(maxX < minX || maxY < minY){ callback(svgText); return; }
 
-    // Check if crop is significant (> 2% transparent border on any side)
-    const leftPct  = minX / renderW;
-    const topPct   = minY / renderH;
-    const rightPct = (renderW - 1 - maxX) / renderW;
-    const botPct   = (renderH - 1 - maxY) / renderH;
-    if(leftPct < 0.02 && topPct < 0.02 && rightPct < 0.02 && botPct < 0.02){
+    // Zelfde absolute drempel als autoCropRaster (v2.56.3). Was 2% van de
+    // rendergrootte, wat op grote formaten meerdere millimeters loze ruimte
+    // liet staan en dus te kleine bedrukking opleverde.
+    const _docMm = parseSvgDocSize(svgText);
+    const svgPxPerMm = (_docMm && _docMm.mmW > 0) ? renderW / _docMm.mmW : 0;
+    if(autocropBorderNegligible(minX, minY, maxX, maxY, renderW, renderH, svgPxPerMm)){
       callback(svgText); return;
     }
 
     // Map pixel bounds to viewBox coordinates — met kleine veiligheidsmarge
-    // (1,5%) zodat outlines/strokes op de rand nooit worden afgesneden
-    const safPx = Math.max(2, Math.round(Math.max(renderW, renderH) * 0.015));
+    // zodat outlines/strokes op de rand nooit worden afgesneden. Absoluut
+    // begrensd (was 1,5% van de render = ~3,7mm op een 247mm-bestand).
+    const safPx = svgPxPerMm > 0
+      ? Math.max(2, Math.round(AUTOCROP_TOLERANCE_MM * svgPxPerMm))
+      : Math.max(2, Math.round(Math.max(renderW, renderH) * 0.004));
     const sMinX = Math.max(0, minX - safPx), sMinY = Math.max(0, minY - safPx);
     const sMaxX = Math.min(renderW - 1, maxX + safPx), sMaxY = Math.min(renderH - 1, maxY + safPx);
     const cropVbX = vbX + (sMinX / renderW) * vbW;
