@@ -365,6 +365,19 @@ window.addEventListener('load', ()=>{
   .thin-warn-row{display:block;width:100%;text-align:left;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:8px;padding:8px 10px;font-size:.72rem;line-height:1.4;cursor:pointer;font-family:inherit}
   .thin-warn-row:hover{background:#fde68a}
   .thin-warn-row strong{word-break:break-word}
+  /* v2.56.4: gegroepeerde waarschuwing — 1 melding per soort, wegklikbaar */
+  .warn-group{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:8px;padding:8px 10px;font-size:.72rem;line-height:1.4}
+  .warn-head{display:flex;align-items:flex-start;gap:8px}
+  .warn-text{flex:1;min-width:0;text-align:left;background:none;border:none;padding:0;margin:0;color:inherit;font:inherit;line-height:1.4}
+  .warn-text strong{word-break:break-word}
+  .warn-link{cursor:pointer}
+  .warn-link:hover{text-decoration:underline}
+  .warn-close{flex:0 0 auto;background:none;border:none;color:#92400e;font-size:1rem;line-height:1;padding:0 2px;cursor:pointer;opacity:.65;font-family:inherit}
+  .warn-close:hover{opacity:1}
+  .warn-toggle{background:none;border:none;padding:4px 0 0;margin:0;color:#92400e;font:inherit;font-size:.68rem;font-weight:700;text-decoration:underline;cursor:pointer}
+  .warn-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .warn-item{background:#fde68a;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:3px 7px;font:inherit;font-size:.68rem;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .warn-item:hover{background:#fcd34d}
   .dpi-ok{background:#dcfce7;color:var(--success)}
   .dpi-warn{background:#fef3c7;color:var(--warn)}
   .dpi-bad{background:#fee2e2;color:var(--error)}
@@ -978,7 +991,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.56.3 · 27-07-2026</p>
+    <p class="version-tag">v2.56.4 · 29-07-2026</p>
   </div>
 </div>
 
@@ -1479,10 +1492,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.56.2"></script>
-<script src="./login-ui.js?v=2.56.2"></script>
-<script src="./app.js?v=2.56.2"></script>
-<script src="./text-editor.js?v=2.56.2"></script>
-<script src="./logo-editor.js?v=2.56.2"></script>
+<script src="./auth.js?v=2.56.4"></script>
+<script src="./login-ui.js?v=2.56.4"></script>
+<script src="./app.js?v=2.56.4"></script>
+<script src="./text-editor.js?v=2.56.4"></script>
+<script src="./logo-editor.js?v=2.56.4"></script>
 </body>
 </html>

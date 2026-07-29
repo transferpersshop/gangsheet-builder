@@ -15,6 +15,11 @@ const I18N = {
   nl: {
     /* ── v2.53: volledige editor-vertalingen ── */
     whiteWarnSuffix:'bevat een groot wit vlak dat als wítte inkt wordt meegeprint. Bedoeld? Zo niet: open de logo-editor en gebruik \'Verwijder wit\'.',
+    /* ── v2.56.4: gegroepeerde waarschuwingen ── */
+    warnGroupThinPrefix:(n)=>`${n} logo's vallen`, warnGroupWhitePrefix:(n)=>`${n} logo's bevatten`,
+    warnGroupThinSuffix:'onder de minimale 0,5 mm lijndikte — dunne details worden mogelijk niet (wit) geprint. Vergroot de logo\'s of maak lijnen dikker.',
+    warnGroupWhiteSuffix:'een groot wit vlak dat als wítte inkt wordt meegeprint. Bedoeld? Zo niet: open de logo-editor en gebruik \'Verwijder wit\'.',
+    warnShowList:'Toon welke logo\'s', warnHideList:'Verberg lijst', warnDismiss:'Melding sluiten',
     infoTipThin:'Minimale lijndikte', infoTipThinBody:'Houd lijnen, letters en details minimaal 0,5 mm dik op ware printgrootte. Dunner dan dat wordt de witte onderlaag van de DTF-print onbetrouwbaar. De builder waarschuwt automatisch als een logo hieronder komt — vergroot dan het logo of maak lijnen dikker.',
     thinWarnPrefix:'Let op:', thinWarnSuffix:'valt onder de minimale 0,5 mm lijndikte — dunne details worden mogelijk niet (wit) geprint. Vergroot het logo of maak lijnen dikker.',
     leWhiteBgRemovedToast:'Witte achtergrond verwijderd',
@@ -243,6 +248,11 @@ const I18N = {
   en: {
     /* ── v2.53: complete editor translations ── */
     whiteWarnSuffix:'contains a large white area that will be printed as white ink. Intended? If not: open the logo editor and use \'Remove white\'.',
+    /* ── v2.56.4: grouped warnings ── */
+    warnGroupThinPrefix:(n)=>`${n} logos fall`, warnGroupWhitePrefix:(n)=>`${n} logos contain`,
+    warnGroupThinSuffix:'below the minimum 0.5 mm line width — thin details may not print (in white). Enlarge the logos or thicken the lines.',
+    warnGroupWhiteSuffix:'a large white area that will be printed as white ink. Intended? If not: open the logo editor and use \'Remove white\'.',
+    warnShowList:'Show which logos', warnHideList:'Hide list', warnDismiss:'Dismiss warning',
     infoTipThin:'Minimum line width', infoTipThinBody:'Keep lines, letters and details at least 0.5 mm thick at true print size. Below that, the white underbase of the DTF print becomes unreliable. The builder warns automatically when a logo drops below this — enlarge the logo or thicken the lines.',
     thinWarnPrefix:'Warning:', thinWarnSuffix:'falls below the minimum 0.5 mm line width — thin details may not print (in white). Enlarge the logo or thicken the lines.',
     leWhiteBgRemovedToast:'White background removed',
@@ -6338,6 +6348,22 @@ function _runThinChecks(){
   for(const oid of [..._thinCache.keys()]) if(!seen.has(oid)) _thinCache.delete(oid);
   _thinProcessQueue();
 }
+/* v2.56.4: waarschuwingen worden per soort gegroepeerd — bij 30 logo's met
+   wit krijg je één melding i.p.v. 30. Wegklikken geldt voor de rest van de
+   sessie (per soort). */
+const _warnDismissed = { thin:false, white:false };
+const _warnExpanded  = { thin:false, white:false };
+
+function _selectLogoById(oid){
+  const target = canvas.getObjects().find(o=>(o._originalId ?? o._id) == oid);
+  if(!target) return;
+  canvas.setActiveObject(target);
+  state.selectedId = target._id;
+  canvas.requestRenderAll();
+  renderSelectedPanel();
+  renderItemList();
+}
+
 function _renderThinWarnings(){
   const el = document.getElementById('sumThinWarn');
   if(!el) return;
@@ -6347,33 +6373,46 @@ function _renderThinWarnings(){
     const oid = o._originalId ?? o._id;
     if(!groups.has(oid)) groups.set(oid, o);
   });
-  const warns = [];
+  const byType = { thin: [], white: [] };
   for(const [oid, sample] of groups){
     const c = _thinCache.get(oid);
-    if(c && c.risk){
-      if(c.risk.thin)  warns.push({ oid, name: sample._name || 'logo', soort: 'thin' });
-      if(c.risk.white) warns.push({ oid, name: sample._name || 'logo', soort: 'white' });
-    }
+    if(!c || !c.risk) continue;
+    const name = sample._name || 'logo';
+    if(c.risk.thin)  byType.thin.push({ oid, name });
+    if(c.risk.white) byType.white.push({ oid, name });
   }
-  if(!warns.length){ el.style.display='none'; el.innerHTML=''; return; }
+  const types = ['thin','white'].filter(k => byType[k].length && !_warnDismissed[k]);
+  if(!types.length){ el.style.display='none'; el.innerHTML=''; return; }
   el.style.display='';
-  el.innerHTML = warns.map(wn =>
-    wn.soort === 'thin'
-      ? `<button type="button" class="thin-warn-row" data-oid="${wn.oid}">⚠ ${t('thinWarnPrefix')} <strong>${escapeHtml(wn.name)}</strong> ${t('thinWarnSuffix')}</button>`
-      : `<button type="button" class="thin-warn-row" data-oid="${wn.oid}">⚠ ${t('thinWarnPrefix')} <strong>${escapeHtml(wn.name)}</strong> ${t('whiteWarnSuffix')}</button>`
-  ).join('');
-  el.querySelectorAll('.thin-warn-row').forEach(btn=>{
-    btn.onclick = ()=>{
-      const oid = btn.dataset.oid;
-      const target = canvas.getObjects().find(o=>(o._originalId ?? o._id) == oid);
-      if(target){
-        canvas.setActiveObject(target);
-        state.selectedId = target._id;
-        canvas.requestRenderAll();
-        renderSelectedPanel();
-        renderItemList();
-      }
-    };
+
+  el.innerHTML = types.map(k=>{
+    const list = byType[k];
+    const single = list.length === 1;
+    const body = single
+      ? `${t('thinWarnPrefix')} <strong>${escapeHtml(list[0].name)}</strong> ${t(k==='thin' ? 'thinWarnSuffix' : 'whiteWarnSuffix')}`
+      : `${t('thinWarnPrefix')} <strong>${t(k==='thin' ? 'warnGroupThinPrefix' : 'warnGroupWhitePrefix', list.length)}</strong> ${t(k==='thin' ? 'warnGroupThinSuffix' : 'warnGroupWhiteSuffix')}`;
+    const head = single
+      ? `<button type="button" class="warn-text warn-link" data-oid="${list[0].oid}">⚠ ${body}</button>`
+      : `<span class="warn-text">⚠ ${body}</span>`;
+    const toggle = single ? '' :
+      `<button type="button" class="warn-toggle" data-toggle="${k}">${_warnExpanded[k] ? t('warnHideList') : t('warnShowList')} (${list.length})</button>`;
+    const sub = (!single && _warnExpanded[k])
+      ? `<div class="warn-list">${list.map(w=>`<button type="button" class="warn-item" data-oid="${w.oid}">${escapeHtml(w.name)}</button>`).join('')}</div>`
+      : '';
+    return `<div class="warn-group">
+      <div class="warn-head">${head}<button type="button" class="warn-close" data-dismiss="${k}" title="${t('warnDismiss')}" aria-label="${t('warnDismiss')}">×</button></div>
+      ${toggle}${sub}
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-dismiss]').forEach(btn=>{
+    btn.onclick = ()=>{ _warnDismissed[btn.dataset.dismiss] = true; _renderThinWarnings(); };
+  });
+  el.querySelectorAll('[data-toggle]').forEach(btn=>{
+    btn.onclick = ()=>{ const k = btn.dataset.toggle; _warnExpanded[k] = !_warnExpanded[k]; _renderThinWarnings(); };
+  });
+  el.querySelectorAll('[data-oid]').forEach(btn=>{
+    btn.onclick = ()=> _selectLogoById(btn.dataset.oid);
   });
 }
 
