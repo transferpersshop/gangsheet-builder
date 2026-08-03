@@ -1772,20 +1772,50 @@ async function pdfToSvg(arrayBuffer){
   // Y-flip helper: converts PDF Y-up to SVG Y-down coordinates
   const yF = (y) => H - y;
 
+  // Current-point tracking (PDF coords, Y-up) — nodig voor curveTo2.
+  // KRITIEK (v2.56.5): PDF-operator `v` (curveTo2) betekent "eerste
+  // controlepunt = huidig punt". Het SVG-shorthand `S` betekent iets
+  // ánders: "eerste controlepunt = spiegeling van het vorige controle-
+  // punt". Na een gewone C-curve levert dat een verkeerd controlepunt
+  // op → rare punten/uitstulpingen in het pad (o.a. de N van KNMV).
+  // Daarom schrijven we curveTo2 nu uit als expliciete C met het
+  // huidige punt als eerste controlepunt. Bron: ISO 32000 §8.5.2.2.
+  let curX=0, curY=0, subX=0, subY=0;
+
   function expandConstructPath(ops,coords){
     let ci=0, d='';
     for(let j=0;j<ops.length;j++){
       const sub=ops[j];
       switch(sub){
-        case OPS.moveTo: d+=`M${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} `; ci+=2; break;
-        case OPS.lineTo: d+=`L${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} `; ci+=2; break;
-        case OPS.curveTo: d+=`C${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} ${fmtN(coords[ci+4])} ${fmtN(yF(coords[ci+5]))} `; ci+=6; break;
-        case OPS.curveTo2: d+=`S${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} `; ci+=4; break;
-        case OPS.curveTo3: d+=`C${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} `; ci+=4; break;
-        case OPS.closePath: d+='Z '; break;
+        case OPS.moveTo:
+          d+=`M${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} `;
+          curX=coords[ci]; curY=coords[ci+1]; subX=curX; subY=curY;
+          ci+=2; break;
+        case OPS.lineTo:
+          d+=`L${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} `;
+          curX=coords[ci]; curY=coords[ci+1];
+          ci+=2; break;
+        case OPS.curveTo:
+          d+=`C${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} ${fmtN(coords[ci+4])} ${fmtN(yF(coords[ci+5]))} `;
+          curX=coords[ci+4]; curY=coords[ci+5];
+          ci+=6; break;
+        case OPS.curveTo2:
+          // PDF `v`: cp1 = huidig punt, cp2 = (x2,y2), eind = (x3,y3)
+          d+=`C${fmtN(curX)} ${fmtN(yF(curY))} ${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} `;
+          curX=coords[ci+2]; curY=coords[ci+3];
+          ci+=4; break;
+        case OPS.curveTo3:
+          d+=`C${fmtN(coords[ci])} ${fmtN(yF(coords[ci+1]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} ${fmtN(coords[ci+2])} ${fmtN(yF(coords[ci+3]))} `;
+          curX=coords[ci+2]; curY=coords[ci+3];
+          ci+=4; break;
+        case OPS.closePath:
+          d+='Z ';
+          curX=subX; curY=subY;
+          break;
         case OPS.rectangle: {
           const rx=coords[ci],ry=coords[ci+1],rw=coords[ci+2],rh=coords[ci+3];
           d+=`M${fmtN(rx)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry+rh))} L${fmtN(rx)} ${fmtN(yF(ry+rh))} Z `;
+          curX=rx; curY=ry; subX=rx; subY=ry;
           ci+=4; break;
         }
         default: break;
@@ -1838,15 +1868,17 @@ async function pdfToSvg(arrayBuffer){
         break;
       }
       case OPS.constructPath: pathD+=expandConstructPath(args[0],args[1]); break;
-      case OPS.moveTo: pathD+=`M${fmtN(args[0])} ${fmtN(yF(args[1]))} `; break;
-      case OPS.lineTo: pathD+=`L${fmtN(args[0])} ${fmtN(yF(args[1]))} `; break;
-      case OPS.curveTo: pathD+=`C${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} ${fmtN(args[4])} ${fmtN(yF(args[5]))} `; break;
-      case OPS.curveTo2: pathD+=`S${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} `; break;
-      case OPS.curveTo3: pathD+=`C${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} `; break;
-      case OPS.closePath: pathD+='Z '; break;
+      case OPS.moveTo: pathD+=`M${fmtN(args[0])} ${fmtN(yF(args[1]))} `; curX=args[0]; curY=args[1]; subX=curX; subY=curY; break;
+      case OPS.lineTo: pathD+=`L${fmtN(args[0])} ${fmtN(yF(args[1]))} `; curX=args[0]; curY=args[1]; break;
+      case OPS.curveTo: pathD+=`C${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} ${fmtN(args[4])} ${fmtN(yF(args[5]))} `; curX=args[4]; curY=args[5]; break;
+      // PDF `v` (curveTo2): cp1 = huidig punt — expliciete C, géén SVG `S` (zie toelichting bij expandConstructPath)
+      case OPS.curveTo2: pathD+=`C${fmtN(curX)} ${fmtN(yF(curY))} ${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} `; curX=args[2]; curY=args[3]; break;
+      case OPS.curveTo3: pathD+=`C${fmtN(args[0])} ${fmtN(yF(args[1]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} ${fmtN(args[2])} ${fmtN(yF(args[3]))} `; curX=args[2]; curY=args[3]; break;
+      case OPS.closePath: pathD+='Z '; curX=subX; curY=subY; break;
       case OPS.rectangle: {
         const[rx,ry,rw,rh]=args;
         pathD+=`M${fmtN(rx)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry))} L${fmtN(rx+rw)} ${fmtN(yF(ry+rh))} L${fmtN(rx)} ${fmtN(yF(ry+rh))} Z `;
+        curX=rx; curY=ry; subX=rx; subY=ry;
         break;
       }
       // Colors
@@ -1898,7 +1930,7 @@ async function pdfToSvg(arrayBuffer){
       case OPS.fillStroke: emitPath(true,true,'nonzero'); break;
       case OPS.eoFillStroke: emitPath(true,true,'evenodd'); break;
       case OPS.endPath: pathD=''; break;
-      case OPS.closeStroke: pathD+='Z '; emitPath(false,true,null); break;
+      case OPS.closeStroke: pathD+='Z '; curX=subX; curY=subY; emitPath(false,true,null); break;
       // Clipping — skip full-page clip rectangles (they serve no purpose
       // in SVG and cause masking artifacts after autoCropSvg adjusts the viewBox)
       case OPS.clip: case OPS.eoClip:
