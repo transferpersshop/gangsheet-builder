@@ -1055,7 +1055,6 @@ function _updateSvgSourceAllColor(hexColor){
       if(sc && sc !== 'none') stop.setAttribute('stop-color', hexColor);
     });
     if(typeof window._gsbFlattenMonoLayers === 'function') window._gsbFlattenMonoLayers(doc);
-    if(typeof window._gsbFlattenMonoLayers === 'function') window._gsbFlattenMonoLayers(doc);
     _fabricObj._svgSource = new XMLSerializer().serializeToString(doc.documentElement);
     if(_fabricObj._originalId && typeof svgSourceStore !== 'undefined'){
       svgSourceStore.set(_fabricObj._originalId, _fabricObj._svgSource);

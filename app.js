@@ -3993,14 +3993,32 @@ function _flattenMonoLayers(doc){
       });
       return;
     }
-    // 2. Tekst-outline: twee paths met identieke d — de gestrookte (superset) winnen
+    // 2. Tekst-outline: twee paths die op DEZELFDE PLEK liggen met identieke d —
+    //    de gestrookte (superset) wint.
+    //    v2.56.6 FIX: de "plek" wordt bepaald door de HELE transform-keten tot
+    //    aan de root, niet alleen door het transform-attribuut op de <path>
+    //    zelf. pdfToSvg zet de positie van elke glyph namelijk op een ouder-<g>
+    //    (`<g transform="matrix(1,0,0,1,x,y)"><path d="M0 ..."/></g>`), zodat
+    //    twee identieke letters op verschillende posities beide géén eigen
+    //    transform hebben. Die werden hierdoor als duplicaat gewist — zichtbaar
+    //    als verdwenen letters na "Maak wit"/"Maak zwart" (2e N + 2e T in
+    //    INTENTION, 2e E in EVENTS).
+    const _trChain = (el) => {
+      const parts = [];
+      for(let n = el; n && n !== root && n.nodeType === 1; n = n.parentNode){
+        const tr = n.getAttribute('transform');
+        if(tr) parts.push(tr.replace(/\s+/g,' ').trim());
+      }
+      return parts.join('|');
+    };
     const paths = [...root.querySelectorAll('path')];
+    const places = paths.map(_trChain);
     for(let i = 0; i < paths.length; i++){
       for(let j = i + 1; j < paths.length; j++){
         const a = paths[i], b = paths[j];
         if(!a.parentNode || !b.parentNode) continue;
+        if(places[i] !== places[j]) continue;   // andere plek → geen duplicaat
         if(a.getAttribute('d') === b.getAttribute('d') &&
-           (a.getAttribute('transform') || '') === (b.getAttribute('transform') || '') &&
            (a.getAttribute('fill') || '') === (b.getAttribute('fill') || '')){
           const aStroked = a.getAttribute('stroke') && a.getAttribute('stroke') !== 'none';
           const bStroked = b.getAttribute('stroke') && b.getAttribute('stroke') !== 'none';
@@ -6235,6 +6253,10 @@ function collectAllSheetStats(){
    ========================================================= */
 const THIN_LINE_MM   = 0.5;  // praktijkgrens witlaag (op verzoek 0,5 i.p.v. 0,4)
 const THIN_PCT_LIMIT = 2.5;  // % dunner dan de drempel; gemeten marge boven de ruis (~2%) van gezonde logo's
+// v2.56.6: wit-vlak-waarschuwing uitgezet op verzoek. De wit-METING blijft staan
+// (die stuurt ook de dunne-lijnen-meting); alleen de melding aan de gebruiker
+// vervalt. Op true zetten brengt de waarschuwing terug.
+const WHITE_AREA_WARN = false;
 // NB: geen absolute mm²-grens — randruis schaalt met de omtrek en zou
 // grote logo's altijd onterecht vlaggen (gemeten: 26 mm² pure randruis
 // op een gezond logo van 12,5 cm)
@@ -6338,7 +6360,7 @@ function _thinCheckObject(sample){
     }
     const pct = Math.max(pctAll, pctKleur);
     const risk = pct > THIN_PCT_LIMIT ? { pct } : null;
-    const whiteArea = witFrac > 0.25 ? { pct: witFrac * 100 } : null;
+    const whiteArea = (WHITE_AREA_WARN && witFrac > 0.25) ? { pct: witFrac * 100 } : null;
     return (risk || whiteArea) ? { thin: risk, white: whiteArea } : null;
   }catch(e){ console.warn('[GSB] dunne-lijnen-check mislukt:', e); return null; }
 }
