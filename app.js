@@ -1961,6 +1961,17 @@ async function pdfToSvg(arrayBuffer){
       case OPS.paintInlineImageXObject:
       case OPS.paintInlineImageXObjectGroup:
       case OPS.paintImageXObjectRepeat:
+      // v2.56.7 FIX: stencil-masks (/ImageMask true in de PDF) zijn OOK
+      // afbeeldingen. pdf.js levert die als paintImageMask*-operators en
+      // die ontbraken hier. Gevolg: pdfToSvg zag zo'n bestand als "puur
+      // vector" (PATH A), terwijl de bitmap niet in de SVG terechtkomt —
+      // het logo verdween zonder melding. Illustrator maakt een stencil-
+      // mask van elk 1-bits zwart-wit beeld, dus dit komt vaak voor bij
+      // ingescande/getracede klantlogo's.
+      case OPS.paintImageMaskXObject:
+      case OPS.paintImageMaskXObjectGroup:
+      case OPS.paintImageMaskXObjectRepeat:
+      case OPS.paintSolidColorImageMask:
         hasImages=true;
         break;
       // Gradient shading fill — just flag it, don't try to extract colors
@@ -3987,7 +3998,11 @@ function _flattenMonoLayers(doc){
     if(og && og.parentNode === root){
       [...root.children].forEach(ch => {
         const tag = ch.nodeName.toLowerCase();
-        if(ch !== og && tag !== 'defs' && tag !== 'metadata' && tag !== 'title' && tag !== 'style'){
+        // v2.56.7: clipPath/mask/pattern staan bij pdfToSvg op root-niveau
+        // (niet in <defs>). Weggooien maakt de clip-verwijzing van de
+        // outline-groep ongeldig → lege clip → alles onzichtbaar.
+        if(ch !== og && tag !== 'defs' && tag !== 'metadata' && tag !== 'title' && tag !== 'style' &&
+           tag !== 'clippath' && tag !== 'mask' && tag !== 'pattern' && tag !== 'marker' && tag !== 'symbol'){
           root.removeChild(ch);
         }
       });
@@ -4011,7 +4026,22 @@ function _flattenMonoLayers(doc){
       }
       return parts.join('|');
     };
-    const paths = [...root.querySelectorAll('path')];
+    // v2.56.7 FIX: vergelijk alleen ZICHTBARE, tekenende paden. Een pad
+    // binnen <defs>/<clipPath>/<mask>/<pattern>/<marker>/<symbol> tekent
+    // niets — het definieert een vorm. Illustrator zet per artboard-laag
+    // een clip-rechthoek neer, dus twee <clipPath>'s met exact hetzelfde
+    // pad zijn eerder regel dan uitzondering. Die werden hier als
+    // "duplicaat" gezien en de tweede clipPath bleef LEEG achter — en een
+    // lege clipPath clipt ALLES weg: alle content in die groep verdween na
+    // "Maak wit"/"Maak zwart" (o.a. het woordmerk van west-aan-zee).
+    const NON_RENDER = /^(defs|clippath|mask|pattern|marker|symbol)$/;
+    const isRendered = (el) => {
+      for(let n = el.parentNode; n && n.nodeType === 1 && n !== root; n = n.parentNode){
+        if(NON_RENDER.test(n.nodeName.toLowerCase().replace(/^.*:/, ''))) return false;
+      }
+      return true;
+    };
+    const paths = [...root.querySelectorAll('path')].filter(isRendered);
     const places = paths.map(_trChain);
     for(let i = 0; i < paths.length; i++){
       for(let j = i + 1; j < paths.length; j++){
