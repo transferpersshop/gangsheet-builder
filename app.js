@@ -2325,6 +2325,32 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
     }
   }catch(_){ }
 
+  // v2.56.8 GUARD: geen enkele ingesloten afbeelding door de vectorroute.
+  // SVGGraphics kan een beeld dat pdf.js als ImageBitmap heeft klaargezet
+  // niet tekenen. Bij een gewone afbeelding levert dat nog een <image> op
+  // (die de guard verderop afvangt), maar bij een STENCIL-MASK
+  // (/ImageMask true) laat SVGGraphics de operator stilzwijgend vallen:
+  // geen <image>, geen <mask>, helemaal niets. De guards zien dan niets
+  // verdachts, en de pixelverificatie mist het zodra de referentie-render
+  // dezelfde beperking heeft. Wat overblijft is een "geverifieerde" SVG
+  // zónder dat logo — en die wordt daarna de bron voor de PDF-export
+  // (Track 1) én voor de logo-editor. Vandaar: zodra de zichtbare
+  // operator-lijst een afbeelding bevat, stoppen we hier. Het bestand valt
+  // dan terug op embedPdf/raster, waar de bitmap wél in zit.
+  {
+    const _IOPS = pdfjsLib.OPS;
+    const IMAGE_OPS = new Set([
+      _IOPS.paintImageXObject, _IOPS.paintInlineImageXObject,
+      _IOPS.paintInlineImageXObjectGroup, _IOPS.paintImageXObjectRepeat,
+      _IOPS.paintImageMaskXObject, _IOPS.paintImageMaskXObjectGroup,
+      _IOPS.paintImageMaskXObjectRepeat, _IOPS.paintSolidColorImageMask,
+    ].filter(v => v !== undefined));
+    for(const fn of opList.fnArray){
+      if(IMAGE_OPS.has(fn))
+        throw new Error('bevat een ingesloten afbeelding/stencil-mask → embedPdf/raster is de veilige route');
+    }
+  }
+
   // forceDataSchema=true → afbeeldingen als data-URI i.p.v. blob-URL,
   // anders is de SVG na een pagina-refresh of projectopslag waardeloos
   const gfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs, /*forceDataSchema*/ true);
