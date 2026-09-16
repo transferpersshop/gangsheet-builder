@@ -2022,7 +2022,11 @@ async function pdfToSvg(arrayBuffer){
           .replace(/PSMT$/, '')
           .replace(/MT$/, '')
           .trim();
-        if(baseName) fontFamily = `"${baseName}", sans-serif`;
+        // v2.57.0: ENKELE aanhalingstekens. Dubbele quotes binnen een
+        // XML-attribuut dat zelf met dubbele quotes staat, maken de SVG
+        // ongeldig ("attributes construct error") — de strikte parser in de
+        // export struikelde daarover. CSS accepteert beide vormen.
+        if(baseName) fontFamily = `'${baseName}', sans-serif`;
       }
       const fontWeight = isBold ? ' font-weight="700"' : '';
       const fontStyle = isItalic ? ' font-style="italic"' : '';
@@ -2040,6 +2044,36 @@ async function pdfToSvg(arrayBuffer){
     console.warn('[GSB] pdfToSvg: text extraction failed:', e);
   }
 
+  // ── Openstaande <g> sluiten (v2.57.0) ───────────────────────────────
+  // Een PDF mag een transform (cm) doen zonder omringende q/Q — cairo doet
+  // dat standaard met de y-flip aan het begin van de pagina. pdfToSvg opent
+  // dan wél een <g transform="…"> maar krijgt nooit de bijbehorende restore,
+  // dus de SVG-string eindigt met een ongesloten groep.
+  //
+  // Waarom dat lang onzichtbaar bleef: fabric's parser is tolerant en zette
+  // het logo gewoon goed op het canvas. De PDF-export parseert de bron
+  // stríkt (DOMParser met 'image/svg+xml'), kreeg een parse error, en viel
+  // terug op raster. Resultaat: op het scherm vector, in de PDF een bitmap —
+  // zonder dat iemand een foutmelding zag.
+  {
+    let openG = 0;
+    for(const el of elements){
+      if(/^<g[\s>]/.test(el)) openG++;
+      else if(el === '</g>') openG--;
+    }
+    if(openG > 0){
+      console.warn(`[GSB] pdfToSvg: ${openG} niet-gesloten <g> aangevuld (PDF met cm zonder q/Q)`);
+      for(let i = 0; i < openG; i++) elements.push('</g>');
+    } else if(openG < 0){
+      console.warn(`[GSB] pdfToSvg: ${-openG} overtollige </g> verwijderd`);
+      for(let i = 0; i < -openG; i++){
+        const j = elements.lastIndexOf('</g>');
+        if(j === -1) break;
+        elements.splice(j, 1);
+      }
+    }
+  }
+
   // Build SVG — coordinates are already converted from PDF (Y-up) to SVG (Y-down)
   const svgText=[
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmtN(W)} ${fmtN(H)}" width="${fmtN(W)}pt" height="${fmtN(H)}pt">`,
@@ -2047,6 +2081,15 @@ async function pdfToSvg(arrayBuffer){
     ...textElements,
     '</svg>'
   ].join('\n');
+
+  // Strikte controle: de export parseert deze bron met DOMParser en valt bij
+  // een fout stilzwijgend terug op raster. Liever hier luid klagen.
+  try {
+    const _chk = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    const _err = _chk.querySelector('parsererror');
+    if(_err) console.error('[GSB] pdfToSvg: ONGELDIGE SVG — export valt terug op raster:',
+                           _err.textContent.replace(/\s+/g, ' ').slice(0, 200));
+  } catch(_){ }
 
   const hasText = textElements.length > 0 || textFillColors.length > 0;
   console.log(`[GSB] pdfToSvg: ${pathCount} paths, ${textElements.length} text items, hasText=${hasText}, hasGradients=${hasGradients}, hasImages=${hasImages}, tooManyPaths=${tooManyPaths}, SVG ${svgText.length} chars`);
@@ -2093,6 +2136,9 @@ const HIFI_MAX_SVG_BYTES  = 8 * 1024 * 1024; // >8MB SVG → onpraktisch (opslag
 const HIFI_DIFF_MAX_RATIO = 0.005;           // max 0,5% afwijkende pixels
 const HIFI_DIFF_CHANNEL   = 40;              // kanaalverschil vanaf wanneer een pixel 'afwijkt'
 const HIFI_CMP_MAX_PX     = 1600;            // vergelijkingsresolutie (langste zijde) — hoog genoeg om AA-randruis onder de drempel te houden bij tekstrijke bestanden
+const HIFI_MASK_DPI       = 300;             // resolutie waarop een stencil-mask wordt vastgelegd
+const HIFI_MASK_MAX_PX    = 4000;            // cap op de scherpe render van het maskgebied
+const HIFI_MASK_SCAN_PX   = 600;             // lage-res zoekpass om het maskgebied af te bakenen
 
 /* Zet alle <text>/<tspan> elementen in de SVGGraphics-uitvoer om naar
    <path> contouren met opentype.js. Gooit een Error zodra iets niet
@@ -2197,6 +2243,207 @@ function _hifiOutlineText(svgRoot, commonObjs){
   return glyphCount;
 }
 
+/* ── Stencil-masks omzetten naar gewone <image>-elementen (v2.56.9) ──
+   SVGGraphics geeft een PDF-afbeelding met /ImageMask true terug als
+   <mask><image/></mask> plus een <rect fill="kleur" mask="url(#…)"/>.
+   Dat rendert prima in een browser, maar svg2pdf kent <mask> niet en laat
+   het hele blok vallen — de bitmap verdween dan uit de export terwijl de
+   rest van het bestand wél vector was.
+
+   Deze stap bakt zo'n mask één keer plat tot een gewone <image> met een
+   data-URI (die neemt svg2pdf wél mee, mits via xlink:href). De vectorpaden
+   in hetzelfde bestand blijven dus gewoon vector.
+
+   De plaatsing wordt niet uitgerekend maar gemeten: het gemaskeerde element
+   wordt in isolatie gerenderd, de zichtbare bbox opgemeten, en het
+   resultaat teruggezet met de inverse van de ouder-CTM. Zo hoeft deze code
+   niets te weten van maskUnits, geneste transforms of de y-flip van PDF. */
+async function _hifiRenderSvgToCanvas(svgText, w, h){
+  // Blob-URL i.p.v. een base64 data-URI: btoa(unescape(encodeURIComponent(…)))
+  // over enkele megabytes SVG kost het dubbele en levert niets extra's op.
+  const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image();
+    await new Promise((res, rej)=>{
+      img.onload = res;
+      img.onerror = ()=>rej(new Error('deel-SVG rendert niet'));
+      img.src = url;
+    });
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w));
+    c.height = Math.max(1, Math.round(h));
+    c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function _hifiBakeMasks(svgRoot){
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const XLINK = 'http://www.w3.org/1999/xlink';
+  const doc = svgRoot.ownerDocument;
+
+  const masked = [...svgRoot.querySelectorAll('[mask]')].filter(el=>{
+    const m = /url\(#([^)]+)\)/.exec(el.getAttribute('mask') || '');
+    return m && svgRoot.querySelector('mask[id="' + m[1] + '"]');
+  });
+  if(!masked.length) return 0;
+
+  const vb = (svgRoot.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if(vb.length !== 4 || vb.some(v => !isFinite(v)))
+    throw new Error('geen bruikbare viewBox voor mask-bake');
+  const [vbX, vbY, vbW, vbH] = vb;
+
+  let scale = HIFI_MASK_DPI / 72;
+  if(Math.max(vbW, vbH) * scale > HIFI_MASK_MAX_PX) scale = HIFI_MASK_MAX_PX / Math.max(vbW, vbH);
+
+  // Meet-DOM: viewport == viewBox, zodat getCTM in viewBox-eenheden rekent.
+  const host = doc.createElement('div');
+  host.setAttribute('style', 'position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden');
+  doc.body.appendChild(host);
+  try {
+    const measure = svgRoot.cloneNode(true);
+    measure.setAttribute('width', String(vbW));
+    measure.setAttribute('height', String(vbH));
+    host.appendChild(measure);
+
+    const all  = [...svgRoot.querySelectorAll('*')];
+    const allM = [...measure.querySelectorAll('*')];
+    if(all.length !== allM.length) throw new Error('mask-bake: DOM-kopie loopt niet synchroon');
+
+    let baked = 0;
+    for(const el of masked){
+      const idx = all.indexOf(el);
+      const elM = allM[idx];
+      if(idx < 0 || !elM) throw new Error('mask-bake: element niet terug te vinden');
+
+      // Solo-render: alleen dit element tekenen; definities blijven staan.
+      const solo = svgRoot.cloneNode(true);
+      solo.setAttribute('width', String(vbW));
+      solo.setAttribute('height', String(vbH));
+      // LET OP: soloAll moet dezelfde index-volgorde houden als `all`, dus
+      // eerst het doelelement vastpakken en pas daarna opschonen.
+      const soloAll = [...solo.querySelectorAll('*')];
+      const keep = new Set();
+      for(let n = soloAll[idx]; n && n !== solo; n = n.parentNode) keep.add(n);
+      // Andere mask-definities weggooien: die dragen elk hun eigen (grote)
+      // data-URI, en per solo-render serialiseren we de hele boom.
+      const usedId = /url\(#([^)]+)\)/.exec(el.getAttribute('mask'))[1];
+      for(const m of [...solo.querySelectorAll('mask')])
+        if(m.getAttribute('id') !== usedId && !keep.has(m)) m.parentNode.removeChild(m);
+      for(const n of soloAll){
+        if(keep.has(n) || !n.parentNode) continue;
+        if(n.closest('defs, mask, clipPath, pattern, marker, symbol')) continue;
+        if(keep.has(n.parentNode) || n.parentNode === solo) n.parentNode.removeChild(n);
+      }
+
+      // PASS 1 — grof zoeken waar dit element staat, op lage resolutie.
+      // getImageData over een volledige 300 DPI-pagina kost ruim een seconde;
+      // op ~600px is dat verwaarloosbaar en even nauwkeurig genoeg om het
+      // gebied af te bakenen.
+      const soloTxt = new XMLSerializer().serializeToString(solo);
+      const scanScale = Math.min(1, HIFI_MASK_SCAN_PX / Math.max(vbW, vbH));
+      const scan = await _hifiRenderSvgToCanvas(soloTxt, vbW * scanScale, vbH * scanScale);
+      const spx = scan.getContext('2d', { willReadFrequently: true })
+                      .getImageData(0, 0, scan.width, scan.height).data;
+      let mnX = scan.width, mnY = scan.height, mxX = -1, mxY = -1;
+      for(let y = 0; y < scan.height; y++) for(let x = 0; x < scan.width; x++){
+        if(spx[(y * scan.width + x) * 4 + 3] > 2){
+          if(x<mnX)mnX=x; if(x>mxX)mxX=x; if(y<mnY)mnY=y; if(y>mxY)mxY=y;
+        }
+      }
+      if(mxX < mnX){ el.parentNode.removeChild(el); continue; } // niets zichtbaar
+
+      // Marge van 2 scanpixels zodat anti-aliasing aan de rand niet wegvalt.
+      // De marge is transparant en verschuift niets: de <image> krijgt exact
+      // deze rechthoek als plaatsing mee.
+      const bx = Math.max(vbX,       vbX + (mnX - 2) / scanScale);
+      const by = Math.max(vbY,       vbY + (mnY - 2) / scanScale);
+      const bxe = Math.min(vbX + vbW, vbX + (mxX + 3) / scanScale);
+      const bye = Math.min(vbY + vbH, vbY + (mxY + 3) / scanScale);
+      const bwU = bxe - bx, bhU = bye - by;
+      if(!(bwU > 0 && bhU > 0)) { el.parentNode.removeChild(el); continue; }
+
+      // PASS 2 — alleen dat gebied scherp renderen, door de viewBox erop te
+      // zetten. Het canvas is meteen de uitsnede, dus geen tweede scan nodig.
+      solo.setAttribute('viewBox', `${bx} ${by} ${bwU} ${bhU}`);
+      solo.setAttribute('width',  String(bwU));
+      solo.setAttribute('height', String(bhU));
+      solo.setAttribute('preserveAspectRatio', 'none');
+      const crop = await _hifiRenderSvgToCanvas(
+        new XMLSerializer().serializeToString(solo), bwU * scale, bhU * scale);
+
+      const ctm = elM.parentNode && elM.parentNode.getCTM && elM.parentNode.getCTM();
+      if(!ctm) throw new Error('mask-bake: geen CTM beschikbaar');
+      const inv = ctm.inverse();
+
+      const image = doc.createElementNS(SVGNS, 'image');
+      image.setAttribute('x', String(bx));
+      image.setAttribute('y', String(by));
+      image.setAttribute('width',  String(bwU));
+      image.setAttribute('height', String(bhU));
+      image.setAttribute('transform', `matrix(${inv.a} ${inv.b} ${inv.c} ${inv.d} ${inv.e} ${inv.f})`);
+      // svg2pdf 2.2.0 leest UITSLUITEND xlink:href — een kaal href negeert het.
+      image.setAttributeNS(XLINK, 'xlink:href', crop.toDataURL('image/png'));
+      const fill = el.getAttribute('fill') || '#000000';
+      image.setAttribute('fill', fill);               // draagt de kleur mee voor "Maak wit"
+      image.setAttribute('data-gsb-bakedfill', fill); // kleur die NU in de png zit
+      el.parentNode.replaceChild(image, el);
+      baked++;
+    }
+
+    for(const m of [...svgRoot.querySelectorAll('mask')]) m.parentNode.removeChild(m);
+    return baked;
+  } finally {
+    host.remove();
+  }
+}
+
+/* Kleurwijzigingen doorvoeren in een gebakken mask-<image>. "Maak wit" en de
+   kleurkiezer zetten alleen het fill-attribuut (dat is synchroon werk); de
+   pixels zelf kleuren we hier bij, vlak vóór de export. RGB wordt vervangen,
+   de alpha blijft — precies wat _monoRasterInPlace op het canvas doet. */
+async function _applyBakedImageColors(svgText){
+  if(!svgText || svgText.indexOf('data-gsb-bakedfill') === -1) return svgText;
+  try {
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    if(doc.querySelector('parsererror')) return svgText;
+    const XLINK = 'http://www.w3.org/1999/xlink';
+    let changed = false;
+    for(const im of [...doc.querySelectorAll('image[data-gsb-bakedfill]')]){
+      const want = (im.getAttribute('fill') || '').trim().toLowerCase();
+      const have = (im.getAttribute('data-gsb-bakedfill') || '').trim().toLowerCase();
+      if(!want || want === have) continue;
+      if(!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(want)) continue; // geen hex → laten staan
+      const rgb = hexToRgb(want);
+      if(!rgb || !isFinite(rgb.r) || !isFinite(rgb.g) || !isFinite(rgb.b)) continue;
+      const href = im.getAttributeNS(XLINK, 'href') || im.getAttribute('href');
+      if(!href || href.indexOf('data:image/') !== 0) continue;
+      const el = new Image();
+      await new Promise((res, rej)=>{ el.onload = res; el.onerror = rej; el.src = href; });
+      const c = document.createElement('canvas');
+      c.width = el.naturalWidth; c.height = el.naturalHeight;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(el, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      const p = d.data;
+      for(let i = 0; i < p.length; i += 4){
+        if(p[i+3] < 5) continue;
+        p[i] = rgb.r; p[i+1] = rgb.g; p[i+2] = rgb.b;
+      }
+      ctx.putImageData(d, 0, 0);
+      im.setAttributeNS(XLINK, 'xlink:href', c.toDataURL('image/png'));
+      im.setAttribute('data-gsb-bakedfill', want);
+      changed = true;
+    }
+    return changed ? new XMLSerializer().serializeToString(doc.documentElement) : svgText;
+  } catch(e){
+    console.warn('[GSB] _applyBakedImageColors faalde:', e);
+    return svgText;
+  }
+}
+
 /* Pure pixelvergelijking van twee RGBA-buffers (op wit gecomposeerd).
    Met 1px-buurtolerantie: anti-aliasing- en font-hinting-verschillen
    verschuiven randpixels hooguit één positie — die tellen niet mee.
@@ -2290,7 +2537,13 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
   const t0 = performance.now();
   // fontExtraProperties: nodig om bij de herbouwde fontdata te kunnen
   // voor de tekst→contouren-omzetting
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, fontExtraProperties: true }).promise;
+  // isOffscreenCanvasSupported:false is KRITIEK. Staat het aan, dan zet pdf.js
+  // beelden klaar als ImageBitmap en kan SVGGraphics een stencil-mask niet
+  // tekenen — het laat de operator dan stilzwijgend vallen (v2.56.8-bug).
+  // Uit betekent ImageData, en dan levert SVGGraphics wél <mask>+<image>.
+  const pdf = await pdfjsLib.getDocument({
+    data: arrayBuffer, fontExtraProperties: true, isOffscreenCanvasSupported: false
+  }).promise;
   const page = await pdf.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
   const opList = await page.getOperatorList();
@@ -2325,32 +2578,6 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
     }
   }catch(_){ }
 
-  // v2.56.8 GUARD: geen enkele ingesloten afbeelding door de vectorroute.
-  // SVGGraphics kan een beeld dat pdf.js als ImageBitmap heeft klaargezet
-  // niet tekenen. Bij een gewone afbeelding levert dat nog een <image> op
-  // (die de guard verderop afvangt), maar bij een STENCIL-MASK
-  // (/ImageMask true) laat SVGGraphics de operator stilzwijgend vallen:
-  // geen <image>, geen <mask>, helemaal niets. De guards zien dan niets
-  // verdachts, en de pixelverificatie mist het zodra de referentie-render
-  // dezelfde beperking heeft. Wat overblijft is een "geverifieerde" SVG
-  // zónder dat logo — en die wordt daarna de bron voor de PDF-export
-  // (Track 1) én voor de logo-editor. Vandaar: zodra de zichtbare
-  // operator-lijst een afbeelding bevat, stoppen we hier. Het bestand valt
-  // dan terug op embedPdf/raster, waar de bitmap wél in zit.
-  {
-    const _IOPS = pdfjsLib.OPS;
-    const IMAGE_OPS = new Set([
-      _IOPS.paintImageXObject, _IOPS.paintInlineImageXObject,
-      _IOPS.paintInlineImageXObjectGroup, _IOPS.paintImageXObjectRepeat,
-      _IOPS.paintImageMaskXObject, _IOPS.paintImageMaskXObjectGroup,
-      _IOPS.paintImageMaskXObjectRepeat, _IOPS.paintSolidColorImageMask,
-    ].filter(v => v !== undefined));
-    for(const fn of opList.fnArray){
-      if(IMAGE_OPS.has(fn))
-        throw new Error('bevat een ingesloten afbeelding/stencil-mask → embedPdf/raster is de veilige route');
-    }
-  }
-
   // forceDataSchema=true → afbeeldingen als data-URI i.p.v. blob-URL,
   // anders is de SVG na een pagina-refresh of projectopslag waardeloos
   const gfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs, /*forceDataSchema*/ true);
@@ -2359,6 +2586,15 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
 
   // Tekst → contouren (gooit bij elke onzekerheid)
   const glyphs = _hifiOutlineText(svgEl, page.commonObjs);
+
+  // Stencil-masks platbakken tot <image> (v2.56.9). Moet vóór de
+  // pixelverificatie, zodat die het resultaat controleert dat straks
+  // daadwerkelijk geëxporteerd wordt.
+  if(!svgEl.getAttribute('viewBox'))
+    svgEl.setAttribute('viewBox', `0 0 ${viewport.width} ${viewport.height}`);
+  const tBake = performance.now();
+  const bakedMasks = await _hifiBakeMasks(svgEl);
+  if(bakedMasks) console.log(`[GSB HiFi] ${bakedMasks} stencil-mask(s) platgebakken tot <image> in ${(performance.now()-tBake).toFixed(0)}ms`);
 
   // viewBox: zelfde uitsnede als de getoonde raster. Dit MOET dezelfde
   // beslisregel gebruiken als autoCropRaster, anders wijkt de vector-export
@@ -2407,12 +2643,14 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
     throw new Error(`SVG te groot (${(svgText.length/1048576).toFixed(1)}MB)`);
   if(/<(mask|pattern|foreignObject|text|tspan|style)[\s>]/.test(svgText))
     throw new Error('bevat elementen die svg2pdf niet ondersteunt (mask/pattern/tekst)');
-  // <image>: end-to-end exporttest toonde aan dat svg2pdf ingesloten
-  // afbeeldingen niet betrouwbaar meeneemt. Bestanden met afbeeldingen
-  // houden hun bestaande verliesvrije route (embedPdf). Kandidaat om in
-  // een volgende versie in de browser te valideren en vrij te geven.
-  if(/<image[\s>]/.test(svgText))
-    throw new Error('bevat ingesloten afbeelding → embedPdf-route blijft beter');
+  // <image>: svg2pdf 2.2.0 neemt een afbeelding alleen mee als die via
+  // xlink:href staat en een data-URI is (een kaal href negeert het, en een
+  // externe verwijzing overleeft de export sowieso niet). Alles wat daar
+  // niet aan voldoet gaat terug naar de bestaande verliesvrije route.
+  for(const m of svgText.matchAll(/<image\b[^>]*>/g)){
+    if(!/xlink:href="data:image\//.test(m[0]))
+      throw new Error('afbeelding zonder bruikbare xlink:href data-URI → embedPdf-route blijft beter');
+  }
   if(svgText.indexOf('fill="null"') !== -1 || svgText.indexOf('fill="hotpink"') !== -1)
     throw new Error('mesh-gradient of niet-ondersteund patroon');
 
@@ -2778,7 +3016,46 @@ function parseSvgDocSize(svgText){
   return null;
 }
 
+/* ── SVG-kleuren normaliseren (v2.57.0) ──────────────────────────────
+   svg2pdf 2.2.0 kan `rgb(11.7%, 12.1%, 14.1%)` niet lezen en laat het
+   element dan VOLLEDIG vallen — zonder fout, zonder spoor. Cairo (en dus
+   Inkscape en veel converters) schrijft kleuren standaard zo, dus een
+   logo uit die hoek verdween compleet uit de drukproef en de print-PDF.
+   Dat het na "Maak wit"/"Maak zwart" wél goed ging was toeval:
+   _makeMonoSvgSource schrijft de kleuren als hex terug.
+
+   Percentages worden hier één keer omgezet naar hex, meteen bij het laden.
+   Alles stroomafwaarts profiteert mee: de kleurherkenning in het
+   kleurenpaneel (_extractColorsFromSvgSource kent alleen hex en rgb 0-255)
+   zag deze kleuren namelijk óók niet staan. */
+function _normalizeSvgColors(svgText){
+  if(!svgText || svgText.indexOf('%') === -1) return svgText;
+  return svgText.replace(
+    /rgb\(\s*([\d.]+)%\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/gi,
+    (m, r, g, b) => {
+      const v = x => Math.max(0, Math.min(255, Math.round(parseFloat(x) * 255 / 100)));
+      const f = n => n.toString(16).padStart(2, '0');
+      return '#' + f(v(r)) + f(v(g)) + f(v(b));
+    });
+}
+
+/* Constructies die svg2pdf stilzwijgend laat vallen — de hele tekening komt
+   dan leeg uit de export. Gemeten met svg2pdf 2.2.0; alles wat hier niet in
+   staat (<style>+class, <use>, <symbol>, clipPath, mask, inline style,
+   group opacity) is getest en werkt wél. Bij een treffer gaat het logo naar
+   de rasterroute: liever 300 DPI dan een gat op het vel. */
+function _svgExportRisk(svgText){
+  if(!svgText) return null;
+  if(/<switch[\s>]/i.test(svgText))        return '<switch> — svg2pdf negeert de hele inhoud';
+  if(/var\(\s*--/.test(svgText))           return 'CSS-variabelen in kleuren — svg2pdf lost ze niet op';
+  if(/rgb\(\s*[\d.]+%/i.test(svgText))    return 'kleuren in procent-notatie — svg2pdf laat die elementen vallen';
+  return null;
+}
+
 function loadSvg(svgText, name, extra){
+  // Kleurnotaties die svg2pdf niet aankan meteen platslaan (v2.57.0),
+  // zodat _svgSource, de kleurherkenning en de export dezelfde waarden zien.
+  svgText = _normalizeSvgColors(svgText);
   // Detect embedded raster images inside the SVG.
   const embeddedRaster = detectEmbeddedRaster(svgText);
 
@@ -6999,8 +7276,22 @@ async function runPdfExport(withBackground = false){
 
       for(const oid of vectorSvgIds){
         const grp = uniqueLogos.get(oid);
-        const svgText = getSvgSource(grp.sample);
+        let svgText = getSvgSource(grp.sample);
         if(!svgText){ rasterIds.add(oid); continue; }
+        // Bestaande projecten kunnen nog een ongenormaliseerde bron bevatten
+        // (opgeslagen vóór v2.57.0), dus hier nog een keer (v2.57.0).
+        svgText = _normalizeSvgColors(svgText);
+        // Wat svg2pdf stilzwijgend laat vallen gaat naar raster in plaats van
+        // als gat in de export te belanden.
+        const risk = _svgExportRisk(svgText);
+        if(risk){
+          console.warn(`[GSB Export] ${grp.sample._name || oid}: ${risk} → rasterroute`);
+          rasterIds.add(oid);
+          continue;
+        }
+        // Kleurwijzigingen op een gebakken stencil-mask staan tot hier alleen
+        // in het fill-attribuut; nu de pixels bijkleuren (v2.56.9).
+        svgText = await _applyBakedImageColors(svgText);
 
         let embeddedPage = null;
         try {
