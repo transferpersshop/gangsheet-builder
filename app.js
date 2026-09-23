@@ -3028,6 +3028,34 @@ function parseSvgDocSize(svgText){
    Alles stroomafwaarts profiteert mee: de kleurherkenning in het
    kleurenpaneel (_extractColorsFromSvgSource kent alleen hex en rgb 0-255)
    zag deze kleuren namelijk óók niet staan. */
+/* ── Impliciete vulkleur expliciet maken (v2.57.1) ─────────────────────
+   Een SVG-vorm zonder fill wordt zwart getekend — dat is de SVG-standaard,
+   niet iets wat in het bestand staat. Exports uit o.a. Affinity/Serif laten
+   die fill vaak helemaal weg (logo-black.svg bevat nul fill-attributen).
+
+   Alle herkleurfuncties (_makeMonoSvgSource, recolorSvgSourceString,
+   _updateSvgSourceAllColor in de logo-editor) vervangen alleen fill-waarden
+   die er al stáán. Zonder fill viel er niets te vervangen:
+     - fabric kende de paden wél als rgb(0,0,0) → canvas werd wit;
+     - _svgSource bleef ongewijzigd → editor-preview én export bleven zwart.
+
+   Oplossing: de standaardwaarde één keer uitschrijven op het <svg>-root.
+   Vormen zonder eigen fill erven die, dus het beeld verandert niet, maar
+   elke herkleuring heeft nu een attribuut om aan te passen. Vormen met een
+   eigen fill, een class-regel of fill="none" blijven gewoon winnen. */
+function _ensureExplicitRootFill(svgText){
+  if(!svgText || typeof svgText !== 'string') return svgText;
+  const m = /<svg\b[^>]*>/i.exec(svgText);
+  if(!m) return svgText;
+  const tag = m[0];
+  if(/\sfill\s*=/i.test(tag)) return svgText;                 // al expliciet
+  const st = /\sstyle\s*=\s*("([^"]*)"|'([^']*)')/i.exec(tag);
+  if(st && /(^|;)\s*fill\s*:/i.test(st[2] != null ? st[2] : st[3])) return svgText;
+  const newTag = tag.replace(/^<svg\b/i, '<svg fill="#000000"');
+  return svgText.slice(0, m.index) + newTag + svgText.slice(m.index + tag.length);
+}
+window._gsbEnsureRootFill = _ensureExplicitRootFill;
+
 function _normalizeSvgColors(svgText){
   if(!svgText || svgText.indexOf('%') === -1) return svgText;
   return svgText.replace(
@@ -3056,6 +3084,9 @@ function loadSvg(svgText, name, extra){
   // Kleurnotaties die svg2pdf niet aankan meteen platslaan (v2.57.0),
   // zodat _svgSource, de kleurherkenning en de export dezelfde waarden zien.
   svgText = _normalizeSvgColors(svgText);
+  // Impliciete zwarte vulkleur uitschrijven, anders valt er bij "Maak wit"
+  // niets te herkleuren in _svgSource (v2.57.1).
+  svgText = _ensureExplicitRootFill(svgText);
   // Detect embedded raster images inside the SVG.
   const embeddedRaster = detectEmbeddedRaster(svgText);
 
@@ -3936,6 +3967,7 @@ function _hexMatches(hexVal, targetHex, tolerance){
 
 function recolorSvgSourceString(svgStr, oldHex, newHex, tolerance){
   if(!svgStr) return svgStr;
+  svgStr = _ensureExplicitRootFill(svgStr); // v2.57.1 — zie aldaar
   const old = oldHex.toLowerCase();
   const tol = tolerance || 0;
   const normHex = (v)=>{
@@ -4044,7 +4076,8 @@ function recolorSvgPaths(group, oldHex, newHex, tolerance){
   if(group._svgSource){
     try {
       const parser = new DOMParser();
-      const doc = parser.parseFromString(group._svgSource, 'image/svg+xml');
+      // v2.57.1: impliciete zwarte fill eerst uitschrijven — zie _ensureExplicitRootFill
+      const doc = parser.parseFromString(_ensureExplicitRootFill(group._svgSource), 'image/svg+xml');
 
       // 1. Update fill/stroke attributes on all elements
       doc.querySelectorAll('*').forEach(el=>{
@@ -4368,6 +4401,7 @@ window._gsbFlattenMonoLayers = _flattenMonoLayers;
 
 function _makeMonoSvgSource(svgStr, targetHex){
   if(!svgStr) return svgStr;
+  svgStr = _ensureExplicitRootFill(svgStr); // v2.57.1 — zie aldaar
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgStr, 'image/svg+xml');

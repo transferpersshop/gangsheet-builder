@@ -1028,7 +1028,11 @@ function _updateSvgSourceAllColor(hexColor){
   if(!_fabricObj || !_fabricObj._svgSource) return;
   try {
     var parser = new DOMParser();
-    var doc = parser.parseFromString(_fabricObj._svgSource, 'image/svg+xml');
+    // v2.57.1: vormen zonder fill (standaard zwart) krijgen via het root een
+    // expliciete fill, anders valt er hieronder niets te herkleuren.
+    var srcIn = (typeof window._gsbEnsureRootFill === 'function')
+      ? window._gsbEnsureRootFill(_fabricObj._svgSource) : _fabricObj._svgSource;
+    var doc = parser.parseFromString(srcIn, 'image/svg+xml');
     doc.querySelectorAll('*').forEach(function(el){
       ['fill','stroke'].forEach(function(attr){
         var val = el.getAttribute(attr);
