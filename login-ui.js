@@ -168,14 +168,14 @@ async function openProjects(){
   if(empty) empty.style.display = 'none';
   grid.innerHTML = data.map(p => {
     const date = new Date(p.updated_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
-    return `<div class="project-card" onclick="gsLoginUI.loadProject('${p.id}')">
-      <div class="pc-thumb">${p.thumbnail_path ? `<img src="${p.thumbnail_path}" alt="">` : 'Geen preview'}</div>
+    return `<div class="project-card" onclick="gsLoginUI.loadProject(${_jsArg(p.id)})">
+      <div class="pc-thumb">${p.thumbnail_path ? `<img src="${_esc(p.thumbnail_path)}" alt="">` : 'Geen preview'}</div>
       <div class="pc-info">
         <div class="pc-name">${_esc(p.name)}</div>
-        <div class="pc-meta">${p.logo_count || 0} logo's · ${p.sheet_format} · ${date}</div>
+        <div class="pc-meta">${p.logo_count || 0} logo's · ${_esc(p.sheet_format)} · ${date}</div>
       </div>
       <div class="pc-actions">
-        <button onclick="event.stopPropagation();gsLoginUI.deleteProject('${p.id}','${_esc(p.name)}')" class="danger">Verwijderen</button>
+        <button onclick="event.stopPropagation();gsLoginUI.deleteProject(${_jsArg(p.id)},${_jsArg(p.name)})" class="danger">Verwijderen</button>
       </div>
     </div>`;
   }).join('');
@@ -363,16 +363,16 @@ async function _loadAdminUsers(){
         <td>${_esc(u.display_name || '—')}</td>
         <td>${_esc(u.company_name || '—')}</td>
         <td style="font-size:.82rem">${_esc(u.email || '—')}</td>
-        <td><select onchange="gsLoginUI.changeRole('${u.id}',this.value)" ${u.id === gsAuth.user?.id ? 'disabled' : ''}>
+        <td><select onchange="gsLoginUI.changeRole(${_jsArg(u.id)},this.value)" ${u.id === gsAuth.user?.id ? 'disabled' : ''}>
           <option value="user" ${u.role==='user'?'selected':''}>Gebruiker</option>
           <option value="printer" ${u.role==='printer'?'selected':''}>Printer</option>
           <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
         </select></td>
         <td><span class="badge ${badge}">${badgeText}</span></td>
         <td>${date}</td>
-        <td style="white-space:nowrap">${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" style="padding:5px 8px" title="${u.blocked ? 'Deblokkeren' : 'Blokkeren'}" onclick="gsLoginUI.toggleBlock('${u.id}',${!u.blocked})">${u.blocked ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg>'}</button>
-          <button class="btn-sm btn" style="background:#1d9aaf;color:#fff;margin-left:4px;padding:5px 8px" title="Nieuw tijdelijk wachtwoord instellen" onclick="gsLoginUI.setTempPassword('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.8 12.2L21 2M15 8l3 3"/></svg></button>
-          <button class="btn-sm btn" style="background:#dc2626;color:#fff;margin-left:4px;padding:5px 8px" title="Account definitief verwijderen" onclick="gsLoginUI.deleteUser('${u.id}','${_esc(u.display_name || u.company_name || 'deze gebruiker')}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}</td>
+        <td style="white-space:nowrap">${u.id !== gsAuth.user?.id ? `<button class="btn-sm btn ${u.blocked ? 'btn-primary' : 'btn-accent'}" style="padding:5px 8px" title="${u.blocked ? 'Deblokkeren' : 'Blokkeren'}" onclick="gsLoginUI.toggleBlock(${_jsArg(u.id)},${!u.blocked})">${u.blocked ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg>'}</button>
+          <button class="btn-sm btn" style="background:#1d9aaf;color:#fff;margin-left:4px;padding:5px 8px" title="Nieuw tijdelijk wachtwoord instellen" onclick="gsLoginUI.setTempPassword(${_jsArg(u.id)},${_jsArg(u.display_name || u.company_name || 'deze gebruiker')})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.8 12.2L21 2M15 8l3 3"/></svg></button>
+          <button class="btn-sm btn" style="background:#dc2626;color:#fff;margin-left:4px;padding:5px 8px" title="Account definitief verwijderen" onclick="gsLoginUI.deleteUser(${_jsArg(u.id)},${_jsArg(u.display_name || u.company_name || 'deze gebruiker')})"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
   }
@@ -479,8 +479,8 @@ async function _loadAdminApprovals(){
         <td>${_esc(u.email || '—')}</td>
         <td>${date}</td>
         <td style="display:flex;gap:6px">
-          <button class="btn btn-primary btn-sm" onclick="gsLoginUI.approveUser('${u.id}')">Goedkeuren</button>
-          <button class="btn btn-accent btn-sm" onclick="gsLoginUI.rejectUser('${u.id}')">Afwijzen</button>
+          <button class="btn btn-primary btn-sm" onclick="gsLoginUI.approveUser(${_jsArg(u.id)})">Goedkeuren</button>
+          <button class="btn btn-accent btn-sm" onclick="gsLoginUI.rejectUser(${_jsArg(u.id)})">Afwijzen</button>
         </td>
       </tr>`;
     }).join('')}</tbody></table>`;
@@ -516,7 +516,7 @@ async function _loadAdminSettings(){
     if(r.type === 'select'){
       input = `<select id="setting_${r.key}" onchange="gsLoginUI.saveSetting('${r.key}',this.value)">${r.options.map(o => `<option value="${o.v}" ${o.v === r.val ? 'selected' : ''}>${o.l}</option>`).join('')}</select>`;
     } else {
-      input = `<input type="${r.type}" id="setting_${r.key}" value="${r.val}" onchange="gsLoginUI.saveSetting('${r.key}',this.value)">`;
+      input = `<input type="${r.type}" id="setting_${r.key}" value="${_esc(r.val)}" onchange="gsLoginUI.saveSetting('${r.key}',this.value)">`;
     }
     return `<div class="sf-row"><span class="sf-label">${r.label}</span><div class="sf-input">${input}</div></div>`;
   }).join('');
@@ -617,7 +617,12 @@ function _renderCompanyTable(){
 }
 
 /* ── HTML escape ── */
-function _esc(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _esc(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// v2.58 security: waarde veilig als JS-string-argument in een inline handler.
+// JSON.stringify maakt er een geldige JS-string van; _esc zorgt dat hij het
+// HTML-attribuut niet kan verlaten. (HTML-escapen alleen is NIET genoeg: de
+// browser vertaalt &#39; terug naar ' vóórdat de JavaScript draait.)
+function _jsArg(s){ return _esc(JSON.stringify(String(s == null ? '' : s))); }
 
 /* ── Expose ── */
 
@@ -689,7 +694,7 @@ async function onProofLogoUpload(){
         buf = await window._gsbConvertEps(buf);
       }
       if(!window.pdfjsLib) throw new Error('PDF-ondersteuning niet geladen');
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const pdf = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise;
       const page = await pdf.getPage(1);
       const base = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: Math.min(6, 900 / base.width) });

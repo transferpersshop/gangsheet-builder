@@ -1685,7 +1685,7 @@ function loadRaster(dataUrl, name, dpi){
 const PDF_MAX_SVG_PATHS = 500;
 
 async function pdfToSvg(arrayBuffer){
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
   const page = await pdf.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
   const opList = await page.getOperatorList();
@@ -2542,7 +2542,7 @@ async function pdfToHiFiSvg(arrayBuffer, opts){
   // tekenen — het laat de operator dan stilzwijgend vallen (v2.56.8-bug).
   // Uit betekent ImageData, en dan levert SVGGraphics wél <mask>+<image>.
   const pdf = await pdfjsLib.getDocument({
-    data: arrayBuffer, fontExtraProperties: true, isOffscreenCanvasSupported: false
+    data: arrayBuffer, fontExtraProperties: true, isOffscreenCanvasSupported: false, isEvalSupported: false
   }).promise;
   const page = await pdf.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
@@ -2739,7 +2739,7 @@ async function loadPdfAsImage(arrayBuffer, name){
   const reason = pdfTooManyPaths ? `too many paths (${svgPathCount}≥${PDF_MAX_SVG_PATHS})` : pdfHasImages ? 'embedded images detected' : pdfHasText ? 'live text (fonts) detected' : pdfHasGradients ? 'gradients detected' : 'conversion failed';
   console.log(`[GSB] "${name}": ${reason}, loading as display-only raster`);
   try {
-    const pdf = await pdfjsLib.getDocument({ data: bufferForRaster }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: bufferForRaster, isEvalSupported: false }).promise;
     const page = await pdf.getPage(1);
     // 300 DPI render, maar cap de afmetingen — grote artboards (A0 e.d.)
     // zouden anders honderden MB's aan imageData kosten (dual render ×2)

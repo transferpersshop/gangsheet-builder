@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- v2.58 security: CSP. Beperkt waar scripts vandaan mogen komen en naar welke
+     servers de pagina mag praten (blokkeert wegsturen van een gestolen sessie).
+     Werkt iets niet meer? Kijk in de console naar "Content-Security-Policy". -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://staticimgly.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: blob: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nzkwkydafrnvmmqiuabt.supabase.co; connect-src 'self' data: blob: https://nzkwkydafrnvmmqiuabt.supabase.co wss://nzkwkydafrnvmmqiuabt.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://staticimgly.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Gang Sheet Builder — Transferpersshop</title>
 <link rel="icon" href="favicon.ico?v=2" sizes="48x48">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
@@ -24,28 +29,28 @@
 <link rel="icon" href="/favicon.ico" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- v2.58: externe libraries vastgepind op exacte versie + SRI-hash (integrity). -->
+<script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js" integrity="sha384-8E2vEX6CrzCvnhTD2fZ1qYM8/814HwUQP5F3fGZ7HQhjPdrBpUFY2F8ixbfIg8Xr" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
 <!-- svg2pdf.js: auto-registers pdf.svg() on jsPDF when loaded after jspdf.
      Primary: jsDelivr (npm mirror). Fallback: unpkg (npm mirror). -->
-<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js"
+<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js" integrity="sha384-cJLnSJq8sncCOx+1TDrU7hzfDrXiiGE4cZBb3k1+qdhPLQSq/50JU0+DuEeTH7O8" crossorigin="anonymous"
   onerror="console.warn('[GSB] svg2pdf.js primary CDN failed, trying fallback...');
     var s=document.createElement('script');
-    s.src='https://unpkg.com/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js';
+    s.src='https://unpkg.com/svg2pdf.js@2.2.0/dist/svg2pdf.umd.min.js'; s.integrity='sha384-cJLnSJq8sncCOx+1TDrU7hzfDrXiiGE4cZBb3k1+qdhPLQSq/50JU0+DuEeTH7O8'; s.crossOrigin='anonymous';
     s.onerror=function(){console.error('[GSB] svg2pdf.js FAILED to load from both CDNs')};
     document.head.appendChild(s);"></script>
 <!-- pdf-lib: for embedding original AI/PDF pages as vector in export -->
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous"
   onerror="console.warn('[GSB] pdf-lib primary CDN failed, trying fallback...');
     var s=document.createElement('script');
-    s.src='https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    s.src='https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js'; s.integrity='sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI'; s.crossOrigin='anonymous';
     s.onerror=function(){console.error('[GSB] pdf-lib FAILED to load from both CDNs')};
     document.head.appendChild(s);"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
+<script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 <script>
 // Startup diagnostic — runs after all scripts have had time to load
 window.addEventListener('load', ()=>{
@@ -991,7 +996,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.57.1 · 23-09-2026</p>
+    <p class="version-tag">v2.58.0 · 23-09-2026</p>
   </div>
 </div>
 
@@ -1489,13 +1494,13 @@ window.addEventListener('load', ()=>{
 </div>
 
 <!-- Supabase JS SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
 <!-- opentype.js for text-to-SVG -->
-<script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js"></script>
-<script src="./auth.js?v=2.56.4"></script>
-<script src="./login-ui.js?v=2.56.4"></script>
-<script src="./app.js?v=2.56.4"></script>
-<script src="./text-editor.js?v=2.56.4"></script>
-<script src="./logo-editor.js?v=2.56.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js" integrity="sha384-rZipYyCodoDMAXvm3BS6DXnn3CAyORo9RZ+7OSlLIj1y1YP4KeMFwgKVkO+9W3nB" crossorigin="anonymous"></script>
+<script src="./auth.js?v=2.58.0"></script>
+<script src="./login-ui.js?v=2.58.0"></script>
+<script src="./app.js?v=2.58.0"></script>
+<script src="./text-editor.js?v=2.58.0"></script>
+<script src="./logo-editor.js?v=2.58.0"></script>
 </body>
 </html>
