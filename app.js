@@ -1628,9 +1628,15 @@ function handleFiles(files){
         const buf = ev.target.result;
         const dpi = extractDpiFromArrayBuffer(buf, type);
         const blob = new Blob([buf], { type });
-        const url = URL.createObjectURL(blob);
         showLogoLoading(`"${file.name}" laden…`);
-        loadRaster(url, file.name, dpi);
+        // v2.58.1: data-URL i.p.v. blob-URL. loadRaster revoket de blob na het
+        // laden; bleef het logo ongecropt (geen transparante rand), dan wees
+        // de src van het canvas-object naar een dode blob en faalde ELKE kloon
+        // (Vel vullen, aantallen, dupliceren, projectopslag).
+        const fr2 = new FileReader();
+        fr2.onload = e2 => loadRaster(e2.target.result, file.name, dpi);
+        fr2.onerror = () => { hideLogoLoading(); toast(`${t('unsupportedFile')}: ${file.name}`, 'error'); };
+        fr2.readAsDataURL(blob);
       };
       reader.readAsArrayBuffer(file);
     } else if(ext==='gsb' || ext==='json'){
@@ -5471,6 +5477,7 @@ function duplicate(obj){
   const spot = ensureSpotOnAnySheet(mmW, mmH);
   if(!spot) return;
   fabric.util.enlivenObjects([srcJson], ([clone])=>{
+    if(!clone){ toast(t('addLogoFirst'),'warn'); return; }
     clone._id = ++idCounter;
     clone._originalId = srcProps._originalId;
     clone._name = srcProps._name;
@@ -5526,6 +5533,7 @@ function duplicateAsNewLogo(g){
 
   const srcJson = src.toJSON(FABRIC_EXTRA_PROPS);
   fabric.util.enlivenObjects([srcJson], ([clone])=>{
+    if(!clone){ toast(t('addLogoFirst'),'warn'); return; }
     const newOid = ++idCounter;
     clone._id = newOid;
     clone._originalId = newOid;    // eigen identiteit = eigen bestand in de lijst
@@ -6030,6 +6038,7 @@ function changeGroupCount(originalId, targetCount){
       return new Promise(resolve => {
         if(imgDataUrl){
           fabric.Image.fromURL(imgDataUrl, img => {
+            if(!img){ console.warn('[GSB] aantal: kloon mislukt'); resolve(); return; }
             const newId = ++idCounter;
             img._id = newId;
             img._originalId = srcProps._originalId;
@@ -6064,6 +6073,7 @@ function changeGroupCount(originalId, targetCount){
           obj._naturalW = srcProps._naturalW;
           obj._naturalH = srcProps._naturalH;
           fabric.util.enlivenObjects([obj], ([clone]) => {
+            if(!clone){ console.warn('[GSB] aantal: kloon mislukt'); resolve(); return; }
             if(srcProps._hasGradients) clone._hasGradients = srcProps._hasGradients;
             if(srcProps._vectorOrigin) clone._vectorOrigin = srcProps._vectorOrigin;
             if(srcProps._embeddedRasterW) clone._embeddedRasterW = srcProps._embeddedRasterW;
@@ -6511,6 +6521,7 @@ function tileSheet(){
         const p = layout[idx];
         if(imgDataUrl){
           fabric.Image.fromURL(imgDataUrl, img => {
+            if(!img) return;
             img._id = ++idCounter;
             img._originalId = ft.originalId;
             img._name = ft.name;
@@ -6560,6 +6571,14 @@ function tileSheet(){
     const next = ()=>{
       if(idx >= layout.length){ finishTiling(); return; }
       fabric.util.enlivenObjects([sampleJson], ([clone])=>{
+        if(!clone){
+          // Kloon mislukt (bv. onbereikbare bron) — niet vastlopen met
+          // renderOnAddRemove=false, maar netjes afronden met wat er staat.
+          console.warn('[GSB] Vel vullen: kloon mislukt, gestopt bij', idx);
+          layout = layout.slice(0, idx);
+          finishTiling();
+          return;
+        }
         clone._id = ++idCounter;
         clone._originalId = ft.originalId;
         clone._name = ft.name;
