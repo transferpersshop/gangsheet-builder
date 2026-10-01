@@ -3255,7 +3255,56 @@ function autoCropRaster(obj, callback, opts){
    Uses the browser's native SVG renderer for accurate pixel bounds, then
    modifies the viewBox and width/height attributes in the SVG text.
    Returns the (possibly modified) SVG text via callback.
-   This approach avoids Fabric clipPath artifacts (fading, misalignment). */
+   This approach avoids Fabric clipPath artifacts (fading, misalignment).
+
+   v2.59.0 — strak bijsnijden in twee passes. Tot nu toe werd het HELE
+   artboard op max 1200px gerenderd en kwam er een veiligheidsmarge in
+   pixels omheen. Bij SVG's zonder fysieke maat (alleen een viewBox) was die
+   marge 0,4% van de grootste renderzijde: op een artboard van 1491×2109 =
+   7px ≈ 8,8 eenheden rondom. Gevolg: het selectiekader zat niet strak en
+   een logo dat op 10 cm stond, printte 9,62 cm breed.
+   Nu: (1) grove pass zoals voorheen om de inkt te vinden, (2) alleen dát
+   gebied opnieuw renderen op hoge resolutie en daar de exacte inktrand
+   meten. Geen pixelmarge meer: de render bevat strokes, filters en
+   anti-aliasing al, dus de gemeten rand ís de zichtbare rand (afronding
+   naar buiten op ≤1 scherpe pixel, ver onder 0,1 mm). */
+const AUTOCROP_SVG_FINE_MAX_PX = 4000;       // langste zijde scherpe pass
+const AUTOCROP_SVG_FINE_MAX_AREA = 8000000;  // ≈32MB RGBA, ruim binnen budget
+
+function _autoCropSvgRender(svgText, w, h){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(new Blob([svgText], { type:'image/svg+xml' }));
+    const img = new Image();
+    img.width = w; img.height = h;
+    img.onload = ()=>{
+      try{
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        const px = ctx.getImageData(0, 0, w, h).data;
+        // Bounding box van elke niet-volledig-transparante pixel (alpha > 0)
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        for(let y = 0; y < h; y++){
+          const row = y * w * 4;
+          for(let x = 0; x < w; x++){
+            if(px[row + x * 4 + 3] > 0){
+              if(x < minX) minX = x;
+              if(x > maxX) maxX = x;
+              if(y < minY) minY = y;
+              if(y > maxY) maxY = y;
+            }
+          }
+        }
+        resolve({ minX, minY, maxX, maxY });
+      }catch(e){ URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('SVG render mislukt')); };
+    img.src = url;
+  });
+}
+
 function autoCropSvg(svgText, callback){
   // Parse viewBox from SVG
   const parser = new DOMParser();
@@ -3267,59 +3316,59 @@ function autoCropSvg(svgText, callback){
   const vbParts = vb.split(/[\s,]+/).map(Number);
   if(vbParts.length !== 4 || vbParts.some(isNaN)){ callback(svgText); return; }
   const [vbX, vbY, vbW, vbH] = vbParts;
+  if(!(vbW > 0 && vbH > 0)){ callback(svgText); return; }
 
-  // Render SVG natively in the browser at a reasonable resolution
-  const renderW = Math.min(1200, Math.max(400, Math.round(vbW * 2)));
-  const renderH = Math.round(renderW * (vbH / vbW));
-  const blob = new Blob([svgText], { type:'image/svg+xml' });
-  const url = URL.createObjectURL(blob);
-  const img = new Image();
-  img.width = renderW;
-  img.height = renderH;
-  img.onload = ()=>{
-    const tmp = document.createElement('canvas');
-    tmp.width = renderW; tmp.height = renderH;
-    const ctx = tmp.getContext('2d');
-    ctx.drawImage(img, 0, 0, renderW, renderH);
-    URL.revokeObjectURL(url);
+  (async ()=>{
+    // ── Pass 1: grof, heel artboard (zelfde resolutie als voorheen) ──
+    const renderW = Math.min(1200, Math.max(400, Math.round(vbW * 2)));
+    const renderH = Math.max(1, Math.round(renderW * (vbH / vbW)));
+    const coarse = await _autoCropSvgRender(svgText, renderW, renderH);
+    if(coarse.maxX < coarse.minX || coarse.maxY < coarse.minY){ callback(svgText, null); return; }
 
-    const imgData = ctx.getImageData(0, 0, renderW, renderH);
-    const px = imgData.data;
-    // Find bounding box of any non-fully-transparent pixel (alpha > 0)
-    let minX = renderW, minY = renderH, maxX = 0, maxY = 0;
-    for(let y = 0; y < renderH; y++){
-      for(let x = 0; x < renderW; x++){
-        if(px[(y * renderW + x) * 4 + 3] > 0){
-          if(x < minX) minX = x;
-          if(x > maxX) maxX = x;
-          if(y < minY) minY = y;
-          if(y > maxY) maxY = y;
-        }
-      }
+    // Uitsnede voor de scherpe pass: grove bbox + 2 grove pixels marge
+    // (vangt anti-aliasing die in de grove render net onder alpha 1 viel)
+    const uX = vbW / renderW, uY = vbH / renderH;
+    const fx0 = Math.max(vbX, vbX + (coarse.minX - 2) * uX);
+    const fy0 = Math.max(vbY, vbY + (coarse.minY - 2) * uY);
+    const fx1 = Math.min(vbX + vbW, vbX + (coarse.maxX + 3) * uX);
+    const fy1 = Math.min(vbY + vbH, vbY + (coarse.maxY + 3) * uY);
+    const fW = fx1 - fx0, fH = fy1 - fy0;
+
+    // ── Pass 2: scherp, alleen het inktgebied ──
+    let s = AUTOCROP_SVG_FINE_MAX_PX / Math.max(fW, fH);
+    if(fW * s * fH * s > AUTOCROP_SVG_FINE_MAX_AREA) s = Math.sqrt(AUTOCROP_SVG_FINE_MAX_AREA / (fW * fH));
+    const fineW = Math.max(1, Math.round(fW * s));
+    const fineH = Math.max(1, Math.round(fH * s));
+    const fineDoc = parser.parseFromString(svgText, 'image/svg+xml');
+    const fineEl = fineDoc.querySelector('svg');
+    fineEl.setAttribute('viewBox', `${fx0} ${fy0} ${fW} ${fH}`);
+    fineEl.setAttribute('width', String(fineW));
+    fineEl.setAttribute('height', String(fineH));
+    fineEl.setAttribute('preserveAspectRatio', 'none');
+    const fine = await _autoCropSvgRender(new XMLSerializer().serializeToString(fineEl), fineW, fineH);
+
+    let cropVbX, cropVbY, cropVbW, cropVbH;
+    if(fine.maxX >= fine.minX && fine.maxY >= fine.minY){
+      const fuX = fW / fineW, fuY = fH / fineH;
+      cropVbX = fx0 + fine.minX * fuX;
+      cropVbY = fy0 + fine.minY * fuY;
+      cropVbW = (fine.maxX - fine.minX + 1) * fuX;
+      cropVbH = (fine.maxY - fine.minY + 1) * fuY;
+    } else {
+      // Zou niet moeten gebeuren; val terug op de grove meting zonder marge
+      cropVbX = vbX + coarse.minX * uX;
+      cropVbY = vbY + coarse.minY * uY;
+      cropVbW = (coarse.maxX - coarse.minX + 1) * uX;
+      cropVbH = (coarse.maxY - coarse.minY + 1) * uY;
     }
-    if(maxX < minX || maxY < minY){ callback(svgText); return; }
 
-    // Zelfde absolute drempel als autoCropRaster (v2.56.3). Was 2% van de
-    // rendergrootte, wat op grote formaten meerdere millimeters loze ruimte
-    // liet staan en dus te kleine bedrukking opleverde.
-    const _docMm = parseSvgDocSize(svgText);
-    const svgPxPerMm = (_docMm && _docMm.mmW > 0) ? renderW / _docMm.mmW : 0;
-    if(autocropBorderNegligible(minX, minY, maxX, maxY, renderW, renderH, svgPxPerMm)){
-      callback(svgText); return;
+    // Niets (meetbaars) weg te snijden? Dan het origineel ongewijzigd laten.
+    // Drempel: 0,05% van de viewBox per zijde — puur afrondingsruis.
+    const epsX = vbW * 0.0005, epsY = vbH * 0.0005;
+    if(cropVbX - vbX <= epsX && cropVbY - vbY <= epsY &&
+       (vbX + vbW) - (cropVbX + cropVbW) <= epsX && (vbY + vbH) - (cropVbY + cropVbH) <= epsY){
+      callback(svgText, null); return;
     }
-
-    // Map pixel bounds to viewBox coordinates — met kleine veiligheidsmarge
-    // zodat outlines/strokes op de rand nooit worden afgesneden. Absoluut
-    // begrensd (was 1,5% van de render = ~3,7mm op een 247mm-bestand).
-    const safPx = svgPxPerMm > 0
-      ? Math.max(2, Math.round(AUTOCROP_TOLERANCE_MM * svgPxPerMm))
-      : Math.max(2, Math.round(Math.max(renderW, renderH) * 0.004));
-    const sMinX = Math.max(0, minX - safPx), sMinY = Math.max(0, minY - safPx);
-    const sMaxX = Math.min(renderW - 1, maxX + safPx), sMaxY = Math.min(renderH - 1, maxY + safPx);
-    const cropVbX = vbX + (sMinX / renderW) * vbW;
-    const cropVbY = vbY + (sMinY / renderH) * vbH;
-    const cropVbW = ((sMaxX - sMinX + 1) / renderW) * vbW;
-    const cropVbH = ((sMaxY - sMinY + 1) / renderH) * vbH;
 
     // Set viewBox to start at 0,0 and wrap all children in a translate group.
     // This ensures Fabric's internal path coordinates are near the origin,
@@ -3349,12 +3398,10 @@ function autoCropSvg(svgText, callback){
     // Pass crop bounds as fraction of original viewBox (for PDF export clipping)
     const cropFracs = { x: cropVbX / vbW, y: cropVbY / vbH, w: cropVbW / vbW, h: cropVbH / vbH };
     callback(croppedSvg, cropFracs);
-  };
-  img.onerror = ()=>{
-    URL.revokeObjectURL(url);
+  })().catch(err=>{
+    console.warn('[GSB] autoCropSvg mislukt, SVG ongewijzigd geladen:', err && err.message);
     callback(svgText, null);
-  };
-  img.src = url;
+  });
 }
 
 /* ── Bulk mode: defers expensive per-item operations during large uploads ── */

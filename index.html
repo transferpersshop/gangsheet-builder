@@ -615,6 +615,16 @@ window.addEventListener('load', ()=>{
   .admin-nav-item.active{color:var(--primary);background:linear-gradient(90deg,rgba(105,70,200,.08),transparent);border-right:2px solid var(--primary)}
   .admin-nav-badge{background:var(--primary);color:#fff;font-size:.65rem;font-weight:800;padding:1px 6px;border-radius:10px;margin-left:auto}
   .admin-content{flex:1;padding:20px;overflow-y:auto;max-height:520px}
+  /* v2.59: status dagelijkse mailcheck */
+  .mail-health{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 20px 10px;padding:9px 14px;border-radius:8px;font-size:.8rem;background:var(--bg-light);color:var(--muted)}
+  .mail-health:empty{display:none}
+  .mail-health.ok{background:#f0fdf4;color:#166534}
+  .mail-health.warn{background:#fffbeb;color:#92400e}
+  .mail-health.bad{background:#fef2f2;color:#991b1b}
+  .mail-health ul{margin:6px 0 0;padding-left:18px}
+  .mail-health .mh-when{opacity:.75;font-weight:400}
+  .mail-health .btn-sm{flex-shrink:0;padding:4px 10px;font-size:.75rem;border-radius:6px;background:#fff;border:1px solid currentColor;color:inherit;cursor:pointer}
+  .mail-health .btn-sm:disabled{opacity:.6;cursor:default}
   .admin-tab-content{display:none}
   .admin-tab-content.active{display:block}
 
@@ -996,7 +1006,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.58.1 · 28-09-2026</p>
+    <p class="version-tag">v2.59.1 · 01-10-2026</p>
   </div>
 </div>
 
@@ -1093,6 +1103,7 @@ window.addEventListener('load', ()=>{
       <h3>Admin panel</h3>
       <button class="gsb-modal-close" onclick="gsLoginUI.closeModal('adminModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
+    <div class="mail-health" id="adminMailHealth"></div>
     <div class="admin-layout">
       <nav class="admin-nav">
         <button class="admin-nav-item active" onclick="gsLoginUI.adminTab('users')">
@@ -1497,10 +1508,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js" integrity="sha384-rZipYyCodoDMAXvm3BS6DXnn3CAyORo9RZ+7OSlLIj1y1YP4KeMFwgKVkO+9W3nB" crossorigin="anonymous"></script>
-<script src="./auth.js?v=2.58.1"></script>
-<script src="./login-ui.js?v=2.58.1"></script>
-<script src="./app.js?v=2.58.1"></script>
-<script src="./text-editor.js?v=2.58.1"></script>
-<script src="./logo-editor.js?v=2.58.1"></script>
+<script src="./auth.js?v=2.59.1"></script>
+<script src="./login-ui.js?v=2.59.1"></script>
+<script src="./app.js?v=2.59.1"></script>
+<script src="./text-editor.js?v=2.59.1"></script>
+<script src="./logo-editor.js?v=2.59.1"></script>
 </body>
 </html>
