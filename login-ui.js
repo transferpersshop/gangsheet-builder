@@ -301,6 +301,42 @@ function openAdmin(){
   adminTab('users');
   // Pre-load approval count for badge
   _updateApprovalBadge();
+  _renderMailHealth();
+}
+
+/* ── v2.59: status dagelijkse mailcheck bovenin het admin panel ── */
+function _mhEsc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function _mhWhen(iso){
+  try{ return new Date(iso).toLocaleString('nl-NL', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); }
+  catch(_){ return iso; }
+}
+function _mhPaint(data, busy){
+  const el = document.getElementById('adminMailHealth');
+  if(!el) return;
+  const btn = `<button class="btn btn-sm" type="button" onclick="gsLoginUI.retestMail()" ${busy ? 'disabled' : ''}>${busy ? 'Bezig…' : 'Nu testen'}</button>`;
+  if(!data){ el.className = 'mail-health'; el.innerHTML = `<span>Mailcheck: status onbekend</span>${btn}`; return; }
+  const failed = (data.checks || []).filter(c => !c.ok);
+  if(data.ok === false){
+    el.className = 'mail-health bad';
+    el.innerHTML = `<div><b>Mailcheck mislukt</b> <span class="mh-when">(${_mhEsc(_mhWhen(data.ran_at))})</span>
+      <ul>${failed.map(c => `<li><b>${_mhEsc(c.label)}:</b> ${_mhEsc(c.detail)}</li>`).join('')}</ul></div>${btn}`;
+  } else if(data.stale){
+    el.className = 'mail-health warn';
+    el.innerHTML = `<span><b>Mailcheck heeft al meer dan 36 uur niet gedraaid</b>${data.ran_at ? ' (laatst ' + _mhEsc(_mhWhen(data.ran_at)) + ')' : ''}</span>${btn}`;
+  } else {
+    el.className = 'mail-health ok';
+    el.innerHTML = `<span>Mailcheck OK <span class="mh-when">— laatst ${_mhEsc(_mhWhen(data.ran_at))}</span></span>${btn}`;
+  }
+}
+async function _renderMailHealth(){
+  try{ const { data } = await gsAuth.getMailHealth(); _mhPaint(data, false); }
+  catch(_){ _mhPaint(null, false); }
+}
+async function retestMail(){
+  _mhPaint(null, true);
+  const { error } = await gsAuth.runMailHealthcheck();
+  if(error && window.toast) toast('Mailcheck starten mislukt: ' + (error.message || '?'), 'error', 5000);
+  await _renderMailHealth();
 }
 
 async function _updateApprovalBadge(){
@@ -751,6 +787,7 @@ window.gsLoginUI = {
   openAdmin, adminTab, changeRole, toggleBlock,
   adminCreateUser, approveUser, rejectUser,
   saveSetting,
+  retestMail,
 };
 
 })();

@@ -110,8 +110,11 @@ async function signUp(email, password, displayName, companyName){
   await _logUsage('signup');
   // Check if approval is needed (self-registered accounts default to approved=false)
   if(_profile && _profile.approved === false){
-    // Notify admin about new pending registration
-    _notifyNewRegistration(displayName || '', companyName || '', email);
+    // Notify admin about new pending registration.
+    // v2.59: AWACHTEN vóór signOut — sinds v2.58 vereist de edge function een
+    // geldige sessie; zonder await won signOut de race en gaf de functie 401
+    // (geen enkele registratiemail aan info@ tussen 23-09 en 01-10-2026).
+    await _notifyNewRegistration(displayName || '', companyName || '', email);
     await client.auth.signOut();
     _user = null; _profile = null; _isAdmin = false;
     return { data, needsApproval: true };
@@ -234,7 +237,8 @@ async function listUsers(){
   const { data, error } = await client.from('profiles')
     .select('id, display_name, company_name, email, role, blocked, approved, created_at, updated_at')
     .order('created_at', { ascending: false });
-  return { data: data || [], error };
+  // v2.59: systeem-account van de dagelijkse mailcheck verbergen
+  return { data: (data || []).filter(u => !/@resend\.dev$/i.test(u.email || '')), error };
 }
 
 async function updateUserRole(userId, role){
@@ -378,7 +382,43 @@ function _setupListener(){
 
 /* ── Ready callbacks ── */
 function onReady(fn){ if(_user && _profile) fn(); else _onReady.push(fn); }
-function _fireReady(){ _onReady.forEach(fn => { try{ fn(); } catch(e){ console.error(e); } }); _onReady = []; }
+function _fireReady(){
+  _onReady.forEach(fn => { try{ fn(); } catch(e){ console.error(e); } }); _onReady = [];
+  if(_isAdmin) _warnMailHealth();
+}
+
+/* ── v2.59: dagelijkse mailcheck (edge function mail-healthcheck + pg_cron) ── */
+const MAIL_HEALTH_STALE_H = 36;   // cron draait dagelijks; ouder = cron stuk
+async function getMailHealth(){
+  if(!_isAdmin) return { data: null, error: { message: 'Geen admin' } };
+  const client = getClient();
+  const { data, error } = await client.from('mail_health_checks')
+    .select('ran_at, ok, checks, alert_sent, trigger')
+    .order('ran_at', { ascending: false }).limit(1).maybeSingle();
+  if(error) return { data: null, error };
+  const stale = !data || (Date.now() - new Date(data.ran_at).getTime()) > MAIL_HEALTH_STALE_H * 3600e3;
+  return { data: data ? { ...data, stale } : { stale: true, ok: null, checks: [] }, error: null };
+}
+async function runMailHealthcheck(){
+  if(!_isAdmin) return { error: { message: 'Alleen admins' } };
+  const client = getClient();
+  const { data, error } = await client.functions.invoke('mail-healthcheck', { body: { trigger: 'manual' } });
+  return { data, error };
+}
+let _mailWarned = false;
+async function _warnMailHealth(){
+  if(_mailWarned) return; _mailWarned = true;
+  try{
+    const { data } = await getMailHealth();
+    if(!data || !window.toast) return;
+    if(data.ok === false){
+      const fout = (data.checks || []).filter(c => !c.ok).map(c => c.label).join(', ');
+      window.toast('Let op: de mailcheck faalt (' + fout + '). Details in het admin panel.', 'error', 0);
+    } else if(data.stale){
+      window.toast('Let op: de dagelijkse mailcheck heeft al meer dan ' + MAIL_HEALTH_STALE_H + ' uur niet gedraaid.', 'warn', 0);
+    }
+  }catch(_){ }
+}
 
 /* ── Init: check existing session ── */
 async function init(){
@@ -529,9 +569,10 @@ async function _notifyNewRegistration(displayName, companyName, email){
   try{
     const client = getClient();
     if(!client) return;
-    await client.functions.invoke('notify-new-registration', {
+    const { error } = await client.functions.invoke('notify-new-registration', {
       body: { display_name: displayName, company_name: companyName, email: email }
     });
+    if(error) console.warn('[GSB] Registratiemelding mislukt:', error.message || error);
   }catch(e){
     console.warn('Notificatie versturen mislukt:', e.message || e);
   }
@@ -570,6 +611,7 @@ window.gsAuth = {
   getProofLogoFresh,
   getSettings, updateSetting,
   getUsageStats, getCompanyStats,
+  getMailHealth, runMailHealthcheck,
   logUsage: _logUsage,
   onReady,
   get user(){ return _user; },
