@@ -5634,8 +5634,11 @@ function duplicateAsNewLogo(g){
   if(!src){ toast(t('dupNeedsPlaced'), 'warn'); return; }
   const mmW = src._mmW, mmH = src._mmH;
   const natW = src.width, natH = src.height;
-  const spot = ensureSpotOnAnySheet(mmW, mmH);
-  if(!spot) return;
+  // Plek zoeken met de VISUELE maten van het bronlogo (bij 90° gewisseld) en
+  // zo nodig de kopie 90° draaien — anders 'geen plek' bij een gedraaid logo.
+  const pick = _dupPick(mmW, mmH, src.angle || 0);
+  if(!pick) return;
+  const spot = pick.spot, dupAngle = pick.angle;
   const newName = _dupLogoName(g.name || 'logo');
 
   const srcJson = src.toJSON(FABRIC_EXTRA_PROPS);
@@ -5659,12 +5662,13 @@ function duplicateAsNewLogo(g){
     if(pdfSourceBuffers.has(g.originalId)) pdfSourceBuffers.set(newOid, pdfSourceBuffers.get(g.originalId));
     clone.set({
       originX:'left', originY:'top',
-      angle: 0, flipX:false, flipY:false,
+      angle: dupAngle, flipX:false, flipY:false,
       scaleX: (mmW * displayPxPerMm) / natW,
       scaleY: (mmH * displayPxPerMm) / natH,
       left: spot.x * displayPxPerMm,
       top:  spot.y * displayPxPerMm,
     });
+    if(dupAngle) _dupAlign(clone, spot.x, spot.y);
     clone.objectCaching = false;
     if(clone._objects) clone._objects.forEach(c => { c.objectCaching = false; });
     attachObjListeners(clone);
@@ -8871,7 +8875,9 @@ async function gsbBuildProofInfo(pageWMm){
     }
   } catch(e){ console.warn('[GSB Proof] Filson Soft niet geladen, fallback-font gebruikt:', e); }
 
-  const U = 992.13, M = 70, LABEL_W = 108, CHIP = 30;
+  // M/MR = linker/rechter inktrand van de bestaande footer (D van 'Drukproef' en
+  // de laatste S van TRANSFERPERS), gemeten in de footer-viewBox
+  const U = 992.13, M = 57, MR = 940.1, LABEL_W = 108, CHIP = 30;
   const ftPxW = Math.round(pageWMm * 150 / 25.4), k = ftPxW / U;
   const mc = document.createElement('canvas').getContext('2d');
   const font = px => '700 ' + px + 'px ' + fam;
@@ -8890,7 +8896,7 @@ async function gsbBuildProofInfo(pageWMm){
       mc.font = font(13); const w1 = mc.measureText(ln.l1).width;
       mc.font = font(10.5);  const w2 = mc.measureText(ln.l2).width;
       const w = 40 + Math.max(w1, w2);
-      if(cx + w > U - M && cx > M + LABEL_W){ cx = M + LABEL_W; cy += 40; }
+      if(cx + w > MR && cx > M + LABEL_W){ cx = M + LABEL_W; cy += 40; }
       rows.push({ ln, x:cx, y:cy }); cx += w + 30;
     }
     y = cy + CHIP;
@@ -8907,11 +8913,11 @@ async function gsbBuildProofInfo(pageWMm){
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, U, cv.height / k);
   ctx.textBaseline = 'alphabetic';
   if(m.type){
-    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfer type', M, typeY + 15);
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfertype', M, typeY + 15);
     ctx.fillStyle = '#fff';    ctx.font = font(18); ctx.fillText(m.type, M + LABEL_W, typeY + 16);
   }
   if(rows.length){
-    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfer kleur', M, colorsTop + 19);
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transferkleur', M, colorsTop + 19);
     for(const r of rows){
       ctx.fillStyle = r.ln.hex; ctx.fillRect(r.x, r.y, CHIP, CHIP);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(r.x + .5, r.y + .5, CHIP - 1, CHIP - 1);
@@ -8920,7 +8926,7 @@ async function gsbBuildProofInfo(pageWMm){
     }
   }
   if(m.fullColor){
-    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfer kleur', M, colorsTop + 19);
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transferkleur', M, colorsTop + 19);
     const fx = M + LABEL_W, fy = colorsTop + 1, S = 26;
     [['#00aeef'],['#ec008c'],['#fff200'],['#000000']].forEach((cc, n) => {
       ctx.fillStyle = cc[0]; ctx.fillRect(fx + n * (S + 5), fy, S, S);
@@ -8929,7 +8935,7 @@ async function gsbBuildProofInfo(pageWMm){
     ctx.fillStyle = '#fff'; ctx.font = font(15);
     ctx.fillText('Full colour (CMYK)', fx + 4 * (S + 5) + 8, colorsTop + 19);
   }
-  ctx.fillStyle = '#4a4a4a'; ctx.fillRect(M, lineY, U - 2 * M, 0.8);
+  ctx.fillStyle = '#4a4a4a'; ctx.fillRect(M, lineY, MR - M, 0.8);
   return { canvas: cv, hMm: hUnits * pageWMm / U };
 }
 
