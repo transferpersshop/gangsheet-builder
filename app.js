@@ -160,6 +160,7 @@ const I18N = {
     formatTooSmall:'Logo\'s passen niet op dit formaat. Verwijder eerst logo\'s.',
     sheetLabel:'Vel', addSheet:'+ Nieuw vel',
     sizeTooLarge:'Logo te groot om te tilen op dit vel',
+    autoRotatedToFit:'Logo is automatisch 90° gedraaid om op het vel te passen',
     overlapWarn:"Logo's mogen niet overlappen. Positie is teruggezet.",
     manualModeStep:'Indeling modus',
     manualModeLabel:'Handmatige indeling',
@@ -393,6 +394,7 @@ const I18N = {
     formatTooSmall:'Logos don\'t fit on this format. Remove logos first.',
     sheetLabel:'Sheet', addSheet:'+ New sheet',
     sizeTooLarge:'Logo too large to tile on this sheet',
+    autoRotatedToFit:'Logo was rotated 90° automatically to fit on the sheet',
     overlapWarn:'Logos may not overlap. Position has been reverted.',
     manualModeStep:'Layout mode',
     manualModeLabel:'Manual layout',
@@ -5232,6 +5234,30 @@ function renderPickerUI(area, rasterMode){
 
 let _ratioLocked = true; // aspect ratio lock — default ON
 
+/* Draait een logo 90° als het visueel te breed is voor het vel, maar gedraaid
+   wel past. Houdt positie binnen het vel. Geeft true terug als er gedraaid is. */
+function _autoRotateToFit(o){
+  const sw = state.sheet.w, sh = state.sheet.h;
+  const isDTF = !!SHEET_FORMATS[state.sheetFormat]?.isDTF;
+  const vw = visMmW(o), vh = visMmH(o);
+  if(vw <= sw + 0.01) return false;              // past al in de breedte
+  if(vh > sw + 0.01) return false;               // gedraaid ook te breed
+  if(!isDTF && vw > sh + 0.01) return false;     // vast formaat: lengte moet passen
+  const a = ((o.angle || 0) % 360 + 360) % 360;
+  const swapped = (a > 45 && a < 135) || (a > 225 && a < 315);
+  o.rotate(swapped ? 0 : 90);
+  o.setCoords();
+  const br = o.getBoundingRect(true, true);
+  const x = Math.max(0, Math.min(sw - vh, o._mmLeft || 0));
+  let y = Math.max(0, o._mmTop || 0);
+  if(!isDTF) y = Math.min(y, Math.max(0, sh - vw));
+  o.left += x * displayPxPerMm - br.left;
+  o.top  += y * displayPxPerMm - br.top;
+  o.setCoords();
+  o._mmLeft = x; o._mmTop = y;
+  return true;
+}
+
 function setSizeMm(dim, val){
   const obj = getSelectedObj();
   if(!obj) return;
@@ -5265,6 +5291,12 @@ function setSizeMm(dim, val){
     o.scaleY = (newH * displayPxPerMm) / o.height;
     o.setCoords();
   });
+
+  // Past het logo na het aanpassen niet meer in de breedte van het vel maar
+  // gedraaid wel (bijv. 27 cm breed op A4), dan automatisch 90° draaien.
+  let autoRotated = 0;
+  siblings.forEach(o => { if(_autoRotateToFit(o)) autoRotated++; });
+  if(autoRotated && siblings.length === 1) toast(t('autoRotatedToFit'), 'info');
 
   // Auto-repack so copies fill the sheet optimally at new size (skip in manual mode)
   if(siblings.length > 1 && !state.manualMode) repackAll();
@@ -5473,10 +5505,34 @@ function actOnSelected(act){
   }
 }
 
+/* Zoekt een vrije plek voor een kopie. Rekent met de VISUELE maten (bij 90°
+   zijn die gewisseld) en probeert, als het zo niet past, de kopie 90° gedraaid.
+   Geeft { spot, angle } terug of null. */
+function _dupPick(mmW, mmH, angle){
+  const swp = a => { a = ((a % 360) + 360) % 360; return (a > 45 && a < 135) || (a > 225 && a < 315); };
+  const vw = swp(angle) ? mmH : mmW, vh = swp(angle) ? mmW : mmH;
+  let spot = findFreeSpotOrNull(vw, vh);
+  if(spot) return { spot, angle };
+  const rotAngle = swp(angle) ? 0 : 90;
+  spot = findFreeSpotOrNull(vh, vw);
+  if(spot) return { spot, angle: rotAngle };
+  // Niet gevonden: DTF-rol laten groeien (of melding), eerst in huidige stand
+  spot = ensureSpotOnAnySheet(vw, vh);
+  return spot ? { spot, angle } : null;
+}
+// Zet een (mogelijk gedraaide) kloon met de bovenhoek van zijn zichtbare vak op x,y
+function _dupAlign(clone, x, y){
+  clone.setCoords();
+  const br = clone.getBoundingRect(true, true);
+  clone.left += x * displayPxPerMm - br.left;
+  clone.top  += y * displayPxPerMm - br.top;
+  clone.setCoords();
+}
+
 function duplicate(obj){
   // Capture needed props BEFORE any tab switch so we don't lose the source.
   const mmW = obj._mmW, mmH = obj._mmH;
-  const angle = obj.angle || 0;
+  const srcAngle = obj.angle || 0;
   const srcProps = {
     _originalId: obj._originalId,
     _name: obj._name,
@@ -5489,8 +5545,9 @@ function duplicate(obj){
   // HTMLImageElement. For SVG groups we fall back to the async enliven path.
   if(obj.type === 'image'){
     const imgEl = obj.getElement();
-    const spot = ensureSpotOnAnySheet(mmW, mmH);
-    if(!spot) return;
+    const pick = _dupPick(mmW, mmH, srcAngle);
+    if(!pick) return;
+    const spot = pick.spot, angle = pick.angle;
     const clone = new fabric.Image(imgEl, {
       originX:'left', originY:'top',
       angle, flipX:false, flipY:false,
@@ -5508,6 +5565,7 @@ function duplicate(obj){
     clone._mmH = mmH;
     clone._mmLeft = spot.x;
     clone._mmTop  = spot.y;
+    if(angle) _dupAlign(clone, spot.x, spot.y);
     attachObjListeners(clone);
     canvas.add(clone);
     canvas.setActiveObject(clone);
@@ -5521,8 +5579,9 @@ function duplicate(obj){
 
   // SVG / group path — rebuild via JSON (async).
   const srcJson = obj.toJSON(FABRIC_EXTRA_PROPS);
-  const spot = ensureSpotOnAnySheet(mmW, mmH);
-  if(!spot) return;
+  const pick = _dupPick(mmW, mmH, srcAngle);
+  if(!pick) return;
+  const spot = pick.spot, angle = pick.angle;
   fabric.util.enlivenObjects([srcJson], ([clone])=>{
     if(!clone){ toast(t('addLogoFirst'),'warn'); return; }
     clone._id = ++idCounter;
@@ -5542,6 +5601,7 @@ function duplicate(obj){
       left: spot.x * displayPxPerMm,
       top:  spot.y * displayPxPerMm,
     });
+    if(angle) _dupAlign(clone, spot.x, spot.y);
     attachObjListeners(clone);
     canvas.add(clone);
     canvas.setActiveObject(clone);
@@ -8676,7 +8736,7 @@ function gsbProofMetaRender(){
       <button type="button" class="pm-add" id="pmAdd"${m.colors.length>=PROOF_MAX_COLORS?' disabled':''}>+ Kleur toevoegen</button>
       <button type="button" class="pm-add pm-pick${_pmPicking?' on':''}" id="pmPick"${(m.colors.length>=PROOF_MAX_COLORS && !_pmPicking)?' disabled':''}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg>
-        ${_pmPicking ? 'Klik op het vel… (Esc)' : 'Kleur uit vel kiezen'}
+        ${_pmPicking ? 'Klik op het vel… (Esc)' : 'Kleur selecteren'}
       </button>
     </div>`}
     <p class="pm-hint">Verschijnt onderaan de drukproef, boven de footer. Alleen zichtbaar voor admins.</p>`;
