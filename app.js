@@ -8615,20 +8615,22 @@ function _pmHex(c){
   return '#' + h(f(c.c,c.k)) + h(f(c.m,c.k)) + h(f(c.y,c.k));
 }
 function _pmClean(m){
-  const out = { type:'', colors:[] };
+  const out = { type:'', colors:[], fullColor:false };
   if(m && typeof m === 'object'){
     if(PROOF_TRANSFER_TYPES.includes(m.type)) out.type = m.type;
+    out.fullColor = m.fullColor === true;
     if(Array.isArray(m.colors)) out.colors = m.colors.slice(0, PROOF_MAX_COLORS).map(c => ({
       name: String((c && c.name) || '').slice(0,40),
       c:_pmClamp(c && c.c), m:_pmClamp(c && c.m), y:_pmClamp(c && c.y), k:_pmClamp(c && c.k),
-      pms: String((c && c.pms) || '').slice(0,24)
+      pms: String((c && c.pms) || '').slice(0,24),
+      src: (c && c.src === 'vel') ? 'vel' : ''
     }));
   }
   return out;
 }
 function gsbProofMetaForSave(){
   const m = _pmClean(_proofMeta);
-  return (m.type || m.colors.length) ? m : null;
+  return (m.type || m.colors.length || m.fullColor) ? m : null;
 }
 function gsbProofMetaLoad(m){
   _proofMeta = _pmClean(m);
@@ -8653,6 +8655,7 @@ function gsbProofMetaRender(){
       <div class="pm-color-top">
         <span class="pm-swatch" style="background:${_pmHex(c)}"></span>
         <input type="text" class="pm-name" data-f="name" maxlength="40" aria-label="Kleurnaam" placeholder="Kleurnaam" value="${escapeHtml(c.name)}">
+        ${c.src === 'vel' ? '<span class="pm-src" title="CMYK is berekend uit de schermkleur en dus een schatting — pas aan waar nodig">Uit vel · geschat</span>' : ''}
         <button type="button" class="pm-del" data-pm-del="${i}" aria-label="Kleur verwijderen">&times;</button>
       </div>
       <div class="pm-cmyk">
@@ -8667,9 +8670,90 @@ function gsbProofMetaRender(){
     <div class="pm-label">Transfer type</div>
     <div class="pm-pills">${pills}</div>
     <div class="pm-label" style="margin-top:12px">Transfer kleur</div>
-    ${rows}
-    <button type="button" class="pm-add" id="pmAdd"${m.colors.length>=PROOF_MAX_COLORS?' disabled':''}>+ Kleur toevoegen</button>
+    <label class="pm-full"><input type="checkbox" id="pmFull"${m.fullColor?' checked':''}> <span>Full colour (CMYK) — geen specifieke kleurcodes</span></label>
+    ${m.fullColor ? '' : rows + `
+    <div class="pm-actions">
+      <button type="button" class="pm-add" id="pmAdd"${m.colors.length>=PROOF_MAX_COLORS?' disabled':''}>+ Kleur toevoegen</button>
+      <button type="button" class="pm-add pm-pick${_pmPicking?' on':''}" id="pmPick"${(m.colors.length>=PROOF_MAX_COLORS && !_pmPicking)?' disabled':''}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg>
+        ${_pmPicking ? 'Klik op het vel… (Esc)' : 'Kleur uit vel kiezen'}
+      </button>
+    </div>`}
     <p class="pm-hint">Verschijnt onderaan de drukproef, boven de footer. Alleen zichtbaar voor admins.</p>`;
+}
+
+
+/* ── Pipet: kies een kleur uit het vel ──
+   Leest het gerenderde canvas uit op het klikpunt (meest voorkomende kleur in
+   een klein vlak, zodat anti-alias-randen de kleur niet vertekenen). Het
+   resultaat is een RGB→CMYK-schatting; de admin kan die hierna aanpassen. */
+let _pmPicking = false, _pmPickState = null;
+function _pmPickAt(e){
+  const lower = canvas.lowerCanvasEl;
+  const rect = lower.getBoundingClientRect();
+  const cx = Math.round((e.clientX - rect.left) * lower.width / rect.width);
+  const cy = Math.round((e.clientY - rect.top) * lower.height / rect.height);
+  const R = 2, x0 = Math.max(0, cx - R), y0 = Math.max(0, cy - R);
+  const w = Math.min(lower.width - x0, 2*R + 1), h = Math.min(lower.height - y0, 2*R + 1);
+  if(w <= 0 || h <= 0) return null;
+  const d = lower.getContext('2d').getImageData(x0, y0, w, h).data;
+  const centre = lower.getContext('2d').getImageData(Math.min(Math.max(cx,0),lower.width-1), Math.min(Math.max(cy,0),lower.height-1), 1, 1).data;
+  if(centre[3] < 200) return null;                    // geen logo op dit punt
+  const counts = new Map();
+  for(let p = 0; p < d.length; p += 4){
+    if(d[p+3] < 200) continue;
+    const key = d[p] + ',' + d[p+1] + ',' + d[p+2];
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let best = null, bestN = 0;
+  counts.forEach((n,k) => { if(n > bestN){ best = k; bestN = n; } });
+  if(!best) return null;
+  const [r,g,b] = best.split(',').map(Number);
+  return { r, g, b };
+}
+function gsbProofPickStart(){
+  if(_pmPicking) return;
+  _pmPicking = true;
+  const wrap = canvas.wrapperEl;
+  _pmPickState = { cursor: canvas.defaultCursor, hover: canvas.hoverCursor, sel: canvas.selection };
+  canvas.discardActiveObject(); canvas.selection = false;
+  canvas.defaultCursor = canvas.hoverCursor = 'crosshair'; canvas.requestRenderAll();
+  const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
+  const onDown = ev => {
+    block(ev);
+    let rgb = null;
+    try { rgb = _pmPickAt(ev); } catch(err){ console.warn('[GSB Proof] Pipet:', err); }
+    if(!rgb){ toast('Geen kleur op dit punt — klik op een gekleurd deel van een logo', 'warn'); return; }
+    const cm = rgbToCmyk(rgb.r, rgb.g, rgb.b);
+    _proofMeta.colors.push({ name:'', c:cm.c, m:cm.m, y:cm.y, k:cm.k, pms:'', src:'vel' });
+    gsbProofPickStop();
+    const names = document.querySelectorAll('#proofMetaBody .pm-name');
+    if(names.length) names[names.length-1].focus();
+    toast('Kleur gekozen: C' + cm.c + ' M' + cm.m + ' Y' + cm.y + ' K' + cm.k + ' (schatting)', 'success');
+  };
+  const onKey = ev => { if(ev.key === 'Escape') gsbProofPickStop(); };
+  wrap.addEventListener('pointerdown', onDown, true);
+  wrap.addEventListener('mousedown', block, true);
+  wrap.addEventListener('touchstart', block, true);
+  document.addEventListener('keydown', onKey);
+  _pmPickState.off = () => {
+    wrap.removeEventListener('pointerdown', onDown, true);
+    wrap.removeEventListener('mousedown', block, true);
+    wrap.removeEventListener('touchstart', block, true);
+    document.removeEventListener('keydown', onKey);
+  };
+  gsbProofMetaRender();
+}
+function gsbProofPickStop(){
+  if(!_pmPicking) return;
+  _pmPicking = false;
+  if(_pmPickState){
+    _pmPickState.off && _pmPickState.off();
+    canvas.defaultCursor = _pmPickState.cursor; canvas.hoverCursor = _pmPickState.hover; canvas.selection = _pmPickState.sel;
+    canvas.requestRenderAll();
+  }
+  _pmPickState = null;
+  gsbProofMetaRender();
 }
 
 (function initProofMetaUI(){
@@ -8684,10 +8768,18 @@ function gsbProofMetaRender(){
     }
     const del = e.target.closest('[data-pm-del]');
     if(del){ _proofMeta.colors.splice(+del.dataset.pmDel, 1); gsbProofMetaRender(); return; }
+    if(e.target.closest('#pmPick')){ _pmPicking ? gsbProofPickStop() : gsbProofPickStart(); return; }
     if(e.target.id === 'pmAdd' && _proofMeta.colors.length < PROOF_MAX_COLORS){
       _proofMeta.colors.push({ name:'', c:0, m:0, y:0, k:0, pms:'' });
       gsbProofMetaRender();
       const last = body.querySelectorAll('.pm-name'); if(last.length) last[last.length-1].focus();
+    }
+  });
+  body.addEventListener('change', e => {
+    if(e.target.id === 'pmFull'){
+      _proofMeta.fullColor = e.target.checked;
+      if(e.target.checked) gsbProofPickStop();
+      gsbProofMetaRender();
     }
   });
   // 'input' i.p.v. re-render: zo verliest een veld tijdens het typen de focus niet
@@ -8707,8 +8799,8 @@ function gsbProofMetaRender(){
 async function gsbBuildProofInfo(pageWMm){
   if(!(window.gsAuth && gsAuth.isAdmin)) return null;
   const m = _pmClean(_proofMeta);
-  const colors = m.colors.filter(c => c.name || c.pms || c.c || c.m || c.y || c.k);
-  if(!m.type && !colors.length) return null;
+  const colors = m.fullColor ? [] : m.colors.filter(c => c.name || c.pms || c.c || c.m || c.y || c.k);
+  if(!m.type && !colors.length && !m.fullColor) return null;
 
   let fam = '"Filson Soft", Nunito, Arial, sans-serif';
   try {
@@ -8719,7 +8811,7 @@ async function gsbBuildProofInfo(pageWMm){
     }
   } catch(e){ console.warn('[GSB Proof] Filson Soft niet geladen, fallback-font gebruikt:', e); }
 
-  const U = 992.13, M = 70, LABEL_W = 92, CHIP = 24;
+  const U = 992.13, M = 70, LABEL_W = 108, CHIP = 30;
   const ftPxW = Math.round(pageWMm * 150 / 25.4), k = ftPxW / U;
   const mc = document.createElement('canvas').getContext('2d');
   const font = px => '700 ' + px + 'px ' + fam;
@@ -8729,21 +8821,24 @@ async function gsbBuildProofInfo(pageWMm){
     l2: 'C' + c.c + ' M' + c.m + ' Y' + c.y + ' K' + c.k
   }));
   // Layout (eerst meten, dan tekenen)
-  let y = 20, typeY = 0, rows = [], cx, cy;
-  if(m.type){ typeY = y; y += 22; }
-  const colorsTop = y + (m.type ? 4 : 0);
+  let y = 22, typeY = 0, rows = [], cx, cy;
+  if(m.type){ typeY = y; y += 28; }
+  const colorsTop = y + (m.type ? 6 : 0);
   if(lines.length){
     y = colorsTop; cx = M + LABEL_W; cy = y;
     for(const ln of lines){
-      mc.font = font(10.5); const w1 = mc.measureText(ln.l1).width;
-      mc.font = font(8.5);  const w2 = mc.measureText(ln.l2).width;
-      const w = 32 + Math.max(w1, w2);
-      if(cx + w > U - M && cx > M + LABEL_W){ cx = M + LABEL_W; cy += 32; }
-      rows.push({ ln, x:cx, y:cy }); cx += w + 26;
+      mc.font = font(13); const w1 = mc.measureText(ln.l1).width;
+      mc.font = font(10.5);  const w2 = mc.measureText(ln.l2).width;
+      const w = 40 + Math.max(w1, w2);
+      if(cx + w > U - M && cx > M + LABEL_W){ cx = M + LABEL_W; cy += 40; }
+      rows.push({ ln, x:cx, y:cy }); cx += w + 30;
     }
     y = cy + CHIP;
   }
-  const lineY = y + 14;
+  if(m.fullColor){
+    y = colorsTop + 28;
+  }
+  const lineY = y + 18;
   const hUnits = lineY + 8;
   const cv = document.createElement('canvas');
   cv.width = ftPxW; cv.height = Math.ceil(hUnits * k);
@@ -8752,17 +8847,27 @@ async function gsbBuildProofInfo(pageWMm){
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, U, cv.height / k);
   ctx.textBaseline = 'alphabetic';
   if(m.type){
-    ctx.fillStyle = '#b8bcc4'; ctx.font = font(10); ctx.fillText('Transfer type', M, typeY + 12);
-    ctx.fillStyle = '#fff';    ctx.font = font(14); ctx.fillText(m.type, M + LABEL_W, typeY + 13);
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfer type', M, typeY + 15);
+    ctx.fillStyle = '#fff';    ctx.font = font(18); ctx.fillText(m.type, M + LABEL_W, typeY + 16);
   }
   if(rows.length){
-    ctx.fillStyle = '#b8bcc4'; ctx.font = font(10); ctx.fillText('Transfer kleur', M, colorsTop + 15);
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfer kleur', M, colorsTop + 19);
     for(const r of rows){
       ctx.fillStyle = r.ln.hex; ctx.fillRect(r.x, r.y, CHIP, CHIP);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(r.x + .5, r.y + .5, CHIP - 1, CHIP - 1);
-      ctx.fillStyle = '#fff';    ctx.font = font(10.5); ctx.fillText(r.ln.l1, r.x + 32, r.y + 10);
-      ctx.fillStyle = '#d5d8de'; ctx.font = font(8.5);  ctx.fillText(r.ln.l2, r.x + 32, r.y + 21);
+      ctx.fillStyle = '#fff';    ctx.font = font(13); ctx.fillText(r.ln.l1, r.x + 40, r.y + 12.5);
+      ctx.fillStyle = '#d5d8de'; ctx.font = font(10.5);  ctx.fillText(r.ln.l2, r.x + 40, r.y + 26.5);
     }
+  }
+  if(m.fullColor){
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(12.5); ctx.fillText('Transfer kleur', M, colorsTop + 19);
+    const fx = M + LABEL_W, fy = colorsTop + 1, S = 26;
+    [['#00aeef'],['#ec008c'],['#fff200'],['#000000']].forEach((cc, n) => {
+      ctx.fillStyle = cc[0]; ctx.fillRect(fx + n * (S + 5), fy, S, S);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(fx + n * (S + 5) + .5, fy + .5, S - 1, S - 1);
+    });
+    ctx.fillStyle = '#fff'; ctx.font = font(15);
+    ctx.fillText('Full colour (CMYK)', fx + 4 * (S + 5) + 8, colorsTop + 19);
   }
   ctx.fillStyle = '#4a4a4a'; ctx.fillRect(M, lineY, U - 2 * M, 0.8);
   return { canvas: cv, hMm: hUnits * pageWMm / U };

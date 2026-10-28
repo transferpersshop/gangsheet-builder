@@ -151,6 +151,12 @@ window.addEventListener('load', ()=>{
   .pm-cmyk input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:.78rem;font-family:inherit}
   .pm-add{width:100%;min-height:40px;border:1px dashed var(--primary);background:#fff;color:#14707f;font-weight:600;font-size:.8rem;border-radius:10px;cursor:pointer;font-family:inherit}
   .pm-add:disabled{opacity:.5;cursor:default}
+  .pm-full{display:flex;align-items:flex-start;gap:8px;font-size:.78rem;margin:0 0 10px;cursor:pointer}
+  .pm-full input{margin-top:2px;width:16px;height:16px;accent-color:var(--primary);flex:none}
+  .pm-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .pm-actions .pm-add{flex:1 1 140px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 8px}
+  .pm-pick.on{background:var(--primary);color:#fff;border-style:solid}
+  .pm-src{flex:none;font-size:.6rem;font-weight:700;color:#7a4500;background:#fff1da;border-radius:999px;padding:2px 6px;white-space:nowrap}
   .pm-hint{font-size:.68rem;color:var(--muted);margin:8px 0 0;line-height:1.4}
   .section{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
   .section:last-child{margin-bottom:0}
@@ -1029,7 +1035,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.60.0 · 28-10-2026</p>
+    <p class="version-tag">v2.61.0 · 28-10-2026</p>
   </div>
 </div>
 
