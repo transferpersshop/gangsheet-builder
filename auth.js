@@ -49,6 +49,7 @@ function showApp(){
 }
 
 function updateUserMenu(){
+  if(window.gsbProofMetaSync) window.gsbProofMetaSync();
   if(!_profile) return;
   const name = _profile.display_name || _user?.email?.split('@')[0] || '';
   const initials = name ? name.charAt(0).toUpperCase() : '?';

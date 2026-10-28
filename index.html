@@ -134,6 +134,24 @@ window.addEventListener('load', ()=>{
   .summary-inline .label{color:var(--muted);font-weight:500}
   .summary-inline .val{font-weight:800}
 
+  /* Drukproef-gegevens (admin) */
+  .pm-badge{font-size:.62rem;font-weight:700;color:#fff;background:var(--secondary);border-radius:999px;padding:2px 8px;margin-left:auto}
+  .pm-label{font-size:.8rem;font-weight:600;margin-bottom:6px}
+  .pm-pills{display:flex;flex-wrap:wrap;gap:6px}
+  .pm-pill{cursor:pointer;min-height:34px;padding:5px 11px;border-radius:999px;font-size:.78rem;font-weight:600;border:1px solid #cfd8dc;background:#fff;color:var(--text);font-family:inherit}
+  .pm-pill.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .pm-pill:focus-visible,.pm-add:focus-visible,.pm-del:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+  .pm-color{border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+  .pm-color-top{display:flex;align-items:center;gap:6px}
+  .pm-swatch{flex:none;width:26px;height:26px;border-radius:6px;border:1px solid #cfd8dc}
+  .pm-name{flex:1 1 auto;min-width:0;border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-size:.78rem;font-weight:600;font-family:inherit}
+  .pm-del{flex:none;width:30px;height:30px;border:none;background:transparent;color:var(--muted);font-size:1.2rem;cursor:pointer;border-radius:6px}
+  .pm-cmyk{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) 1.7fr;gap:5px}
+  .pm-cmyk label{display:flex;flex-direction:column;gap:2px;font-size:.66rem;color:var(--muted)}
+  .pm-cmyk input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:.78rem;font-family:inherit}
+  .pm-add{width:100%;min-height:40px;border:1px dashed var(--primary);background:#fff;color:#14707f;font-weight:600;font-size:.8rem;border-radius:10px;cursor:pointer;font-family:inherit}
+  .pm-add:disabled{opacity:.5;cursor:default}
+  .pm-hint{font-size:.68rem;color:var(--muted);margin:8px 0 0;line-height:1.4}
   .section{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
   .section:last-child{margin-bottom:0}
   .section-head{display:flex;align-items:center;gap:8px;margin:0 0 12px}
@@ -933,6 +951,11 @@ window.addEventListener('load', ()=>{
           </div>
         </div>
 
+        <div class="section" id="proofMetaSection" style="display:none">
+          <div class="section-head"><h3>Drukproef-gegevens</h3><span class="pm-badge">Alleen admin</span></div>
+          <div id="proofMetaBody"></div>
+        </div>
+
       </div>
       <div class="right-footer">
         <div id="sumThinWarn" style="display:none"></div>
@@ -1006,7 +1029,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.59.2 · 09-10-2026</p>
+    <p class="version-tag">v2.60.0 · 28-10-2026</p>
   </div>
 </div>
 

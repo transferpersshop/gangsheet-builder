@@ -6154,8 +6154,11 @@ function changeGroupCount(originalId, targetCount){
           canvas.requestRenderAll();
           autoExtendIfNeeded();
           shrinkDTF();
-          // Auto-optimize layout when adding many copies at once (skip in manual mode)
-          if(delta > 10 && !state.manualMode){
+          // Auto-optimize layout when adding many copies at once, or when there are
+          // several different logos on the sheet (houdt gelijke logo's bij elkaar).
+          // Skipped in manual mode.
+          const _multiLogo = new Set(canvas.getObjects().filter(o=>o._mmW).map(o=>o._originalId)).size > 1;
+          if((delta > 10 || _multiLogo) && !state.manualMode){
             // Use setTimeout to let the loader text update render before repack blocks
             setTimeout(() => {
               repackAll();
@@ -7026,6 +7029,7 @@ async function runPdfExport(withBackground = false){
     let pageWPt, pageHPt, offsetXPt = 0, offsetYPt = 0;
     // Footer height scales with page width (preserving aspect ratio)
     let actualFooterHMm = FOOTER_H_MM; // default at 350mm width
+    let proofInfo = null, proofInfoHMm = 0;
     if(withBackground){
       if(isFixedSheet){
         pageWPt = PAGE_W_MM * MM_TO_PT;
@@ -7034,12 +7038,15 @@ async function runPdfExport(withBackground = false){
         // Scale footer height proportionally to page width
         actualFooterHMm = FOOTER_H_MM * (sheetW / PAGE_W_MM);
       }
-      const pageHMm = TOP_PAD_MM + proofSheetHMm + GAP_MM + actualFooterHMm + BTM_PAD_MM;
+      // Admin-only: transfer type + kleuren boven de footer (v2.60.0)
+      proofInfo = await gsbBuildProofInfo(isFixedSheet ? PAGE_W_MM : sheetW);
+      proofInfoHMm = proofInfo ? proofInfo.hMm : 0;
+      const pageHMm = TOP_PAD_MM + proofSheetHMm + GAP_MM + actualFooterHMm + proofInfoHMm + BTM_PAD_MM;
       pageHPt = pageHMm * MM_TO_PT;
       // Center the sheet horizontally (only matters for A3/A4/A5)
       offsetXPt = (pageWPt - sheetWPt) / 2;
       // Sheet bottom Y in PDF coords (Y=0 at bottom)
-      const sheetBottomMm = BTM_PAD_MM + actualFooterHMm + GAP_MM;
+      const sheetBottomMm = BTM_PAD_MM + actualFooterHMm + proofInfoHMm + GAP_MM;
       // offsetYPt: used in drawAtTile to shift tiles from sheet-relative to page coords
       // drawAtTile computes: yPt = pageHPt - (mmTop + mmH) * MM_TO_PT - offsetYPt
       // When mmTop=0, tile should align to TOP of the content area.
@@ -7059,7 +7066,7 @@ async function runPdfExport(withBackground = false){
 
       if(isFixedSheet){
         // Sheet border — always shows full format (A3/A4/A5), not trimmed content
-        const sheetBottomPt = (BTM_PAD_MM + FOOTER_H_MM + GAP_MM) * MM_TO_PT;
+        const sheetBottomPt = (BTM_PAD_MM + FOOTER_H_MM + proofInfoHMm + GAP_MM) * MM_TO_PT;
         const borderColor = rgb(0.4, 0.4, 0.4);
         page.drawRectangle({
           x: offsetXPt, y: sheetBottomPt,
@@ -7127,6 +7134,13 @@ async function runPdfExport(withBackground = false){
         const footerHPt = actualFooterHMm * MM_TO_PT;
         const footerYPt = BTM_PAD_MM * MM_TO_PT;
         page.drawImage(embeddedFt, { x: 0, y: footerYPt, width: pageWPt, height: footerHPt });
+        if(proofInfo){
+          const infoBin = atob(proofInfo.canvas.toDataURL('image/png').split(',')[1]);
+          const infoBytes = new Uint8Array(infoBin.length);
+          for(let i = 0; i < infoBin.length; i++) infoBytes[i] = infoBin.charCodeAt(i);
+          const embeddedInfo = await finalDoc.embedPng(infoBytes);
+          page.drawImage(embeddedInfo, { x: 0, y: footerYPt + footerHPt, width: pageWPt, height: proofInfoHMm * MM_TO_PT });
+        }
         console.log('[GSB Export] Footer embedded at bottom of proof (' + ftPxW + '×' + ftPxH + 'px)');
       } catch(ftErr){
         console.error('[GSB Export] Could not embed proof footer:', ftErr);
@@ -7920,8 +7934,28 @@ function repackAll(){
     return { obj: o, origW: o._mmW, origH: o._mmH, area: o._mmW * o._mmH };
   });
 
-  // Sort by height descending for better skyline packing
-  items.sort((a,b) => b.origH - a.origH || b.area - a.area);
+  // Sort for skyline packing, maar houd kopieën van hetzelfde logo ALTIJD bij elkaar:
+  //  1. per logo-groep (_originalId) — groepen met (vrijwel) dezelfde hoogte blijven in
+  //     volgorde van verschijnen, zodat wit/groen niet door elkaar raken bij gelijke maat
+  //  2. groepen met duidelijk andere hoogte: hoogste eerst (beter voor skyline-packing)
+  //  3. binnen een groep: hoogste/grootste eerst
+  const _gidOf = o => (o._originalId != null ? o._originalId : ('s' + o._id));
+  const _groups = new Map();
+  items.forEach(it => {
+    const gid = _gidOf(it.obj);
+    let g = _groups.get(gid);
+    if(!g){ g = { order: _groups.size, maxH: 0 }; _groups.set(gid, g); }
+    if(it.origH > g.maxH) g.maxH = it.origH;
+    it.gid = gid;
+  });
+  _groups.forEach(g => { g.hKey = Math.round(g.maxH * 2); }); // 0,5 mm-emmers: tegen float-ruis
+  items.sort((a,b) => {
+    if(a.gid !== b.gid){
+      const ga = _groups.get(a.gid), gb = _groups.get(b.gid);
+      return (gb.hKey - ga.hKey) || (ga.order - gb.order);
+    }
+    return b.origH - a.origH || b.area - a.area;
+  });
 
   // Skyline: array of {x, y, width} segments, initially one segment spanning full width at y=0
   let skyline = [{ x: 0, y: 0, width: sheetW }];
@@ -8566,6 +8600,175 @@ tourBackdrop.onclick = (e)=>{
 };
 
 /* =========================================================
+   DRUKPROEF-GEGEVENS (alleen admin) — v2.60.0
+   Transfer type + transfer kleur(en) (CMYK/PMS) onderaan de drukproef.
+   Wordt bewaard in canvas_json._proofMeta (geen extra DB-kolom nodig).
+   ========================================================= */
+const PROOF_TRANSFER_TYPES = ['Premium DTF','Premium Stretch','Premium Stretch Blocker','Softshell','Industrial Wash'];
+const PROOF_MAX_COLORS = 8;
+let _proofMeta = { type:'', colors:[] };
+
+function _pmClamp(v){ v = parseInt(v,10); return isNaN(v) ? 0 : Math.max(0, Math.min(100, v)); }
+function _pmHex(c){
+  const f = (v,k) => Math.round(255 * (1 - v/100) * (1 - k/100));
+  const h = n => n.toString(16).padStart(2,'0');
+  return '#' + h(f(c.c,c.k)) + h(f(c.m,c.k)) + h(f(c.y,c.k));
+}
+function _pmClean(m){
+  const out = { type:'', colors:[] };
+  if(m && typeof m === 'object'){
+    if(PROOF_TRANSFER_TYPES.includes(m.type)) out.type = m.type;
+    if(Array.isArray(m.colors)) out.colors = m.colors.slice(0, PROOF_MAX_COLORS).map(c => ({
+      name: String((c && c.name) || '').slice(0,40),
+      c:_pmClamp(c && c.c), m:_pmClamp(c && c.m), y:_pmClamp(c && c.y), k:_pmClamp(c && c.k),
+      pms: String((c && c.pms) || '').slice(0,24)
+    }));
+  }
+  return out;
+}
+function gsbProofMetaForSave(){
+  const m = _pmClean(_proofMeta);
+  return (m.type || m.colors.length) ? m : null;
+}
+function gsbProofMetaLoad(m){
+  _proofMeta = _pmClean(m);
+  gsbProofMetaRender();
+}
+function gsbProofMetaSync(){
+  const sec = document.getElementById('proofMetaSection');
+  if(!sec) return;
+  sec.style.display = (window.gsAuth && gsAuth.isAdmin) ? '' : 'none';
+  gsbProofMetaRender();
+}
+window.gsbProofMetaSync = gsbProofMetaSync;
+
+function gsbProofMetaRender(){
+  const body = document.getElementById('proofMetaBody');
+  if(!body || !(window.gsAuth && gsAuth.isAdmin)) return;
+  const m = _proofMeta;
+  const pills = PROOF_TRANSFER_TYPES.map((tp,i) =>
+    `<button type="button" class="pm-pill${m.type===tp?' on':''}" data-pm-type="${i}" aria-pressed="${m.type===tp}">${escapeHtml(tp)}</button>`).join('');
+  const rows = m.colors.map((c,i) => `
+    <div class="pm-color" data-pm-i="${i}">
+      <div class="pm-color-top">
+        <span class="pm-swatch" style="background:${_pmHex(c)}"></span>
+        <input type="text" class="pm-name" data-f="name" maxlength="40" aria-label="Kleurnaam" placeholder="Kleurnaam" value="${escapeHtml(c.name)}">
+        <button type="button" class="pm-del" data-pm-del="${i}" aria-label="Kleur verwijderen">&times;</button>
+      </div>
+      <div class="pm-cmyk">
+        <label>C<input type="number" min="0" max="100" data-f="c" value="${c.c}"></label>
+        <label>M<input type="number" min="0" max="100" data-f="m" value="${c.m}"></label>
+        <label>Y<input type="number" min="0" max="100" data-f="y" value="${c.y}"></label>
+        <label>K<input type="number" min="0" max="100" data-f="k" value="${c.k}"></label>
+        <label class="pm-pms">PMS<input type="text" maxlength="24" data-f="pms" placeholder="bijv. 144 C" value="${escapeHtml(c.pms)}"></label>
+      </div>
+    </div>`).join('');
+  body.innerHTML = `
+    <div class="pm-label">Transfer type</div>
+    <div class="pm-pills">${pills}</div>
+    <div class="pm-label" style="margin-top:12px">Transfer kleur</div>
+    ${rows}
+    <button type="button" class="pm-add" id="pmAdd"${m.colors.length>=PROOF_MAX_COLORS?' disabled':''}>+ Kleur toevoegen</button>
+    <p class="pm-hint">Verschijnt onderaan de drukproef, boven de footer. Alleen zichtbaar voor admins.</p>`;
+}
+
+(function initProofMetaUI(){
+  const body = document.getElementById('proofMetaBody');
+  if(!body) return;
+  body.addEventListener('click', e => {
+    const pill = e.target.closest('[data-pm-type]');
+    if(pill){
+      const tp = PROOF_TRANSFER_TYPES[+pill.dataset.pmType];
+      _proofMeta.type = (_proofMeta.type === tp) ? '' : tp;
+      gsbProofMetaRender(); return;
+    }
+    const del = e.target.closest('[data-pm-del]');
+    if(del){ _proofMeta.colors.splice(+del.dataset.pmDel, 1); gsbProofMetaRender(); return; }
+    if(e.target.id === 'pmAdd' && _proofMeta.colors.length < PROOF_MAX_COLORS){
+      _proofMeta.colors.push({ name:'', c:0, m:0, y:0, k:0, pms:'' });
+      gsbProofMetaRender();
+      const last = body.querySelectorAll('.pm-name'); if(last.length) last[last.length-1].focus();
+    }
+  });
+  // 'input' i.p.v. re-render: zo verliest een veld tijdens het typen de focus niet
+  body.addEventListener('input', e => {
+    const f = e.target.dataset && e.target.dataset.f;
+    const row = e.target.closest('[data-pm-i]');
+    if(!f || !row) return;
+    const c = _proofMeta.colors[+row.dataset.pmI]; if(!c) return;
+    if(f === 'name' || f === 'pms') c[f] = e.target.value.slice(0, f==='name'?40:24);
+    else c[f] = _pmClamp(e.target.value);
+    const sw = row.querySelector('.pm-swatch'); if(sw) sw.style.background = _pmHex(c);
+  });
+})();
+
+// Transfer type + kleuren als PNG-blok (zwart, zelfde breedte als de footer)
+// dat boven de footer komt. Eenheden = viewBox van de footer (992.13 breed).
+async function gsbBuildProofInfo(pageWMm){
+  if(!(window.gsAuth && gsAuth.isAdmin)) return null;
+  const m = _pmClean(_proofMeta);
+  const colors = m.colors.filter(c => c.name || c.pms || c.c || c.m || c.y || c.k);
+  if(!m.type && !colors.length) return null;
+
+  let fam = '"Filson Soft", Nunito, Arial, sans-serif';
+  try {
+    // (document.fonts.check geeft true bij een onbekende familie, dus een eigen vlag)
+    if(!window._gsbFilsonLoaded){
+      const ff = new FontFace('Filson Soft', 'url(fonts/FilsonSoft-Bold.otf)', { weight:'700' });
+      await ff.load(); document.fonts.add(ff); window._gsbFilsonLoaded = true;
+    }
+  } catch(e){ console.warn('[GSB Proof] Filson Soft niet geladen, fallback-font gebruikt:', e); }
+
+  const U = 992.13, M = 70, LABEL_W = 92, CHIP = 24;
+  const ftPxW = Math.round(pageWMm * 150 / 25.4), k = ftPxW / U;
+  const mc = document.createElement('canvas').getContext('2d');
+  const font = px => '700 ' + px + 'px ' + fam;
+  const lines = colors.map(c => ({
+    c, hex:_pmHex(c),
+    l1: (c.name || 'Kleur') + (c.pms ? ' · PMS ' + c.pms : ''),
+    l2: 'C' + c.c + ' M' + c.m + ' Y' + c.y + ' K' + c.k
+  }));
+  // Layout (eerst meten, dan tekenen)
+  let y = 20, typeY = 0, rows = [], cx, cy;
+  if(m.type){ typeY = y; y += 22; }
+  const colorsTop = y + (m.type ? 4 : 0);
+  if(lines.length){
+    y = colorsTop; cx = M + LABEL_W; cy = y;
+    for(const ln of lines){
+      mc.font = font(10.5); const w1 = mc.measureText(ln.l1).width;
+      mc.font = font(8.5);  const w2 = mc.measureText(ln.l2).width;
+      const w = 32 + Math.max(w1, w2);
+      if(cx + w > U - M && cx > M + LABEL_W){ cx = M + LABEL_W; cy += 32; }
+      rows.push({ ln, x:cx, y:cy }); cx += w + 26;
+    }
+    y = cy + CHIP;
+  }
+  const lineY = y + 14;
+  const hUnits = lineY + 8;
+  const cv = document.createElement('canvas');
+  cv.width = ftPxW; cv.height = Math.ceil(hUnits * k);
+  const ctx = cv.getContext('2d');
+  ctx.scale(k, k);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, U, cv.height / k);
+  ctx.textBaseline = 'alphabetic';
+  if(m.type){
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(10); ctx.fillText('Transfer type', M, typeY + 12);
+    ctx.fillStyle = '#fff';    ctx.font = font(14); ctx.fillText(m.type, M + LABEL_W, typeY + 13);
+  }
+  if(rows.length){
+    ctx.fillStyle = '#b8bcc4'; ctx.font = font(10); ctx.fillText('Transfer kleur', M, colorsTop + 15);
+    for(const r of rows){
+      ctx.fillStyle = r.ln.hex; ctx.fillRect(r.x, r.y, CHIP, CHIP);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(r.x + .5, r.y + .5, CHIP - 1, CHIP - 1);
+      ctx.fillStyle = '#fff';    ctx.font = font(10.5); ctx.fillText(r.ln.l1, r.x + 32, r.y + 10);
+      ctx.fillStyle = '#d5d8de'; ctx.font = font(8.5);  ctx.fillText(r.ln.l2, r.x + 32, r.y + 21);
+    }
+  }
+  ctx.fillStyle = '#4a4a4a'; ctx.fillRect(M, lineY, U - 2 * M, 0.8);
+  return { canvas: cv, hMm: hUnits * pageWMm / U };
+}
+
+/* =========================================================
    AUTH INTEGRATION + PROJECT SAVE/LOAD
    ========================================================= */
 let _currentProjectId = null;
@@ -8578,7 +8781,7 @@ window.gsbGetProjectData = function(){
     name: document.getElementById('projectTitleInput')?.value || 'Naamloos project',
     sheetFormat: state.sheetFormat,
     rollLengthM: state.rollLengthM,
-    canvasJson: canvas.toJSON(FABRIC_EXTRA_PROPS),
+    canvasJson: Object.assign(canvas.toJSON(FABRIC_EXTRA_PROPS), { _proofMeta: gsbProofMetaForSave() }),
     logoCount: new Set(objs.map(o => o._originalId)).size,
     sheetCount: 1,
   };
@@ -8640,6 +8843,7 @@ window.gsbImportProject = function(file){
 window.gsbLoadProject = function(project){
   if(!project) return;
   _currentProjectId = project.id;
+  gsbProofMetaLoad(project.canvas_json && project.canvas_json._proofMeta);
   // Set project title
   const inp = document.getElementById('projectTitleInput');
   if(inp) inp.value = project.name || '';
@@ -8706,6 +8910,7 @@ window.gsbSetProjectId = function(id){ _currentProjectId = id; };
 // Apply user preferences after login
 if(window.gsAuth){
   gsAuth.onReady(() => {
+    gsbProofMetaSync();
     const p = gsAuth.profile;
     if(!p) return;
     // Apply preferred unit
