@@ -161,6 +161,9 @@ const I18N = {
     sheetLabel:'Vel', addSheet:'+ Nieuw vel',
     sizeTooLarge:'Logo te groot om te tilen op dit vel',
     autoRotatedToFit:'Logo is automatisch 90° gedraaid om op het vel te passen',
+    autoScaledToFit:'Logo 90° gedraaid en een klein beetje verkleind zodat het op het vel past',
+    dupRepacked:'Indeling automatisch aangepast zodat alles op het vel past',
+    noRoomOnSheet:'Geen plek meer op dit vel, ook niet na opnieuw indelen',
     overlapWarn:"Logo's mogen niet overlappen. Positie is teruggezet.",
     manualModeStep:'Indeling modus',
     manualModeLabel:'Handmatige indeling',
@@ -395,6 +398,9 @@ const I18N = {
     sheetLabel:'Sheet', addSheet:'+ New sheet',
     sizeTooLarge:'Logo too large to tile on this sheet',
     autoRotatedToFit:'Logo was rotated 90° automatically to fit on the sheet',
+    autoScaledToFit:'Logo rotated 90° and reduced very slightly to fit the sheet',
+    dupRepacked:'Layout adjusted automatically so everything fits on the sheet',
+    noRoomOnSheet:'No room left on this sheet, even after rearranging',
     overlapWarn:'Logos may not overlap. Position has been reverted.',
     manualModeStep:'Layout mode',
     manualModeLabel:'Manual layout',
@@ -5241,21 +5247,35 @@ function _autoRotateToFit(o){
   const isDTF = !!SHEET_FORMATS[state.sheetFormat]?.isDTF;
   const vw = visMmW(o), vh = visMmH(o);
   if(vw <= sw + 0.01) return false;              // past al in de breedte
-  if(vh > sw + 0.01) return false;               // gedraaid ook te breed
-  if(!isDTF && vw > sh + 0.01) return false;     // vast formaat: lengte moet passen
+  let scaled = false;
+  const fitsRot = vh <= sw + 0.01 && (isDTF || vw <= sh + 0.01);
+  if(!fitsRot){
+    // Gedraaid net niet passend (bijv. 29,7 x 21,13 cm op A4): draai en schaal
+    // een heel klein beetje terug zodat het logo netjes op het vel staat.
+    const TOL = 1.03;
+    const okSmall = vh <= sw * TOL && (isDTF || vw <= sh * TOL);
+    if(!okSmall) return false;
+    const k = Math.min(sw / vh, isDTF ? 1 : sh / vw, 1);
+    o._mmW *= k; o._mmH *= k;
+    o.scaleX = (o._mmW * displayPxPerMm) / o.width;
+    o.scaleY = (o._mmH * displayPxPerMm) / o.height;
+    o.setCoords();
+    scaled = true;
+  }
   const a = ((o.angle || 0) % 360 + 360) % 360;
   const swapped = (a > 45 && a < 135) || (a > 225 && a < 315);
   o.rotate(swapped ? 0 : 90);
   o.setCoords();
   const br = o.getBoundingRect(true, true);
-  const x = Math.max(0, Math.min(sw - vh, o._mmLeft || 0));
+  const nvw = visMmW(o), nvh = visMmH(o);
+  const x = Math.max(0, Math.min(sw - nvw, o._mmLeft || 0));
   let y = Math.max(0, o._mmTop || 0);
-  if(!isDTF) y = Math.min(y, Math.max(0, sh - vw));
+  if(!isDTF) y = Math.min(y, Math.max(0, sh - nvh));
   o.left += x * displayPxPerMm - br.left;
   o.top  += y * displayPxPerMm - br.top;
   o.setCoords();
   o._mmLeft = x; o._mmTop = y;
-  return true;
+  return scaled ? 2 : 1;
 }
 
 function setSizeMm(dim, val){
@@ -5294,9 +5314,9 @@ function setSizeMm(dim, val){
 
   // Past het logo na het aanpassen niet meer in de breedte van het vel maar
   // gedraaid wel (bijv. 27 cm breed op A4), dan automatisch 90° draaien.
-  let autoRotated = 0;
-  siblings.forEach(o => { if(_autoRotateToFit(o)) autoRotated++; });
-  if(autoRotated && siblings.length === 1) toast(t('autoRotatedToFit'), 'info');
+  let autoRotated = 0, autoScaled = 0;
+  siblings.forEach(o => { const r = _autoRotateToFit(o); if(r) autoRotated++; if(r === 2) autoScaled++; });
+  if(autoRotated && siblings.length === 1) toast(t(autoScaled ? 'autoScaledToFit' : 'autoRotatedToFit'), 'info', 4000);
 
   // Auto-repack so copies fill the sheet optimally at new size (skip in manual mode)
   if(siblings.length > 1 && !state.manualMode) repackAll();
@@ -5508,7 +5528,7 @@ function actOnSelected(act){
 /* Zoekt een vrije plek voor een kopie. Rekent met de VISUELE maten (bij 90°
    zijn die gewisseld) en probeert, als het zo niet past, de kopie 90° gedraaid.
    Geeft { spot, angle } terug of null. */
-function _dupPick(mmW, mmH, angle){
+function _dupPick(mmW, mmH, angle, oid){
   const swp = a => { a = ((a % 360) + 360) % 360; return (a > 45 && a < 135) || (a > 225 && a < 315); };
   const vw = swp(angle) ? mmH : mmW, vh = swp(angle) ? mmW : mmH;
   let spot = findFreeSpotOrNull(vw, vh);
@@ -5516,7 +5536,10 @@ function _dupPick(mmW, mmH, angle){
   const rotAngle = swp(angle) ? 0 : 90;
   spot = findFreeSpotOrNull(vh, vw);
   if(spot) return { spot, angle: rotAngle };
-  // Niet gevonden: DTF-rol laten groeien (of melding), eerst in huidige stand
+  // Niets vrij zonder te schuiven: past het als alles opnieuw wordt ingedeeld?
+  // (vaste formaten; de bestaande logo's mogen dan draaien/verplaatsen)
+  if(_canFitByRepack(mmW, mmH, oid, 1)) return { spot:{ x:0, y:0 }, angle, repack:true };
+  // Anders: DTF-rol laten groeien (of melding), eerst in huidige stand
   spot = ensureSpotOnAnySheet(vw, vh);
   return spot ? { spot, angle } : null;
 }
@@ -5545,7 +5568,7 @@ function duplicate(obj){
   // HTMLImageElement. For SVG groups we fall back to the async enliven path.
   if(obj.type === 'image'){
     const imgEl = obj.getElement();
-    const pick = _dupPick(mmW, mmH, srcAngle);
+    const pick = _dupPick(mmW, mmH, srcAngle, obj._originalId || obj._id);
     if(!pick) return;
     const spot = pick.spot, angle = pick.angle;
     const clone = new fabric.Image(imgEl, {
@@ -5568,6 +5591,7 @@ function duplicate(obj){
     if(angle) _dupAlign(clone, spot.x, spot.y);
     attachObjListeners(clone);
     canvas.add(clone);
+    if(pick.repack){ repackAll({ silent:true, noUndo:true }); toast(t('dupRepacked'), 'info', 3500); }
     canvas.setActiveObject(clone);
     canvas.requestRenderAll();
     renderItemList();
@@ -5579,7 +5603,7 @@ function duplicate(obj){
 
   // SVG / group path — rebuild via JSON (async).
   const srcJson = obj.toJSON(FABRIC_EXTRA_PROPS);
-  const pick = _dupPick(mmW, mmH, srcAngle);
+  const pick = _dupPick(mmW, mmH, srcAngle, obj._originalId || obj._id);
   if(!pick) return;
   const spot = pick.spot, angle = pick.angle;
   fabric.util.enlivenObjects([srcJson], ([clone])=>{
@@ -5604,6 +5628,7 @@ function duplicate(obj){
     if(angle) _dupAlign(clone, spot.x, spot.y);
     attachObjListeners(clone);
     canvas.add(clone);
+    if(pick.repack){ repackAll({ silent:true, noUndo:true }); toast(t('dupRepacked'), 'info', 3500); }
     canvas.setActiveObject(clone);
     canvas.requestRenderAll();
     renderItemList();
@@ -5636,7 +5661,7 @@ function duplicateAsNewLogo(g){
   const natW = src.width, natH = src.height;
   // Plek zoeken met de VISUELE maten van het bronlogo (bij 90° gewisseld) en
   // zo nodig de kopie 90° draaien — anders 'geen plek' bij een gedraaid logo.
-  const pick = _dupPick(mmW, mmH, src.angle || 0);
+  const pick = _dupPick(mmW, mmH, src.angle || 0, '__newlogo');
   if(!pick) return;
   const spot = pick.spot, dupAngle = pick.angle;
   const newName = _dupLogoName(g.name || 'logo');
@@ -5674,6 +5699,7 @@ function duplicateAsNewLogo(g){
     attachObjListeners(clone);
     canvas.add(clone);
     registerLogo(clone);
+    if(pick.repack){ repackAll({ silent:true, noUndo:true }); toast(t('dupRepacked'), 'info', 3500); }
     canvas.setActiveObject(clone);
     state.selectedId = clone._id;
     canvas.requestRenderAll();
@@ -6127,8 +6153,16 @@ function changeGroupCount(originalId, targetCount){
       slots.push({ x: centerX + offset, y: centerY + offset, w: mmW, h: mmH, rotated: false });
     }
   }
+  // Geen vrije plek zonder te schuiven? Kijk of het past als alle logo's opnieuw
+  // worden ingedeeld (vaste formaten). Zo ja: kopieën toevoegen en daarna herindelen.
+  let _forceRepack = false;
+  if(slots.length < delta && _canFitByRepack(mmW, mmH, originalId, delta)){
+    slots = [];
+    for(let k = 0; k < delta; k++) slots.push({ x:0, y:0, w:mmW, h:mmH, rotated:false });
+    _forceRepack = true;
+  }
   if(slots.length === 0){
-    toast(t('sizeTooLarge'), 'error');
+    toast(t(nativeFits || rotatedFits ? 'noRoomOnSheet' : 'sizeTooLarge'), 'error');
     _releaseMutex();
     return;
   }
@@ -6222,7 +6256,7 @@ function changeGroupCount(originalId, targetCount){
           // several different logos on the sheet (houdt gelijke logo's bij elkaar).
           // Skipped in manual mode.
           const _multiLogo = new Set(canvas.getObjects().filter(o=>o._mmW).map(o=>o._originalId)).size > 1;
-          if((delta > 10 || _multiLogo) && !state.manualMode){
+          if((delta > 10 || _multiLogo || _forceRepack) && !state.manualMode){
             // Use setTimeout to let the loader text update render before repack blocks
             setTimeout(() => {
               repackAll();
@@ -6238,8 +6272,9 @@ function changeGroupCount(originalId, targetCount){
             hideCanvasLoader();
             _releaseMutex();
           }
-          if(slots.length < delta){
-            toast(t('sizeTooLarge'), 'warn');
+          if(_forceRepack) toast(t('dupRepacked'), 'info', 3500);
+          else if(slots.length < delta){
+            toast(t(nativeFits || rotatedFits ? 'noRoomOnSheet' : 'sizeTooLarge'), 'warn');
           }
         }
       });
@@ -7962,10 +7997,11 @@ function confirmModal(title, body, opts={}){
    REPACK — shelf-packs every logo on the current canvas using the new gap.
    Single canvas mode: overflow items trigger a warning (no tab spilling).
    ========================================================= */
-function repackAll(){
-  if(state.fillTemplate){ tileSheet(); return; }
+function repackAll(opts){
+  opts = opts || {};   // { silent, noUndo, dry } — voor automatisch indelen bij kopiëren
+  if(state.fillTemplate){ tileSheet(); return null; }
   const objs = canvas.getObjects().filter(o=>o._mmW && o._mmH && !o._isFillTile);
-  if(objs.length === 0) return;
+  if(objs.length === 0) return null;
 
   canvas.discardActiveObject();
 
@@ -8219,14 +8255,57 @@ function repackAll(){
   }
 
   canvas.requestRenderAll();
-  renderItemList();
-  updateInfoBar();
-  updateSummary();
-  pushUndo();
+  if(!opts.dry){
+    renderItemList();
+    updateInfoBar();
+    updateSummary();
+    if(!opts.noUndo) pushUndo();
+  }
 
-  if(overflow.length > 0){
+  if(overflow.length > 0 && !opts.silent){
     toast(`${overflow.length} × ${t('sheetFullNoSpill')}`, 'warn');
   }
+  return { overflow: overflow.length };
+}
+
+/* ── Past het als alle logo's opnieuw worden ingedeeld? ──
+   Proefindeling met n stand-in(s) van mmW×mmH; daarna wordt alles teruggezet.
+   Alleen voor vaste formaten — een DTF-rol groeit gewoon mee. */
+function _snapshotLayout(){
+  return canvas.getObjects().filter(o => o._mmW).map(o => ({
+    o, left:o.left, top:o.top, angle:o.angle, flipX:o.flipX, flipY:o.flipY,
+    scaleX:o.scaleX, scaleY:o.scaleY, mmL:o._mmLeft, mmT:o._mmTop, mmW:o._mmW, mmH:o._mmH
+  }));
+}
+function _restoreLayout(snap){
+  snap.forEach(s => {
+    s.o.set({ left:s.left, top:s.top, angle:s.angle, flipX:s.flipX, flipY:s.flipY, scaleX:s.scaleX, scaleY:s.scaleY });
+    s.o._mmLeft = s.mmL; s.o._mmTop = s.mmT; s.o._mmW = s.mmW; s.o._mmH = s.mmH;
+    s.o.setCoords();
+  });
+}
+function _canFitByRepack(mmW, mmH, oid, n){
+  if(state.manualMode || state.fillTemplate) return false;
+  if(SHEET_FORMATS[state.sheetFormat]?.isDTF) return false;
+  const snap = _snapshotLayout();
+  const active = canvas.getActiveObject();
+  const stands = [];
+  for(let k = 0; k < (n || 1); k++){
+    const st = new fabric.Rect({ originX:'left', originY:'top', width:10, height:10, left:0, top:0 });
+    st._mmW = mmW; st._mmH = mmH; st._mmLeft = 0; st._mmTop = 0; st._originalId = oid; st._id = 'dry' + k;
+    canvas.add(st); stands.push(st);
+  }
+  let ok = false;
+  try {
+    const res = repackAll({ silent:true, noUndo:true, dry:true });
+    ok = !!res && res.overflow === 0;
+  } finally {
+    stands.forEach(st => canvas.remove(st));
+    _restoreLayout(snap);
+    if(active && canvas.getObjects().includes(active)) canvas.setActiveObject(active);
+    canvas.requestRenderAll();
+  }
+  return ok;
 }
 
 /* =========================================================
