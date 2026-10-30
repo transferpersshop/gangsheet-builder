@@ -600,6 +600,18 @@ const undoRedoStack = {
    via before:transform → modified events on the canvas. */
 
 let _isLoadingState = false;       // guard: don't record while restoring
+/* Draaihoek waarmee een logo "op zijn zij" wordt gelegd bij indelen/kopiëren.
+   Een logo dat van zichzelf staand (portret) is, moet met 270° liggen om
+   rechtop te lezen; 90° zet het op de kop (v2.62.2). Zodra de gebruiker zelf
+   een logo naar 90° of 270° draait, onthouden we die keuze per logo. */
+const _rotPref = new Map();
+function _rotAngleFor(oid, mmW, mmH){
+  const pref = oid != null ? _rotPref.get(oid) : null;
+  if(pref === 90 || pref === 270) return pref;
+  return (mmH > mmW) ? 270 : 90;
+}
+function _packRotAngle(o){ return _rotAngleFor(o._originalId, o._mmW, o._mmH); }
+
 let _preTransformSnap = null;      // snapshot taken before drag/scale/rotate
 
 function _snapshotSvgSources() {
@@ -761,9 +773,11 @@ function attachObjListeners(o){
   o.on('scaling',  ()=>{ if(!state.manualMode) clampObjToSheet(o); syncMmFromPx(o); });
   o.on('rotating', ()=>{
     if(!state.manualMode){
-      // Snap to nearest 90° (0° or 90° only — never 180°/270° to prevent upside-down)
+      // Snap to 0°, 90° of 270° (180° valt terug op 0°). 270° moet kunnen: voor
+      // een staand logo is dat de leesbare liggende stand (v2.62.2).
       const raw = ((o.angle % 360) + 360) % 360;
-      const snapped = raw < 45 || raw >= 315 ? 0 : (raw < 135 ? 90 : (raw < 225 ? 0 : 90));
+      const snapped = raw < 45 || raw >= 315 ? 0 : (raw < 135 ? 90 : (raw < 225 ? 0 : 270));
+      if(snapped === 90 || snapped === 270) _rotPref.set(o._originalId, snapped);
       if(Math.abs(o.angle - snapped) > 0.1) o.rotate(snapped);
       clampObjToSheet(o);
     }
@@ -5264,7 +5278,7 @@ function _autoRotateToFit(o){
   }
   const a = ((o.angle || 0) % 360 + 360) % 360;
   const swapped = (a > 45 && a < 135) || (a > 225 && a < 315);
-  o.rotate(swapped ? 0 : 90);
+  o.rotate(swapped ? 0 : _packRotAngle(o));
   o.setCoords();
   const br = o.getBoundingRect(true, true);
   const nvw = visMmW(o), nvh = visMmH(o);
@@ -5459,7 +5473,7 @@ function actOnSelected(act){
     const objs = obj._objects || [];
     switch(act){
       case 'multi-rot':
-        objs.forEach(o => { const cur = Math.round(((o.angle||0)%360+360)%360); o.rotate(cur===0?90:0); syncMmFromPx(o); });
+        objs.forEach(o => { const cur = Math.round(((o.angle||0)%360+360)%360); o.rotate(cur===0?_packRotAngle(o):0); syncMmFromPx(o); });
         canvas.requestRenderAll();
         pushUndo();
         break;
@@ -5510,7 +5524,7 @@ function actOnSelected(act){
       if(window.gsbLogoEditor) window.gsbLogoEditor.open(obj);
       break;
     }
-    case 'rot90': { const cur = Math.round(((obj.angle||0)%360+360)%360); obj.rotate(cur===0?90:0); canvas.requestRenderAll(); syncMmFromPx(obj); pushUndo(); break; }
+    case 'rot90': { const cur = Math.round(((obj.angle||0)%360+360)%360); obj.rotate(cur===0?_packRotAngle(obj):0); canvas.requestRenderAll(); syncMmFromPx(obj); pushUndo(); break; }
     case 'dup':   duplicate(obj); break;
     case 'del':   removeObj(obj); break;
     case 'canvas-align-left':
@@ -5533,7 +5547,7 @@ function _dupPick(mmW, mmH, angle, oid){
   const vw = swp(angle) ? mmH : mmW, vh = swp(angle) ? mmW : mmH;
   let spot = findFreeSpotOrNull(vw, vh);
   if(spot) return { spot, angle };
-  const rotAngle = swp(angle) ? 0 : 90;
+  const rotAngle = swp(angle) ? 0 : _rotAngleFor(oid, mmW, mmH);
   spot = findFreeSpotOrNull(vh, vw);
   if(spot) return { spot, angle: rotAngle };
   // Niets vrij zonder te schuiven: past het als alles opnieuw wordt ingedeeld?
@@ -5949,13 +5963,13 @@ function renderItemList(){
 // Build a serialized fabric.Image clone from a template POJO, positioned
 // at the given slot. Returns a JSON-ready plain object ready to be pushed
 // into tab.json.objects.
-function buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, baseAngle, newId){
+function buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, baseAngle, newId, rotAngle){
   const clone = JSON.parse(JSON.stringify(tplObj));
   const sx = (mmW * displayPxPerMm) / natW;
   const sy = (mmH * displayPxPerMm) / natH;
   clone.originX = 'center';
   clone.originY = 'center';
-  clone.angle   = slot.rotated ? 90 : (baseAngle || 0);
+  clone.angle   = slot.rotated ? (rotAngle || 90) : (baseAngle || 0);
   clone.flipX   = false;
   clone.flipY   = false;
   // Scales always based on LOGICAL (unrotated) dims — same formula for 0° and 90°.
@@ -6081,9 +6095,12 @@ function changeGroupCount(originalId, targetCount){
   // ── No change ──
   if(targetCount === currentCount){ _releaseMutex(); return; }
 
-  // ── DECREASE: remove excess copies from end of sorted list ──
+  // ── DECREASE: verwijder de LAATST TOEGEVOEGDE kopieën (v2.62.2) ──
+  // Niet op positie: na indelen/optimaliseren staat de nieuwste kopie ergens
+  // anders op het vel. Canvas-volgorde = toevoegvolgorde (blijft behouden bij undo).
   if(targetCount < currentCount){
-    const toRemove = liveCopies.slice(targetCount);
+    const _z = new Map(canvas.getObjects().map((o, i) => [o, i]));
+    const toRemove = liveCopies.slice().sort((a, b) => _z.get(b) - _z.get(a)).slice(0, currentCount - targetCount);
     if(toRemove.some(o => o._id === state.selectedId)) state.selectedId = null;
     canvas.discardActiveObject();
     toRemove.forEach(o => canvas.remove(o));
@@ -6101,6 +6118,7 @@ function changeGroupCount(originalId, targetCount){
   // ── INCREASE: add only delta new copies, keep existing in place ──
   const delta = targetCount - currentCount;
   const liveSample = liveCopies[0];
+  const rotA = _packRotAngle(liveSample); // liggende stand zonder op-de-kop (v2.62.2)
 
   // Use stored logical dims directly — always accurate regardless of rotation
   const mmW = liveSample._mmW;
@@ -6200,7 +6218,7 @@ function changeGroupCount(originalId, targetCount){
             img._mmH = slot.rotated ? slot.w : slot.h;
             img._mmLeft = slot.x; img._mmTop = slot.y;
             img.originX = 'center'; img.originY = 'center';
-            img.angle = slot.rotated ? 90 : 0;
+            img.angle = slot.rotated ? rotA : 0;
             img.flipX = false; img.flipY = false;
             img.scaleX = (img._mmW * displayPxPerMm) / img.width;
             img.scaleY = (img._mmH * displayPxPerMm) / img.height;
@@ -6212,7 +6230,7 @@ function changeGroupCount(originalId, targetCount){
           }, { crossOrigin: 'anonymous' });
         } else {
           const tplObj = liveSample.toObject(FABRIC_EXTRA_PROPS);
-          const obj = buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, 0, ++idCounter);
+          const obj = buildSerializedClone(tplObj, slot, mmW, mmH, natW, natH, 0, ++idCounter, rotA);
           obj._originalId = srcProps._originalId;
           obj._name = srcProps._name;
           obj._naturalW = srcProps._naturalW;
@@ -6611,7 +6629,7 @@ function tileSheet(){
     const sy = (logicalH * displayPxPerMm) / th;
     target.set({
       originX:'center', originY:'center',
-      angle: p.rotated ? 90 : 0,
+      angle: p.rotated ? _packRotAngle(sample) : 0,
       scaleX: sx, scaleY: sy,
       left: (p.x + p.w/2) * displayPxPerMm,
       top:  (p.y + p.h/2) * displayPxPerMm,
@@ -8057,6 +8075,10 @@ function repackAll(opts){
     return b.origH - a.origH || b.area - a.area;
   });
 
+  // Indelen in een functie: we proberen met én zonder draaien en kiezen alleen
+  // voor draaien als het echt winst oplevert (v2.62.2).
+  const pack = (allowRot) => {
+  let sheetH = state.sheet.h;
   // Skyline: array of {x, y, width} segments, initially one segment spanning full width at y=0
   let skyline = [{ x: 0, y: 0, width: sheetW }];
   const overflow = [];
@@ -8160,7 +8182,7 @@ function repackAll(opts){
   items.forEach(item => {
     const w = item.origW, h = item.origH;
     const fitsNormal  = w <= sheetW + 0.01;
-    const fitsRotated = h <= sheetW + 0.01;
+    const fitsRotated = (allowRot || !fitsNormal) && h <= sheetW + 0.01;
     if(!fitsNormal && !fitsRotated){ overflow.push(item); return; }
 
     // Add gap to dimensions for packing, but place at position without gap
@@ -8197,13 +8219,6 @@ function repackAll(opts){
           if(pos) bestPlacement = { x: pos.x, y: pos.y, w: h, h: w, gw: grw, gh: grh, rotated: true, waste: pos.waste };
         }
       }
-      if(bestPlacement){
-        state.sheet.h = sheetH;
-        state.rollLengthM = sheetH / 1000;
-        resizeSheet();
-        const inp = document.getElementById('rollLengthInput');
-        if(inp) inp.value = state.rollLengthM;
-      }
     }
 
     if(!bestPlacement){ overflow.push(item); return; }
@@ -8211,12 +8226,32 @@ function repackAll(opts){
     // Update skyline with placed rectangle (including gap)
     placeSkyline(bestPlacement.x, bestPlacement.gw, bestPlacement.y + bestPlacement.gh);
     placements.push(bestPlacement);
-    item.placement = bestPlacement;
+    bestPlacement.item = item;
   });
+  return { placements, overflow, sheetH };
+  }; // end pack
+
+  const _maxBottom = r => r.placements.reduce((m, p) => Math.max(m, p.y + p.h), 0);
+  const _noRot = pack(false);
+  const _rot = pack(true);
+  const _useRot = _rot.overflow.length < _noRot.overflow.length ||
+    (_rot.overflow.length === _noRot.overflow.length && _maxBottom(_rot) < _maxBottom(_noRot) - 1);
+  const _chosen = _useRot ? _rot : _noRot;
+  const overflow = _chosen.overflow;
+  const placements = _chosen.placements;
+
+  // DTF-rol langer maken als de indeling dat nodig had
+  if(isDTF && _chosen.sheetH > state.sheet.h){
+    state.sheet.h = _chosen.sheetH;
+    state.rollLengthM = _chosen.sheetH / 1000;
+    resizeSheet();
+    const inp = document.getElementById('rollLengthInput');
+    if(inp) inp.value = state.rollLengthM;
+  }
 
   // Apply placements to canvas objects — preserve exact _mmW/_mmH to prevent drift
   placements.forEach((p, idx) => {
-    const item = items.find(it => it.placement === p);
+    const item = p.item;
     if(!item) return;
     const o = item.obj;
 
@@ -8225,7 +8260,7 @@ function repackAll(opts){
     const savedMmH = item.origH;
 
     // Set absolute rotation: 0° (normal) or 90° (rotated).
-    o.rotate(p.rotated ? 90 : 0);
+    o.rotate(p.rotated ? _packRotAngle(o) : 0);
     o.setCoords();
 
     // Position via bounding-rect offset — works with any rotation/origin
