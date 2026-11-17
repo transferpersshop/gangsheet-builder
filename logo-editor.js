@@ -1,6 +1,6 @@
 /* ================================================================
    logo-editor.js — Per-logo bewerkingsmodal voor Gang Sheet Builder
-   v2.45.0 — retina-scherpe preview met vol-brede achtergrond,
+   v2.63.0 — onderdelen-tool (selecteren, degroeperen, verwijderen, strak bijsnijden); eerder v2.45.0: retina-scherpe preview met vol-brede achtergrond,
    witte-achtergrond verwijdering (globaal + de-fringe),
    kleurclustering (vectorizer-stijl), SVG-natieve outline
    ================================================================ */
@@ -227,6 +227,8 @@ function open(fabricObj){
   // Show/hide bitmap-only tools
   var upBtn = document.getElementById('leToolUpscale');
   if(upBtn) upBtn.style.display = (_isRaster && !fabricObj._vectorOrigin) ? '' : 'none';
+  var partsBtn = document.getElementById('leToolParts');
+  if(partsBtn) partsBtn.style.display = (_isVector && _getSvgSrc(fabricObj)) ? '' : 'none';
   var bgBtn = document.getElementById('leToolBgRemove');
   if(bgBtn) bgBtn.style.display = (_isRaster && !fabricObj._vectorOrigin) ? '' : 'none';
 
@@ -245,6 +247,7 @@ function close(keepChanges){
     if(window._gsbCanvas) window._gsbCanvas.requestRenderAll();
   }
 
+  if(_lp) _lpLeave();
   var m = document.getElementById('logoEditorModal');
   if(m) m.classList.remove('open');
   _fabricObj = null; _origImg = null; _workCanvas = null; _workCtx = null;
@@ -487,6 +490,13 @@ function _liveColor(){
 
 /* ══════════ Tool switching ══════════ */
 function selectTool(tool){
+  // Onderdelen: iframe-sessie starten/stoppen; bij openstaande wijzigingen blijven we hier
+  if(tool === 'parts'){
+    if(!_lp && !_lpEnter()) return;
+  } else if(_lp){
+    if(_lp.dirty) return;
+    _lpLeave();
+  }
   _activeTool = tool;
   _pickMode = false;
   document.querySelectorAll('.le-tool-btn').forEach(function(b){
@@ -813,8 +823,6 @@ function reset(){
       var parser = new DOMParser();
       var doc = parser.parseFromString(pristine, 'image/svg+xml');
       if(!doc.querySelector('parsererror')){
-        _fabricObj._svgSource = pristine;
-        if(typeof svgSourceStore !== 'undefined') svgSourceStore.set(oid, pristine);
         // fabric-children her-inkleuren vanuit de pristine bron: herlaad de groep
         fabric.loadSVGFromString(pristine, function(objects, options){
           var fresh = fabric.util.groupSVGElements(objects, options);
@@ -824,6 +832,8 @@ function reset(){
           var cur = [];
           (function walk2(objs){ objs.forEach(function(o){ if(o._objects) walk2(o._objects); else cur.push(o); }); })(_fabricObj._objects || []);
           if(flat.length === cur.length){
+            _fabricObj._svgSource = pristine;
+            if(typeof svgSourceStore !== 'undefined') svgSourceStore.set(oid, pristine);
             for(var i2 = 0; i2 < cur.length; i2++){
               cur[i2].set('fill', flat[i2].fill);
               cur[i2].set('stroke', flat[i2].stroke);
@@ -1909,6 +1919,8 @@ function _commitPendingEdits(){
 }
 
 function apply(){
+  // Onderdelen: bijsnijden en terugplaatsen heeft voorrang op de overige bewerkingen
+  if(_lp && _lp.dirty && _lpCommit()) return;
   _commitPendingEdits();
   if(!_fabricObj || !_modified){ close(false); return; }
 
@@ -2141,6 +2153,540 @@ function setColorMode(mode){
   }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Onderdelen (v2.63.0) — delen van een vectorlogo selecteren,
+   degroeperen en verwijderen; bij Toepassen wordt het logo strak
+   bijgesneden en op dezelfde plek teruggezet (met undo via pushUndo).
+
+   Veiligheid: de (door een klant geüploade) SVG wordt eerst gestript
+   van script, foreignObject, on*-attributen en externe verwijzingen en
+   daarna getoond in een iframe met sandbox="allow-same-origin" ZONDER
+   allow-scripts. Er kan dus nooit code uit het bestand draaien.
+   ══════════════════════════════════════════════════════════════ */
+var _lp = null;   // actieve onderdelen-sessie (null = niet actief)
+var LP_SKIP = { defs:1, clippath:1, mask:1, pattern:1, marker:1, symbol:1, lineargradient:1,
+                radialgradient:1, filter:1, style:1, title:1, desc:1, metadata:1, script:1 };
+var LP_DRAW = { path:1, rect:1, circle:1, ellipse:1, line:1, polyline:1, polygon:1, text:1, image:1, use:1 };
+var LP_HIST_MAX = 30;
+
+function _lpEl(id){ return document.getElementById(id); }
+function _lpTr(key, fb){ var v = (typeof t === 'function') ? t(key) : key; return (v === key) ? fb : v; }
+
+/* ── SVG schoonmaken ── */
+function _lpSanitize(svgText){
+  var doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  if(doc.querySelector('parsererror')) return null;
+  var root = doc.documentElement;
+  if(!root || root.localName.toLowerCase() !== 'svg') return null;
+  var kill = ['script','foreignObject','iframe','object','embed','audio','video','canvas','animate','animateMotion','animateTransform','set'];
+  kill.forEach(function(n){
+    Array.prototype.slice.call(doc.getElementsByTagNameNS('*', n)).forEach(function(el){ if(el.parentNode) el.parentNode.removeChild(el); });
+  });
+  var cleanCss = function(css){
+    return String(css).replace(/@import[^;]*;?/gi, '')
+      .replace(/url\(\s*(['"]?)\s*(?!#|data:image\/)[^)]*\1\s*\)/gi, 'none');
+  };
+  var all = doc.getElementsByTagName('*');
+  for(var i = 0; i < all.length; i++){
+    var el = all[i];
+    var attrs = Array.prototype.slice.call(el.attributes);
+    for(var j = 0; j < attrs.length; j++){
+      var a = attrs[j], nm = a.name.toLowerCase(), val = a.value;
+      if(nm.indexOf('on') === 0){ el.removeAttribute(a.name); continue; }
+      if(nm === 'href' || nm === 'xlink:href'){
+        var v = val.trim().toLowerCase();
+        if(!(v.charAt(0) === '#' || v.indexOf('data:image/') === 0)) el.removeAttribute(a.name);
+        continue;
+      }
+      if(nm === 'style' || /url\(/i.test(val)){
+        el.setAttribute(a.name, cleanCss(val));
+      }
+    }
+    if(el.localName.toLowerCase() === 'style') el.textContent = cleanCss(el.textContent);
+  }
+  if(!root.getAttribute('viewBox')){
+    var w = parseFloat(root.getAttribute('width')) || 100, h = parseFloat(root.getAttribute('height')) || 100;
+    root.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  }
+  root.removeAttribute('width'); root.removeAttribute('height');
+  root.removeAttribute('style');
+  if(!root.getAttribute('xmlns')) root.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  return new XMLSerializer().serializeToString(root);
+}
+
+/* ── helpers op de levende SVG in het iframe ── */
+function _lpKids(node){
+  return Array.prototype.filter.call(node.children, function(n){ return !LP_SKIP[n.localName.toLowerCase()]; });
+}
+function _lpContainer(){
+  var c = _lp.svg;
+  for(;;){
+    var k = _lpKids(c);
+    if(k.length === 1 && k[0].localName.toLowerCase() === 'g') c = k[0]; else return c;
+  }
+}
+function _lpUnits(){ return _lpKids(_lpContainer()); }
+function _lpInSkip(el){
+  for(var n = el; n && n !== _lp.svg; n = n.parentNode){
+    if(n.localName && LP_SKIP[n.localName.toLowerCase()]) return true;
+  }
+  return false;
+}
+function _lpUnitOf(el){
+  if(!el || el === _lp.svg || _lpInSkip(el)) return null;
+  var cont = _lpContainer();
+  var n = el;
+  while(n && n.parentNode !== cont){
+    if(n === _lp.svg) return null;
+    n = n.parentNode;
+  }
+  return n && n.nodeType === 1 ? n : null;
+}
+function _lpLeaves(root){
+  var out = [];
+  (function walk(n){
+    Array.prototype.forEach.call(n.children, function(c){
+      var ln = c.localName.toLowerCase();
+      if(LP_SKIP[ln]) return;
+      if(LP_DRAW[ln]) out.push(c); else walk(c);
+    });
+  })(root || _lp.svg);
+  return out;
+}
+function _lpSerialize(){ return new XMLSerializer().serializeToString(_lp.svg); }
+
+function _lpLoadSvgString(str){
+  var doc = _lp.doc;
+  var parsed = new DOMParser().parseFromString(str, 'image/svg+xml');
+  var imported = doc.importNode(parsed.documentElement, true);
+  if(_lp.svg && _lp.svg.parentNode) _lp.svg.parentNode.removeChild(_lp.svg);
+  doc.body.appendChild(imported);
+  _lp.svg = imported;
+  _lp.sel = [];
+}
+
+/* ── tool openen / sluiten ── */
+function _lpEnter(){
+  if(!_isVector || !_fabricObj){ return false; }
+  var src = _getSvgSrc(_fabricObj);
+  if(!src){ if(window.toast) window.toast(_lpTr('lePartsNoSrc', 'Geen vectorbron beschikbaar voor dit logo'), 'warn'); return false; }
+  var ow = document.getElementById('leOutWidth');
+  if(_hasOutline || (ow && parseFloat(ow.value) > 0)){
+    if(window.toast) window.toast(_lpTr('lePartsOutlineFirst', 'Pas eerst de outline toe of zet hem op 0, daarna kun je onderdelen bewerken'), 'warn', 4000);
+    return false;
+  }
+  var clean = _lpSanitize(src);
+  if(!clean){ if(window.toast) window.toast(_lpTr('lePartsParseFail', 'Dit logo kan niet in onderdelen worden opgedeeld'), 'warn'); return false; }
+  var frame = _lpEl('lePartsFrame');
+  var overlay = _lpEl('lePartsOverlay');
+  if(!frame) return false;
+  _lp = { frame: frame, overlay: overlay, doc: null, svg: null, sel: [], hist: [], redo: [], dirty: false,
+          orig: clean, hover: null, drag: null, flattened: false, ready: false, warn: 0 };
+  frame.style.display = 'block';
+  if(overlay) overlay.style.display = 'block';
+  if(_previewEl) _previewEl.style.visibility = 'hidden';
+  var onReady = function(){
+    if(!_lp || _lp.frame !== frame) return;
+    _lp.doc = frame.contentDocument;
+    _lpLoadSvgString(clean);
+    _lp.ready = true;
+    _lpWireFrame();
+    _lpRefresh();
+  };
+  frame.onload = onReady;
+  frame.srcdoc = '<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}' +
+    'body{padding:12px;box-sizing:border-box}svg{display:block;width:100%;height:100%}</style><body></body>';
+  return true;
+}
+
+function _lpLeave(){
+  if(!_lp) return;
+  var frame = _lp.frame;
+  frame.onload = null;
+  frame.style.display = 'none';
+  frame.removeAttribute('srcdoc');
+  if(_lp.overlay){ _lp.overlay.innerHTML = ''; _lp.overlay.style.display = 'none'; }
+  if(_previewEl) _previewEl.style.visibility = '';
+  _lp = null;
+  _lpSetLocked(false);
+}
+
+/* andere tools uitschakelen zolang er openstaande onderdelen-wijzigingen zijn */
+function _lpSetLocked(on){
+  document.querySelectorAll('.le-tool-btn').forEach(function(b){
+    if(b.dataset.tool && b.dataset.tool !== 'parts'){
+      b.disabled = !!on;
+      b.style.opacity = on ? '.4' : '';
+      b.title = on ? _lpTr('lePartsLocked', 'Pas eerst de onderdelen toe of herstel ze') : '';
+    }
+  });
+}
+
+/* ── events in het iframe ── */
+function _lpWireFrame(){
+  var d = _lp.doc;
+  d.addEventListener('mousemove', function(e){
+    if(!_lp) return;
+    if(_lp.drag){ _lp.drag.x1 = e.clientX; _lp.drag.y1 = e.clientY; _lpDrawOverlay(); return; }
+    var u = _lpUnitOf(d.elementFromPoint(e.clientX, e.clientY));
+    if(u !== _lp.hover){ _lp.hover = u; _lpDrawOverlay(); }
+  });
+  d.addEventListener('mousedown', function(e){
+    if(!_lp || e.button !== 0) return;
+    e.preventDefault();
+    var u = _lpUnitOf(d.elementFromPoint(e.clientX, e.clientY));
+    _lp.drag = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, unit: u, shift: e.shiftKey || e.metaKey || e.ctrlKey };
+  });
+  d.addEventListener('mouseup', function(e){
+    if(!_lp || !_lp.drag) return;
+    var g = _lp.drag; _lp.drag = null;
+    var moved = Math.abs(g.x1 - g.x0) > 4 || Math.abs(g.y1 - g.y0) > 4;
+    if(!moved){
+      if(g.unit){
+        var i = _lp.sel.indexOf(g.unit);
+        if(g.shift){ if(i >= 0) _lp.sel.splice(i, 1); else _lp.sel.push(g.unit); }
+        else _lp.sel = (i >= 0 && _lp.sel.length === 1) ? [] : [g.unit];
+      } else if(!g.shift){ _lp.sel = []; }
+    } else {
+      var x0 = Math.min(g.x0, g.x1), x1 = Math.max(g.x0, g.x1), y0 = Math.min(g.y0, g.y1), y1 = Math.max(g.y0, g.y1);
+      var hit = _lpUnits().filter(function(u){
+        var r = u.getBoundingClientRect();
+        return r.width + r.height > 0 && r.right >= x0 && r.left <= x1 && r.bottom >= y0 && r.top <= y1;
+      });
+      if(g.shift){ hit.forEach(function(u){ if(_lp.sel.indexOf(u) < 0) _lp.sel.push(u); }); }
+      else _lp.sel = hit;
+    }
+    _lpRefresh();
+  });
+  d.documentElement.addEventListener('mouseleave', function(){ if(_lp){ _lp.hover = null; _lp.drag = null; _lpDrawOverlay(); } });
+  d.addEventListener('keydown', _lpKey, true);
+  d.defaultView.addEventListener('resize', function(){ _lpDrawOverlay(); });
+}
+
+function _lpDrawOverlay(){
+  if(!_lp || !_lp.overlay) return;
+  var html = '';
+  var add = function(r, cls){
+    if(!(r.width > 0 || r.height > 0)) return;
+    html += '<div class="le-part-box ' + cls + '" style="left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px"></div>';
+  };
+  if(_lp.hover && _lp.sel.indexOf(_lp.hover) < 0) add(_lp.hover.getBoundingClientRect(), 'hover');
+  _lp.sel.forEach(function(u){ add(u.getBoundingClientRect(), 'sel'); });
+  if(_lp.drag && (Math.abs(_lp.drag.x1 - _lp.drag.x0) > 4 || Math.abs(_lp.drag.y1 - _lp.drag.y0) > 4)){
+    var g = _lp.drag;
+    add({ left: Math.min(g.x0, g.x1), top: Math.min(g.y0, g.y1), width: Math.abs(g.x1 - g.x0), height: Math.abs(g.y1 - g.y0) }, 'marquee');
+  }
+  _lp.overlay.innerHTML = html;
+}
+
+/* ── tekening en maten ── */
+function _lpViewScreen(){
+  var vb = _lp.svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+  var m = _lp.svg.getScreenCTM();
+  if(!m) return null;
+  return { left: m.a * vb[0] + m.e, top: m.d * vb[1] + m.f, width: m.a * vb[2], height: m.d * vb[3] };
+}
+function _lpInkFraction(){
+  var vs = _lpViewScreen();
+  if(!vs || !(vs.width > 0)) return null;
+  var l = Infinity, t = Infinity, r = -Infinity, b = -Infinity, n = 0;
+  _lpLeaves().forEach(function(el){
+    if(el.localName.toLowerCase() === 'image' && !el.getAttribute('href') && !el.getAttribute('xlink:href')) return;
+    var bb = el.getBoundingClientRect();
+    if(!(bb.width > 0 || bb.height > 0)) return;
+    n++;
+    l = Math.min(l, bb.left); t = Math.min(t, bb.top); r = Math.max(r, bb.right); b = Math.max(b, bb.bottom);
+  });
+  if(!n) return { count: 0 };
+  return { count: n, w: (r - l) / vs.width, h: (b - t) / vs.height };
+}
+function _lpFindWhiteBg(){
+  var vs = _lpViewScreen();
+  if(!vs) return [];
+  var win = _lp.doc.defaultView, out = [];
+  _lpLeaves().forEach(function(el){
+    var r = el.getBoundingClientRect();
+    if(r.width >= vs.width * 0.95 && r.height >= vs.height * 0.95){
+      var cs = win.getComputedStyle(el);
+      var m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)(?:[ ,/]+([\d.]+))?/.exec(cs.fill || '');
+      if(m && Math.min(+m[1], +m[2], +m[3]) >= 235 && (m[4] === undefined || +m[4] > 0.5) && parseFloat(cs.fillOpacity || '1') > 0.5) out.push(el);
+    }
+  });
+  return out;
+}
+
+function _lpRefresh(){
+  if(!_lp || !_lp.ready) return;
+  _lpDrawOverlay();
+  var units = _lpUnits().length;
+  var st = _lpEl('lePartsStatus');
+  if(st) st.textContent = units + ' ' + _lpTr('lePartsUnits', 'onderdelen') + ' · ' + _lp.sel.length + ' ' + _lpTr('lePartsSelected', 'geselecteerd');
+  var has = _lp.sel.length > 0;
+  ['lePartsDelete', 'lePartsKeep'].forEach(function(id){ var b = _lpEl(id); if(b) b.disabled = !has; });
+  var u = _lpEl('lePartsUndo'); if(u) u.disabled = !_lp.hist.length;
+  var r = _lpEl('lePartsRedo'); if(r) r.disabled = !_lp.redo.length;
+  var rs = _lpEl('lePartsReset'); if(rs) rs.disabled = !_lp.hist.length;
+  var fl = _lpEl('lePartsUngroup'); if(fl) fl.disabled = false;
+  // witte achtergrond
+  var wb = _lpEl('lePartsWhite');
+  if(wb) wb.style.display = _lpFindWhiteBg().length ? '' : 'none';
+  // formaat
+  var sz = _lpEl('lePartsSize');
+  if(sz){
+    var fr = _lpInkFraction();
+    var mw = _fabricObj && _fabricObj._mmW, mh = _fabricObj && _fabricObj._mmH;
+    if(fr && fr.count && mw && mh){
+      sz.textContent = _lpTr('lePartsSizeNow', 'Formaat nu') + ' ' + Math.round(mw) + ' × ' + Math.round(mh) + ' mm  →  ± ' +
+        Math.round(mw * fr.w) + ' × ' + Math.round(mh * fr.h) + ' mm ' + _lpTr('lePartsSizeAfter', 'na bijsnijden');
+    } else if(fr && !fr.count){ sz.textContent = _lpTr('lePartsNothingLeft', 'Er blijft niets over'); }
+    else sz.textContent = '';
+  }
+  var wn = _lpEl('lePartsWarn');
+  if(wn) wn.style.display = _lp.warn ? '' : 'none';
+  _lpSetLocked(_lp.dirty);
+}
+
+/* ── bewerkingen met geschiedenis ── */
+function _lpOp(fn){
+  _lp.hist.push(_lpSerialize());
+  if(_lp.hist.length > LP_HIST_MAX) _lp.hist.shift();
+  _lp.redo = [];
+  fn();
+  _lp.sel = []; _lp.hover = null;
+  _lp.dirty = true;
+  _lpRefresh();
+}
+function _lpRemoveUnit(u){
+  var p = u.parentNode;
+  if(p) p.removeChild(u);
+  while(p && p !== _lp.svg && !_lpKids(p).length){
+    var pp = p.parentNode;
+    if(pp) pp.removeChild(p);
+    p = pp;
+  }
+}
+function _lpFlattenDom(){
+  var warn = 0, changed = 0;
+  (function walk(parent){
+    Array.prototype.slice.call(parent.children).forEach(function(ch){
+      var ln = ch.localName.toLowerCase();
+      if(LP_SKIP[ln] || ln !== 'g') return;
+      var kids = _lpKids(ch);
+      if(kids.length <= 1){ walk(ch); return; }
+      if(ch.getAttribute('filter') || ch.getAttribute('mask')){ return; }   // blijft één onderdeel
+      var op = parseFloat(ch.getAttribute('opacity'));
+      if((op >= 0 && op < 1) || /opacity/.test(ch.getAttribute('style') || '')) warn++;
+      var extras = Array.prototype.filter.call(ch.children, function(n){ return LP_SKIP[n.localName.toLowerCase()]; });
+      var clones = kids.map(function(k, i){
+        var c = ch.cloneNode(false);
+        if(i > 0) c.removeAttribute('id');
+        if(i === 0) extras.forEach(function(x){ c.appendChild(x); });
+        c.appendChild(k);
+        return c;
+      });
+      clones.forEach(function(c){ parent.insertBefore(c, ch); });
+      parent.removeChild(ch);
+      changed++;
+      clones.forEach(function(c){ walk(c); });
+    });
+  })(_lp.svg);
+  _lp.warn += warn;
+  return changed;
+}
+
+function partsUngroup(){
+  if(!_lp || !_lp.ready) return;
+  _lpOp(function(){ _lpFlattenDom(); _lp.flattened = true; });
+  if(window.toast) window.toast(_lpTr('lePartsUngrouped', 'Groepen opgebroken: elk onderdeel is los te selecteren'), 'info', 1800);
+}
+function partsDelete(){
+  if(!_lp || !_lp.sel.length) return;
+  var sel = _lp.sel.slice();
+  _lpOp(function(){ sel.forEach(_lpRemoveUnit); });
+}
+function partsKeep(){
+  if(!_lp || !_lp.sel.length) return;
+  var keep = _lp.sel.slice();
+  var rest = _lpUnits().filter(function(u){ return keep.indexOf(u) < 0; });
+  _lpOp(function(){ rest.forEach(_lpRemoveUnit); });
+}
+function partsSelectAll(){ if(!_lp) return; _lp.sel = _lpUnits(); _lpRefresh(); }
+function partsInvert(){
+  if(!_lp) return;
+  var cur = _lp.sel;
+  _lp.sel = _lpUnits().filter(function(u){ return cur.indexOf(u) < 0; });
+  _lpRefresh();
+}
+function partsRemoveWhite(){
+  if(!_lp) return;
+  var leaves = _lpFindWhiteBg();
+  if(!leaves.length) return;
+  _lpOp(function(){
+    // eerst opbreken zodat het witte vlak een eigen onderdeel is
+    var units = leaves.map(function(l){ return _lpUnitOf(l); });
+    if(units.some(function(u){ return u && _lpLeaves(u).length > 1; })){ _lpFlattenDom(); _lp.flattened = true; }
+    leaves.forEach(function(l){
+      var u = _lpUnitOf(l);
+      if(!u) return;
+      if(_lpLeaves(u).length > 1){
+        // kon niet los worden gemaakt (filter/mask): alleen het element zelf weghalen
+        if(l.parentNode) l.parentNode.removeChild(l);
+      } else _lpRemoveUnit(u);
+    });
+  });
+  if(window.toast) window.toast(_lpTr('lePartsWhiteGone', 'Wit achtergrondvlak verwijderd'), 'info', 1800);
+}
+function partsUndo(){
+  if(!_lp || !_lp.hist.length) return;
+  _lp.redo.push(_lpSerialize());
+  _lpLoadSvgString(_lp.hist.pop());
+  _lp.dirty = _lp.hist.length > 0;
+  _lpRefresh();
+}
+function partsRedo(){
+  if(!_lp || !_lp.redo.length) return;
+  _lp.hist.push(_lpSerialize());
+  _lpLoadSvgString(_lp.redo.pop());
+  _lp.dirty = true;
+  _lpRefresh();
+}
+function partsReset(){
+  if(!_lp || !_lp.hist.length) return;
+  _lp.hist.push(_lpSerialize());
+  _lpLoadSvgString(_lp.orig);
+  _lp.redo = []; _lp.dirty = false; _lp.warn = 0; _lp.flattened = false;
+  _lpRefresh();
+}
+
+/* ── Toepassen: bijsnijden en terugplaatsen ── */
+function _lpCommit(){
+  if(!_lp || !_lp.dirty) return false;
+  var fr0 = _lpInkFraction();
+  if(!fr0 || !fr0.count){
+    if(window.toast) window.toast(_lpTr('lePartsNothingLeft', 'Er blijft niets over'), 'warn', 3000);
+    return true;   // blijf in de editor
+  }
+  var svgStr = _lpSerialize();
+  var obj = _fabricObj;
+  if(typeof window.autoCropSvg !== 'function'){ if(window.toast) window.toast('autoCropSvg niet beschikbaar', 'error'); return true; }
+  window.autoCropSvg(svgStr, function(cropped, fracs){
+    var fr = fracs || { x: 0, y: 0, w: 1, h: 1 };
+    if(typeof window.pushUndo === 'function') window.pushUndo();      // één Ctrl+Z-stap, vóór de wijziging
+    _lpReplaceGroup(obj, cropped, fr);
+  });
+  _lpLeave();
+  close(true);
+  return true;
+}
+
+/* Bouw een nieuwe groep uit de bijgesneden SVG, geplaatst zodat het overgebleven
+   logo op het vel niet verspringt (rekening houdend met hoek en spiegeling). */
+function _lpMakeGroup(base, svg, fr, cb){
+  fabric.loadSVGFromString(svg, function(objects, options){
+    var g = fabric.util.groupSVGElements(objects, options);
+    g.objectCaching = false;
+    if(g._objects) g._objects.forEach(function(ch){ ch.objectCaching = false; });
+    var pxPerMm = window._displayPxPerMm || 5;
+    var oldW = base._mmW || 50, oldH = base._mmH || 50;
+    var newW = oldW * fr.w, newH = oldH * fr.h;
+    var fx = base.flipX ? (1 - fr.x - fr.w) : fr.x;
+    var fy = base.flipY ? (1 - fr.y - fr.h) : fr.y;
+    var dx = fx * oldW * pxPerMm, dy = fy * oldH * pxPerMm;
+    var th = (base.angle || 0) * Math.PI / 180;
+    g.set({
+      originX: 'left', originY: 'top',
+      left: base.left + dx * Math.cos(th) - dy * Math.sin(th),
+      top:  base.top  + dx * Math.sin(th) + dy * Math.cos(th),
+      angle: base.angle, flipX: !!base.flipX, flipY: !!base.flipY,
+      scaleX: (newW * pxPerMm) / g.width, scaleY: (newH * pxPerMm) / g.height
+    });
+    g._id = base._id; g._originalId = base._originalId; g._name = base._name;
+    g._naturalW = g.width; g._naturalH = g.height;
+    g._mmW = newW; g._mmH = newH; g._mmLeft = base._mmLeft; g._mmTop = base._mmTop;
+    g._svgSource = svg;
+    g._recolored = true;                    // export: eigen SVG gebruiken, nooit de originele PDF insluiten
+    g._partsEdited = true;
+    if(base._hasAppliedOutline) g._hasAppliedOutline = base._hasAppliedOutline;
+    if(base._vectorOrigin) g._vectorOrigin = base._vectorOrigin;
+    if(base._isFillTile) g._isFillTile = base._isFillTile;
+    cb(g);
+  });
+}
+
+function _lpReplaceGroup(obj, svg, fr){
+  var canvas = window._gsbCanvas;
+  if(!canvas || !obj) return;
+  var oid = obj._originalId || obj._id;
+  if(oid != null && typeof svgSourceStore !== 'undefined') svgSourceStore.set(oid, svg);
+
+  // kopieën van hetzelfde logo: vooraf bepalen, anders telt de nieuwe groep zelf als kopie mee
+  var sibs = canvas.getObjects().filter(function(o){
+    return o !== obj && (o._originalId || o._id) === oid && o._mmW != null;
+  });
+  var pxPerMm = window._displayPxPerMm || 5;
+
+  _lpMakeGroup(obj, svg, fr, function(g){
+    if(typeof window.attachObjListeners === 'function') window.attachObjListeners(g);
+    canvas.remove(obj);
+    canvas.add(g);
+    canvas.setActiveObject(g);
+    canvas.requestRenderAll();
+    if(typeof window.syncMmFromPx === 'function') window.syncMmFromPx(g);
+    if(typeof window.invalidateThumb === 'function') window.invalidateThumb(oid);
+    if(typeof window.renderItemList === 'function') window.renderItemList();
+    if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
+    if(typeof window.autoDarkBgForWhiteLogo === 'function') window.autoDarkBgForWhiteLogo(g);
+    if(window.toast) window.toast(_lpTr('lePartsApplied', 'Onderdelen verwijderd, logo strak bijgesneden (Ctrl+Z maakt ongedaan)'), 'success', 3500);
+  });
+
+  // alle kopieën meenemen
+  sibs.forEach(function(sib){
+    if(sib.type === 'group'){
+      _lpMakeGroup(sib, svg, fr, function(g){
+        if(typeof window.attachObjListeners === 'function') window.attachObjListeners(g);
+        canvas.remove(sib);
+        canvas.add(g);
+        if(typeof window.syncMmFromPx === 'function') window.syncMmFromPx(g);
+        canvas.requestRenderAll();
+      });
+    } else if(sib.type === 'image'){
+      var targetW = Math.max(600, Math.round(sib.width * (sib.scaleX || 1) * 3));
+      _renderSvgSourceToCanvas(svg, targetW, function(c){
+        if(!c) return;
+        fabric.Image.fromURL(c.toDataURL('image/png'), function(newImg){
+          var oldW = sib._mmW || 50, oldH = sib._mmH || 50;
+          var fx = sib.flipX ? (1 - fr.x - fr.w) : fr.x, fy = sib.flipY ? (1 - fr.y - fr.h) : fr.y;
+          var dx = fx * oldW * pxPerMm, dy = fy * oldH * pxPerMm, th = (sib.angle || 0) * Math.PI / 180;
+          sib.setElement(newImg.getElement());
+          sib._mmW = oldW * fr.w; sib._mmH = oldH * fr.h;
+          sib._svgSource = svg; sib._recolored = true;
+          sib.scaleX = (sib._mmW * pxPerMm) / sib.width;
+          sib.scaleY = (sib._mmH * pxPerMm) / sib.height;
+          sib.left = sib.left + dx * Math.cos(th) - dy * Math.sin(th);
+          sib.top  = sib.top  + dx * Math.sin(th) + dy * Math.cos(th);
+          sib.dirty = true; sib.setCoords();
+          if(typeof window.syncMmFromPx === 'function') window.syncMmFromPx(sib);
+          canvas.requestRenderAll();
+        }, { crossOrigin: 'anonymous' });
+      });
+    }
+  });
+}
+
+
+function _lpKey(e){
+  if(!_lp || !_lp.ready) return;
+  var m = document.getElementById('logoEditorModal');
+  if(!m || !m.classList.contains('open')) return;
+  var k = e.key, mod = e.ctrlKey || e.metaKey;
+  var stop = function(){ e.preventDefault(); e.stopPropagation(); };
+  if(k === 'Delete' || k === 'Backspace'){ stop(); partsDelete(); }
+  else if(mod && (k === 'z' || k === 'Z')){ stop(); if(e.shiftKey) partsRedo(); else partsUndo(); }
+  else if(mod && (k === 'y' || k === 'Y')){ stop(); partsRedo(); }
+  else if(mod && (k === 'a' || k === 'A')){ stop(); partsSelectAll(); }
+}
+document.addEventListener('keydown', _lpKey, true);
+
 /* ══════════ Expose ══════════ */
 window.gsbLogoEditor = {
   open: open, close: function(){ close(false); }, apply: apply, reset: reset,
@@ -2153,6 +2699,9 @@ window.gsbLogoEditor = {
   applyBgRemove: applyBgRemove,
   applyWhiteRemove: applyWhiteRemove, previewWhiteRemove: previewWhiteRemove,
   setColorMode: setColorMode,
+  partsUngroup: partsUngroup, partsDelete: partsDelete, partsKeep: partsKeep,
+  partsSelectAll: partsSelectAll, partsInvert: partsInvert, partsRemoveWhite: partsRemoveWhite,
+  partsUndo: partsUndo, partsRedo: partsRedo, partsReset: partsReset,
 };
 
 })();

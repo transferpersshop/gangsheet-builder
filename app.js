@@ -54,13 +54,26 @@ const I18N = {
     leChooseTool:'Kies een tool links om het logo te bewerken',
     leReset:'Reset', leCancel:'Annuleren', leApply:'Toepassen',
     leColorReplaced:'Kleur vervangen', leMadeBlack:'Logo zwart gemaakt', leMadeWhite:'Logo wit gemaakt',
+    leToolParts:'Onderdelen', lePartsTitle:'Onderdelen bewerken',
+    lePartsHelp:'Klik op een onderdeel om het te selecteren. Shift voegt toe, sleep een kader om meerdere te kiezen. Verwijder wat je niet wilt: het logo wordt daarna strak bijgesneden en op dezelfde plek teruggezet.',
+    lePartsUngroup:'Groepen opbreken', lePartsSelectAll:'Alles selecteren', lePartsInvert:'Selectie omkeren',
+    lePartsDelete:'Verwijder selectie', lePartsKeep:'Houd alleen selectie',
+    lePartsWhiteFound:'Wit achtergrondvlak herkend', lePartsWhiteBtn:'Verwijder wit vlak',
+    lePartsUndo:'Ongedaan', lePartsRedo:'Opnieuw', lePartsReset:'Herstel alles',
+    lePartsWarn:'Een groep met doorzichtigheid is opgebroken. Overlappende delen kunnen daardoor iets anders mengen. Controleer het resultaat.',
+    lePartsUnits:'onderdelen', lePartsSelected:'geselecteerd', lePartsSizeNow:'Formaat nu', lePartsSizeAfter:'na bijsnijden',
+    lePartsNothingLeft:'Er blijft niets over', lePartsUngrouped:'Groepen opgebroken: elk onderdeel is los te selecteren',
+    lePartsWhiteGone:'Wit achtergrondvlak verwijderd', lePartsLocked:'Pas eerst de onderdelen toe of herstel ze',
+    lePartsApplied:'Onderdelen verwijderd, logo strak bijgesneden (Ctrl+Z maakt ongedaan)',
+    lePartsOutlineFirst:'Pas eerst de outline toe of zet hem op 0, daarna kun je onderdelen bewerken',
+    lePartsNoSrc:'Geen vectorbron beschikbaar voor dit logo', lePartsParseFail:'Dit logo kan niet in onderdelen worden opgedeeld',
     leResetDone:'Reset naar origineel', leUpdated:'Logo bijgewerkt', leOutlineApplied:'Outline toegepast — vector behouden',
     teTitle:'Tekst maken', teTabText:'Tekst', teTabFonts:'Fonts',
     teFont:'Lettertype', teSearchFont:'Zoek lettertype…', teChooseFont:'Kies een lettertype…',
     teColorMode:'Kleurmodus', teTextColor:'Tekstkleur', teOutlineColor:'Outline kleur', teOutlineWidth:'Outline dikte (mm)',
     teFontHeight:'Font hoogte', teFontWidth:'Font breedte', teSizePer:'Afmeting per', teStyle:'Stijl',
     teLetterSpacing:'Letter spacing', teTextBend:'Tekst buiging', teText:'Tekst',
-    teTypeAbove:'Typ tekst hierboven', teFontsInJob:'Fonts in deze opdracht', teNoTexts:'Nog geen teksten op het vel',
+    teTypeAbove:'Typ hieronder je tekst', teFontsInJob:'Fonts in deze opdracht', teNoTexts:'Nog geen teksten op het vel',
     teBold:'Vet', teItalic:'Cursief', teUnderline:'Onderstreept', teUppercase:'Hoofdletters',
     teAddToSheet:'Tekst toevoegen aan vel', teUpdateText:'Tekst bijwerken',
     teChooseFontPreview:'Kies een lettertype om preview te zien', teChooseFontShort:'Kies een lettertype',
@@ -155,6 +168,9 @@ const I18N = {
     colorMadeMono:'Logo omgezet',
     rollWidth:'Breedte', rollLength:'Kies lengte', lengthUnit:'meter',
     sumLength:'Formaat',
+    sumPricePerM:'Prijs per meter (excl. btw)', sumPriceEx:'Totaal excl. btw', sumPriceInc:'Totaal incl. btw',
+    sumPriceNote:'Indicatie op basis van de staffelprijs van Premium DTF Transfer 55 x 100 cm, per hele meter, 21% btw. Verzendkosten niet inbegrepen.',
+    sumPriceHint:(m,p)=>`Nog ${m} m erbij: ${p} per meter`,
     rollTooShort:'Vel kan niet korter dan de geplaatste logo\'s. Verwijder eerst logo\'s onderaan.',
     rollAutoExtended:'Vel automatisch verlengd',
     formatTooSmall:'Logo\'s passen niet op dit formaat. Verwijder eerst logo\'s.',
@@ -291,13 +307,26 @@ const I18N = {
     leChooseTool:'Choose a tool from the menu to edit the logo',
     leReset:'Reset', leCancel:'Cancel', leApply:'Save',
     leColorReplaced:'Color replaced', leMadeBlack:'Logo made black', leMadeWhite:'Logo made white',
+    leToolParts:'Parts', lePartsTitle:'Edit parts',
+    lePartsHelp:'Click a part to select it. Shift adds, drag a box to pick several. Delete what you do not want: the logo is then cropped tightly and put back in the same place.',
+    lePartsUngroup:'Ungroup', lePartsSelectAll:'Select all', lePartsInvert:'Invert selection',
+    lePartsDelete:'Delete selection', lePartsKeep:'Keep selection only',
+    lePartsWhiteFound:'White background shape found', lePartsWhiteBtn:'Remove white shape',
+    lePartsUndo:'Undo', lePartsRedo:'Redo', lePartsReset:'Restore all',
+    lePartsWarn:'A group with transparency was split up. Overlapping parts may blend slightly differently. Please check the result.',
+    lePartsUnits:'parts', lePartsSelected:'selected', lePartsSizeNow:'Size now', lePartsSizeAfter:'after cropping',
+    lePartsNothingLeft:'Nothing would be left', lePartsUngrouped:'Groups split up: every part can be selected on its own',
+    lePartsWhiteGone:'White background shape removed', lePartsLocked:'Apply or restore the parts first',
+    lePartsApplied:'Parts removed, logo cropped tightly (Ctrl+Z undoes this)',
+    lePartsOutlineFirst:'Apply the outline first or set it to 0, then you can edit parts',
+    lePartsNoSrc:'No vector source available for this logo', lePartsParseFail:'This logo cannot be split into parts',
     leResetDone:'Reset to original', leUpdated:'Logo updated', leOutlineApplied:'Outline applied — vector preserved',
     teTitle:'Add text', teTabText:'Text', teTabFonts:'Fonts',
     teFont:'Font', teSearchFont:'Search font…', teChooseFont:'Choose a font…',
     teColorMode:'Color mode', teTextColor:'Text color', teOutlineColor:'Outline color', teOutlineWidth:'Outline width (mm)',
     teFontHeight:'Font height', teFontWidth:'Font width', teSizePer:'Size based on', teStyle:'Style',
     teLetterSpacing:'Letter spacing', teTextBend:'Text bend', teText:'Text',
-    teTypeAbove:'Type your text above', teFontsInJob:'Fonts in this project', teNoTexts:'No texts on the sheet yet',
+    teTypeAbove:'Type your text below', teFontsInJob:'Fonts in this project', teNoTexts:'No texts on the sheet yet',
     teBold:'Bold', teItalic:'Italic', teUnderline:'Underlined', teUppercase:'Uppercase',
     teAddToSheet:'Add text to sheet', teUpdateText:'Update text',
     teChooseFontPreview:'Choose a font to see a preview', teChooseFontShort:'Choose a font',
@@ -392,6 +421,9 @@ const I18N = {
     colorMadeMono:'Logo converted',
     rollWidth:'Width', rollLength:'Choose length', lengthUnit:'meters',
     sumLength:'Format',
+    sumPricePerM:'Price per meter (excl. VAT)', sumPriceEx:'Total excl. VAT', sumPriceInc:'Total incl. VAT',
+    sumPriceNote:'Estimate based on the volume price of Premium DTF Transfer 55 x 100 cm, per whole meter, 21% VAT. Shipping not included.',
+    sumPriceHint:(m,p)=>`${m} m more: ${p} per meter`,
     rollTooShort:'Sheet cannot be shorter than the placed logos. Remove logos at the bottom first.',
     rollAutoExtended:'Sheet automatically extended',
     formatTooSmall:'Logos don\'t fit on this format. Remove logos first.',
@@ -7023,6 +7055,52 @@ function _renderThinWarnings(){
   });
 }
 
+/* ── Prijsindicatie (v2.63.0) ──
+   Staffelprijzen Premium DTF Transfer 55 x 100 cm, excl. btw, per meter.
+   Bron: https://www.transferpersshop.nl/premium-dtf-transfer-55-x-100-cm
+   (tabel "Staffel - Vanaf aantal meters", gelezen 17-11-2026).
+   Bij wijziging van de webshopprijzen: alleen deze tabel aanpassen. */
+const PRICE_TIERS_EXCL = [
+  { fromM: 1,  perM: 16.95 },
+  { fromM: 10, perM: 14.50 },
+  { fromM: 30, perM: 12.50 },
+];
+const PRICE_VAT = 0.21;
+
+function priceForMeters(meters){
+  const m = Math.max(1, Math.round(meters));
+  let tier = PRICE_TIERS_EXCL[0];
+  PRICE_TIERS_EXCL.forEach(tr => { if(m >= tr.fromM) tier = tr; });
+  const next = PRICE_TIERS_EXCL.find(tr => tr.fromM > m) || null;
+  const exCents = Math.round(m * tier.perM * 100);
+  const incCents = Math.round(exCents * (1 + PRICE_VAT));
+  return { meters: m, perM: tier.perM, exCents, incCents, next };
+}
+function formatEur(v){
+  try{
+    return new Intl.NumberFormat(state.lang === 'en' ? 'en-GB' : 'nl-NL', { style:'currency', currency:'EUR' }).format(v);
+  }catch(e){ return '€ ' + v.toFixed(2); }
+}
+function updatePriceRows(){
+  const wrap = document.getElementById('sumPriceBlock');
+  if(!wrap) return;
+  const fmt = SHEET_FORMATS[state.sheetFormat];
+  // Alleen voor de standaard DTF-rol van 55 cm is een webshopprijs bekend
+  if(!(fmt && fmt.isDTF && state.sheetFormat === 'dtf55')){ wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  const pr = priceForMeters(state.rollLengthM);
+  document.getElementById('sumPricePerM').textContent = formatEur(pr.perM);
+  document.getElementById('sumPriceEx').textContent  = formatEur(pr.exCents / 100);
+  document.getElementById('sumPriceInc').textContent = formatEur(pr.incCents / 100);
+  const hint = document.getElementById('sumPriceHint');
+  if(hint){
+    if(pr.next){
+      hint.textContent = t('sumPriceHint', pr.next.fromM - pr.meters, formatEur(pr.next.perM));
+      hint.style.display = '';
+    } else { hint.textContent = ''; hint.style.display = 'none'; }
+  }
+}
+
 function updateSummary(){
   const s = collectAllSheetStats();
   document.getElementById('sumUnique').textContent = s.unique.size;
@@ -7046,6 +7124,7 @@ function updateSummary(){
     const fmt = SHEET_FORMATS[state.sheetFormat];
     sumLengthEl.textContent = fmt ? fmt.label : '—';
   }
+  updatePriceRows();
 }
 
 /* =========================================================
@@ -9252,4 +9331,6 @@ window.attachObjListeners = attachObjListeners;
 window.syncMmFromPx = syncMmFromPx;
 window.renderItemList = renderItemList;
 window.renderSelectedPanel = renderSelectedPanel;
+window.pushUndo = pushUndo;
+window.autoCropSvg = autoCropSvg;
 
