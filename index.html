@@ -954,13 +954,17 @@ window.addEventListener('load', ()=>{
             <div class="summary-row"><span class="label" data-i18n="sumLength">Formaat</span><span class="val" id="sumLength">1m</span></div>
             <div class="summary-row"><span class="label" data-i18n="sumDpi">DPI-status</span><span class="val" id="sumDpi">—</span></div>
             <div class="summary-row"><span class="label" data-i18n="sumColor">Kleurruimte</span><span class="val">sRGB · 300 DPI</span></div>
-            <div id="sumPriceBlock" style="display:none">
-              <div class="summary-row"><span class="label" data-i18n="sumPricePerM">Prijs per meter (excl. btw)</span><span class="val" id="sumPricePerM">—</span></div>
-              <div class="summary-row"><span class="label" data-i18n="sumPriceEx">Totaal excl. btw</span><span class="val" id="sumPriceEx">—</span></div>
-              <div class="summary-row"><span class="label" data-i18n="sumPriceInc">Totaal incl. btw</span><span class="val" id="sumPriceInc" style="color:var(--primary)">—</span></div>
-              <p class="sum-price-note" id="sumPriceHint" style="display:none"></p>
-              <p class="sum-price-note" data-i18n="sumPriceNote">Indicatie op basis van de staffelprijs van Premium DTF Transfer 55 x 100 cm, per hele meter, 21% btw. Verzendkosten niet inbegrepen.</p>
-            </div>
+          </div>
+        </div>
+
+        <div class="section" id="sumPriceBlock" style="display:none">
+          <div class="section-head"><h3 data-i18n="priceTitle">Prijsindicatie</h3></div>
+          <div class="summary-inline">
+            <div class="summary-row"><span class="label" data-i18n="sumPricePerM">Prijs per meter (excl. btw)</span><span class="val" id="sumPricePerM">—</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumPriceEx">Totaal excl. btw</span><span class="val" id="sumPriceEx">—</span></div>
+            <div class="summary-row"><span class="label" data-i18n="sumPriceInc">Totaal incl. btw</span><span class="val" id="sumPriceInc" style="color:var(--primary)">—</span></div>
+            <p class="sum-price-note" id="sumPriceHint" style="display:none"></p>
+            <p class="sum-price-note" data-i18n="sumPriceNote">Indicatie op basis van de staffelprijs van Premium DTF Transfer 55 x 100 cm, per hele meter, 21% btw. Verzendkosten niet inbegrepen.</p>
           </div>
         </div>
 
@@ -1042,7 +1046,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.63.0 · 17-11-2026</p>
+    <p class="version-tag">v2.64.0 · 23-11-2026</p>
   </div>
 </div>
 
@@ -1414,6 +1418,12 @@ window.addEventListener('load', ()=>{
 .le-parts-white{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;padding:8px 10px;border:1px solid #c4e8ec;background:#f0fdff;border-radius:8px;font-size:.78rem}
 .le-parts-size{font-size:.78rem;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
 .le-parts-warn{color:#b45309}
+/* v2.64.0 — Kleur: hele logo of losse delen */
+#leColorScope{height:32px;margin-bottom:14px}
+#leColorScope button{flex:1}
+.le-cp-label{font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin:4px 0 6px}
+.le-cp-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.le-color-chip.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,154,175,.35)}
 @media (max-width:860px){
   #logoEditorModal .le-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(200px,45%) minmax(0,1fr)}
   #logoEditorModal .le-preview-wrap{grid-column:1;grid-row:1;margin:12px 12px 0}
@@ -1425,6 +1435,16 @@ window.addEventListener('load', ()=>{
 #textEditorModal #tePreviewWrap{order:-2;margin:0 0 12px!important}
 #textEditorModal .te-field:has(#teTextInput){order:-1;margin-bottom:8px}
 #textEditorModal .te-preview{min-height:140px;display:flex;align-items:center;justify-content:center}
+/* v2.64.0 — rechtermuismenu op het vel + groepknoppen */
+.gsb-ctx-menu{position:fixed;z-index:950;min-width:210px;padding:5px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(26,26,46,.18);font-family:inherit}
+.gsb-ctx-item{display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:var(--text);font-size:.8rem;font-weight:600;text-align:left;cursor:pointer}
+.gsb-ctx-item:hover:not([disabled]){background:var(--bg-light);color:var(--primary)}
+.gsb-ctx-item[disabled]{opacity:.4;cursor:default}
+.gsb-ctx-item.danger{color:var(--error)}
+.gsb-ctx-item.danger:hover:not([disabled]){background:#fee2e2;color:var(--error)}
+.gsb-ctx-item kbd{font-family:inherit;font-size:.68rem;font-weight:600;color:var(--muted)}
+.gsb-ctx-sep{height:1px;margin:4px 6px;background:var(--border)}
+.tool-btn.group-btn{display:inline-flex;align-items:center;justify-content:center;font-weight:700}
 /* Prijsregels in de samenvatting */
 .sum-price-note{font-size:.68rem;color:var(--muted);margin:6px 0 0;line-height:1.4}
 </style>
@@ -1455,7 +1475,7 @@ window.addEventListener('load', ()=>{
         </button>
         <button class="le-tool-btn" data-tool="parts" id="leToolParts" onclick="gsbLogoEditor.selectTool('parts')" style="display:none">
           <svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4a2 2 0 0 1 2 2v1M11 18H8a2 2 0 0 1-2-2v-1" stroke-dasharray="2 2"/></svg>
-          <span data-i18n="leToolParts">Onderdelen</span>
+          <span data-i18n="leToolParts">Bewerken</span>
         </button>
       </div>
 
@@ -1466,7 +1486,7 @@ window.addEventListener('load', ()=>{
           <span class="le-file-name" id="leFileName">Logo</span>
           <canvas id="lePreview"></canvas>
           <!-- Onderdelen-tool: SVG staat in een iframe zonder scripts (sandbox) -->
-          <iframe id="lePartsFrame" sandbox="allow-same-origin" title="Onderdelen" style="display:none"></iframe>
+          <iframe id="lePartsFrame" sandbox="allow-same-origin" title="Bewerken" style="display:none"></iframe>
           <div id="lePartsOverlay" style="display:none"></div>
         </div>
 
@@ -1478,6 +1498,12 @@ window.addEventListener('load', ()=>{
 
         <!-- ═══ 1. Kleur aanpassen ═══ -->
         <div class="le-tool-panel" id="lePanel_color">
+          <!-- v2.64.0: hele logo of losse delen kleuren (alleen bij een vectorbron) -->
+          <div class="te-mode-toggle le-scope-toggle" id="leColorScope" style="display:none">
+            <button class="active" data-scope="all" onclick="gsbLogoEditor.setColorScope('all')" data-i18n="leScopeAll">Hele logo</button>
+            <button data-scope="parts" onclick="gsbLogoEditor.setColorScope('parts')" data-i18n="leScopeParts">Losse delen</button>
+          </div>
+          <div id="leColorWholeBox">
           <h4 data-i18n="leQuickConvert">Snel omzetten</h4>
           <div style="display:flex;gap:8px;margin-bottom:14px">
             <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px" data-i18n="leMakeBlackBtn">Maak zwart</button>
@@ -1519,6 +1545,31 @@ window.addEventListener('load', ()=>{
           <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">3</span><span data-i18n="leApplyShort">Pas toe</span></label>
           <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%">Kleur vervangen</button>
           </div>
+          </div>
+
+          <!-- Losse delen kleuren: selecteren in het voorbeeld (zelfde veilige iframe als Bewerken) -->
+          <div id="leColorPartsBox" style="display:none">
+            <h4 data-i18n="leCpTitle">Losse delen kleuren</h4>
+            <p class="le-info" style="margin:0 0 12px" data-i18n="leCpHelp">Klik in het voorbeeld op een deel om het te selecteren. Shift voegt toe, sleep een kader om meerdere te kiezen. Kies daarna de nieuwe kleur.</p>
+            <div class="le-parts-actions">
+              <button class="le-btn le-btn-sub" id="leCpUngroup" onclick="gsbLogoEditor.partsUngroup()" data-i18n="lePartsUngroup">Groepen opbreken</button>
+              <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.partsSelectAll()" data-i18n="lePartsSelectAll">Alles selecteren</button>
+              <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.partsInvert()" data-i18n="lePartsInvert">Selectie omkeren</button>
+            </div>
+            <label class="le-cp-label" data-i18n="leNewColor">Kies de nieuwe kleur</label>
+            <div class="le-cp-row">
+              <input type="color" id="leCpColor" value="#FF0000" title="Klik om een kleur te kiezen" data-i18n-title="leClickPickColor">
+              <div class="le-color-chips" id="leCpSwatches" style="margin:0"></div>
+            </div>
+            <button class="le-btn le-btn-sub" id="leCpApply" onclick="gsbLogoEditor.partsColor()" style="width:100%" data-i18n="leCpApply" disabled>Kleur geven aan selectie</button>
+            <div class="le-parts-actions" style="margin-top:10px">
+              <button class="le-btn le-btn-pick" id="leCpUndo" onclick="gsbLogoEditor.partsUndo()" data-i18n="lePartsUndo" disabled>Ongedaan</button>
+              <button class="le-btn le-btn-pick" id="leCpRedo" onclick="gsbLogoEditor.partsRedo()" data-i18n="lePartsRedo" disabled>Opnieuw</button>
+              <button class="le-btn le-btn-pick" id="leCpReset" onclick="gsbLogoEditor.partsReset()" data-i18n="lePartsReset" disabled>Herstel alles</button>
+            </div>
+            <div class="le-status" id="leCpStatus"></div>
+            <p class="le-info" data-i18n="leCpApplyHint">Klik op Toepassen om de nieuwe kleuren op het vel te zetten.</p>
+          </div>
         </div>
 
         <!-- ═══ 2. BG Remove (bitmap only) ═══ -->
@@ -1553,9 +1604,9 @@ window.addEventListener('load', ()=>{
         </div>
 
         <!-- ═══ 4. Upscale (bitmap only) ═══ -->
-        <!-- ═══ 5. Onderdelen verwijderen en strak terugplaatsen ═══ -->
+        <!-- ═══ 5. Bewerken: onderdelen verwijderen en strak terugplaatsen ═══ -->
         <div class="le-tool-panel" id="lePanel_parts">
-          <h4 data-i18n="lePartsTitle">Onderdelen bewerken</h4>
+          <h4 data-i18n="lePartsTitle">Bewerken</h4>
           <p class="le-info" style="margin:0 0 12px" data-i18n="lePartsHelp">Klik op een onderdeel om het te selecteren. Shift voegt toe, sleep een kader om meerdere te kiezen. Verwijder wat je niet wilt: het logo wordt daarna strak bijgesneden en op dezelfde plek teruggezet.</p>
           <div class="le-parts-actions">
             <button class="le-btn le-btn-sub" id="lePartsUngroup" onclick="gsbLogoEditor.partsUngroup()" data-i18n="lePartsUngroup">Groepen opbreken</button>
@@ -1577,7 +1628,6 @@ window.addEventListener('load', ()=>{
           </div>
           <div class="le-status" id="lePartsStatus"></div>
           <div class="le-parts-size" id="lePartsSize"></div>
-          <p class="le-info le-parts-warn" id="lePartsWarn" style="display:none" data-i18n="lePartsWarn"></p>
         </div>
 
         <div class="le-tool-panel" id="lePanel_upscale">
@@ -1612,10 +1662,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js" integrity="sha384-rZipYyCodoDMAXvm3BS6DXnn3CAyORo9RZ+7OSlLIj1y1YP4KeMFwgKVkO+9W3nB" crossorigin="anonymous"></script>
-<script src="./auth.js?v=2.63.0"></script>
-<script src="./login-ui.js?v=2.63.0"></script>
-<script src="./app.js?v=2.63.0"></script>
-<script src="./text-editor.js?v=2.63.0"></script>
-<script src="./logo-editor.js?v=2.63.0"></script>
+<script src="./auth.js?v=2.64.0"></script>
+<script src="./login-ui.js?v=2.64.0"></script>
+<script src="./app.js?v=2.64.0"></script>
+<script src="./text-editor.js?v=2.64.0"></script>
+<script src="./logo-editor.js?v=2.64.0"></script>
 </body>
 </html>

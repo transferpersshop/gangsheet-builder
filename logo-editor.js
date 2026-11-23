@@ -1,6 +1,6 @@
 /* ================================================================
    logo-editor.js — Per-logo bewerkingsmodal voor Gang Sheet Builder
-   v2.63.0 — onderdelen-tool (selecteren, degroeperen, verwijderen, strak bijsnijden); eerder v2.45.0: retina-scherpe preview met vol-brede achtergrond,
+   v2.64.0 — tool 'Onderdelen' heet nu 'Bewerken'; Kleur: losse delen van een vectorlogo kleuren; v2.63.1 — onderdelen-tool ook voor logo's met vectorbron als afbeelding (veel paden); v2.63.0 — onderdelen-tool (selecteren, degroeperen, verwijderen, strak bijsnijden); eerder v2.45.0: retina-scherpe preview met vol-brede achtergrond,
    witte-achtergrond verwijdering (globaal + de-fringe),
    kleurclustering (vectorizer-stijl), SVG-natieve outline
    ================================================================ */
@@ -228,7 +228,10 @@ function open(fabricObj){
   var upBtn = document.getElementById('leToolUpscale');
   if(upBtn) upBtn.style.display = (_isRaster && !fabricObj._vectorOrigin) ? '' : 'none';
   var partsBtn = document.getElementById('leToolParts');
-  if(partsBtn) partsBtn.style.display = (_isVector && _getSvgSrc(fabricObj)) ? '' : 'none';
+  if(partsBtn) partsBtn.style.display = _lpSource() ? '' : 'none';
+  var scopeEl = document.getElementById('leColorScope');
+  if(scopeEl) scopeEl.style.display = _lpSource() ? '' : 'none';
+  _scopeUI('all');
   var bgBtn = document.getElementById('leToolBgRemove');
   if(bgBtn) bgBtn.style.display = (_isRaster && !fabricObj._vectorOrigin) ? '' : 'none';
 
@@ -493,7 +496,8 @@ function selectTool(tool){
   // Onderdelen: iframe-sessie starten/stoppen; bij openstaande wijzigingen blijven we hier
   if(tool === 'parts'){
     if(!_lp && !_lpEnter()) return;
-  } else if(_lp){
+    if(_lp.colorMode){ _lp.colorMode = false; _scopeUI('all'); _lpRefresh(); }
+  } else if(_lp && !(tool === 'color' && _lp.colorMode)){
     if(_lp.dirty) return;
     _lpLeave();
   }
@@ -1587,7 +1591,7 @@ function _replaceVectorWithOutlinedSvg(obj, res){
     group._recolored = true;        // export: prefer this sample, skip embedPdf
     group._hasAppliedOutline = true;
     if(obj._vectorOrigin) group._vectorOrigin = obj._vectorOrigin;
-    if(obj._isFillTile) group._isFillTile = obj._isFillTile;
+    if(obj._isFillTile) group._isFillTile = obj._isFillTile; if(obj._userGroup) group._userGroup = obj._userGroup;
     if(group._originalId && typeof svgSourceStore !== 'undefined'){
       svgSourceStore.set(group._originalId, res.svg);
     }
@@ -1642,7 +1646,7 @@ function _propagateOutlineToSiblings(primary, res){
         g._mmW = nmW; g._mmH = nmH; g._mmLeft = sib._mmLeft; g._mmTop = sib._mmTop;
         g._svgSource = res.svg; g._recolored = true; g._hasAppliedOutline = true;
         if(sib._vectorOrigin) g._vectorOrigin = sib._vectorOrigin;
-        if(sib._isFillTile) g._isFillTile = sib._isFillTile;
+        if(sib._isFillTile) g._isFillTile = sib._isFillTile; if(sib._userGroup) g._userGroup = sib._userGroup;
         if(typeof window.attachObjListeners === 'function') window.attachObjListeners(g);
         canvas.remove(sib);
         canvas.add(g);
@@ -1881,7 +1885,7 @@ function _propagateRasterEditToSiblings(primary, dataUrl, ratioW, ratioH, svgSou
         newImg._mmW = nmW; newImg._mmH = nmH;
         newImg._mmLeft = sib._mmLeft; newImg._mmTop = sib._mmTop;
         if(sib._vectorOrigin) newImg._vectorOrigin = sib._vectorOrigin;
-        if(sib._isFillTile) newImg._isFillTile = sib._isFillTile;
+        if(sib._isFillTile) newImg._isFillTile = sib._isFillTile; if(sib._userGroup) newImg._userGroup = sib._userGroup;
         newImg._recolored = true;
         if(svgSource){ newImg._svgSource = svgSource; }
         else { newImg._rasterEdited = true; }
@@ -1979,7 +1983,7 @@ function apply(){
         newImg._mmLeft = obj2._mmLeft;
         newImg._mmTop = obj2._mmTop;
         if(obj2._vectorOrigin) newImg._vectorOrigin = obj2._vectorOrigin;
-        if(obj2._isFillTile) newImg._isFillTile = obj2._isFillTile;
+        if(obj2._isFillTile) newImg._isFillTile = obj2._isFillTile; if(obj2._userGroup) newImg._userGroup = obj2._userGroup;
         newImg._recolored = true;    // export: prefer this sample, skip embedPdf
         newImg._rasterEdited = true; // export: force Track 3 (raster)
         // Do NOT copy _svgSource → forces Track 3 raster export
@@ -2097,7 +2101,7 @@ function _finishRasterApply(obj, dataUrl, nw, nh, svgSource){
     if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
     if(obj._pdfPageW) newImg._pdfPageW = obj._pdfPageW;
     if(obj._pdfPageH) newImg._pdfPageH = obj._pdfPageH;
-    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
+    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile; if(obj._userGroup) newImg._userGroup = obj._userGroup;
 
     if(svgSource){
       // v2.52: kleur-ops zijn in de SVG gespiegeld → vector behouden
@@ -2225,7 +2229,22 @@ function _lpContainer(){
     if(k.length === 1 && k[0].localName.toLowerCase() === 'g') c = k[0]; else return c;
   }
 }
-function _lpUnits(){ return _lpKids(_lpContainer()); }
+function _lpAtomic(el){ return el.localName.toLowerCase() === 'g' && !!(el.getAttribute('filter') || el.getAttribute('mask')); }
+/* Na "Groepen opbreken" is elk tekenend element een onderdeel. De SVG zelf wordt
+   daarvoor niet herschreven: groepen, transforms en clip-paths blijven staan, dus
+   de tekening verandert niet en ook duizenden paden blijven vlot. */
+function _lpLeafUnits(){
+  var out = [];
+  (function walk(n){
+    Array.prototype.forEach.call(n.children, function(c){
+      var ln = c.localName.toLowerCase();
+      if(LP_SKIP[ln]) return;
+      if(LP_DRAW[ln] || _lpAtomic(c)) out.push(c); else walk(c);
+    });
+  })(_lp.svg);
+  return out;
+}
+function _lpUnits(){ return _lp.leafMode ? _lpLeafUnits() : _lpKids(_lpContainer()); }
 function _lpInSkip(el){
   for(var n = el; n && n !== _lp.svg; n = n.parentNode){
     if(n.localName && LP_SKIP[n.localName.toLowerCase()]) return true;
@@ -2234,6 +2253,16 @@ function _lpInSkip(el){
 }
 function _lpUnitOf(el){
   if(!el || el === _lp.svg || _lpInSkip(el)) return null;
+  if(_lp.leafMode){
+    // hoogste atomaire groep, anders het tekenende element zelf
+    var hit = null;
+    for(var q = el; q && q !== _lp.svg; q = q.parentNode){
+      if(q.nodeType !== 1) continue;
+      var lq = q.localName.toLowerCase();
+      if(_lpAtomic(q)) hit = q; else if(!hit && LP_DRAW[lq]) hit = q;
+    }
+    return hit;
+  }
   var cont = _lpContainer();
   var n = el;
   while(n && n.parentNode !== cont){
@@ -2263,12 +2292,22 @@ function _lpLoadSvgString(str){
   doc.body.appendChild(imported);
   _lp.svg = imported;
   _lp.sel = [];
+  _lp.chipsDone = false;
 }
 
 /* ── tool openen / sluiten ── */
+/* Vectorbron voor de onderdelen-tool: vector-groep → _svgSource; afbeelding met
+   vectorbron (hi-fi route, o.a. AI/PDF/EPS met veel paden) → de werk-SVG. */
+function _lpSource(){
+  if(!_fabricObj) return null;
+  if(_isVector) return _getSvgSrc(_fabricObj);
+  if(_svgWorkValid && _svgWork && !_fabricObj._rasterEdited) return _svgWork;
+  return null;
+}
+
 function _lpEnter(){
-  if(!_isVector || !_fabricObj){ return false; }
-  var src = _getSvgSrc(_fabricObj);
+  if(!_fabricObj){ return false; }
+  var src = _lpSource();
   if(!src){ if(window.toast) window.toast(_lpTr('lePartsNoSrc', 'Geen vectorbron beschikbaar voor dit logo'), 'warn'); return false; }
   var ow = document.getElementById('leOutWidth');
   if(_hasOutline || (ow && parseFloat(ow.value) > 0)){
@@ -2290,6 +2329,10 @@ function _lpEnter(){
     _lp.doc = frame.contentDocument;
     _lpLoadSvgString(clean);
     _lp.ready = true;
+    _lp.ink0 = null;
+    if(typeof window.autoCropSvg === 'function'){
+      window.autoCropSvg(clean, function(_c, f0){ if(_lp && _lp.frame === frame){ _lp.ink0 = f0 || { x: 0, y: 0, w: 1, h: 1 }; _lpScheduleSize(); } });
+    }
     _lpWireFrame();
     _lpRefresh();
   };
@@ -2309,15 +2352,16 @@ function _lpLeave(){
   if(_previewEl) _previewEl.style.visibility = '';
   _lp = null;
   _lpSetLocked(false);
+  _scopeUI('all');
 }
 
 /* andere tools uitschakelen zolang er openstaande onderdelen-wijzigingen zijn */
 function _lpSetLocked(on){
   document.querySelectorAll('.le-tool-btn').forEach(function(b){
-    if(b.dataset.tool && b.dataset.tool !== 'parts'){
+    if(b.dataset.tool && b.dataset.tool !== 'parts' && !(b.dataset.tool === 'color' && _lp && _lp.colorMode)){
       b.disabled = !!on;
       b.style.opacity = on ? '.4' : '';
-      b.title = on ? _lpTr('lePartsLocked', 'Pas eerst de onderdelen toe of herstel ze') : '';
+      b.title = on ? _lpTr('lePartsLocked', 'Pas eerst de bewerking toe of herstel hem') : '';
     }
   });
 }
@@ -2328,8 +2372,18 @@ function _lpWireFrame(){
   d.addEventListener('mousemove', function(e){
     if(!_lp) return;
     if(_lp.drag){ _lp.drag.x1 = e.clientX; _lp.drag.y1 = e.clientY; _lpDrawOverlay(); return; }
-    var u = _lpUnitOf(d.elementFromPoint(e.clientX, e.clientY));
-    if(u !== _lp.hover){ _lp.hover = u; _lpDrawOverlay(); }
+    // hover maximaal één keer per frame bepalen (logo's met duizenden paden)
+    _lp.mx = e.clientX; _lp.my = e.clientY;
+    if(_lp.hoverPending) return;
+    _lp.hoverPending = true;
+    var sess = _lp;
+    (d.defaultView.requestAnimationFrame || setTimeout)(function(){
+      if(_lp !== sess) return;
+      sess.hoverPending = false;
+      if(sess.drag) return;
+      var u = _lpUnitOf(d.elementFromPoint(sess.mx, sess.my));
+      if(u !== sess.hover){ sess.hover = u; _lpDrawOverlay(); }
+    });
   });
   d.addEventListener('mousedown', function(e){
     if(!_lp || e.button !== 0) return;
@@ -2371,7 +2425,12 @@ function _lpDrawOverlay(){
     html += '<div class="le-part-box ' + cls + '" style="left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px"></div>';
   };
   if(_lp.hover && _lp.sel.indexOf(_lp.hover) < 0) add(_lp.hover.getBoundingClientRect(), 'hover');
-  _lp.sel.forEach(function(u){ add(u.getBoundingClientRect(), 'sel'); });
+  if(_lp.sel.length > 150){
+    // veel geselecteerd: één kader om de hele selectie (sneller en rustiger)
+    var l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    _lp.sel.forEach(function(u){ var q = u.getBoundingClientRect(); if(q.width + q.height > 0){ l = Math.min(l, q.left); t = Math.min(t, q.top); r = Math.max(r, q.right); b = Math.max(b, q.bottom); } });
+    if(r > l) add({ left: l, top: t, width: r - l, height: b - t }, 'sel');
+  } else _lp.sel.forEach(function(u){ add(u.getBoundingClientRect(), 'sel'); });
   if(_lp.drag && (Math.abs(_lp.drag.x1 - _lp.drag.x0) > 4 || Math.abs(_lp.drag.y1 - _lp.drag.y0) > 4)){
     var g = _lp.drag;
     add({ left: Math.min(g.x0, g.x1), top: Math.min(g.y0, g.y1), width: Math.abs(g.x1 - g.x0), height: Math.abs(g.y1 - g.y0) }, 'marquee');
@@ -2426,24 +2485,47 @@ function _lpRefresh(){
   var u = _lpEl('lePartsUndo'); if(u) u.disabled = !_lp.hist.length;
   var r = _lpEl('lePartsRedo'); if(r) r.disabled = !_lp.redo.length;
   var rs = _lpEl('lePartsReset'); if(rs) rs.disabled = !_lp.hist.length;
-  var fl = _lpEl('lePartsUngroup'); if(fl) fl.disabled = false;
+  var fl = _lpEl('lePartsUngroup'); if(fl) fl.disabled = !!_lp.leafMode;
+  // Kleur > Losse delen gebruikt dezelfde sessie
+  var cst = _lpEl('leCpStatus');
+  if(cst) cst.textContent = units + ' ' + _lpTr('lePartsUnits', 'onderdelen') + ' · ' + _lp.sel.length + ' ' + _lpTr('lePartsSelected', 'geselecteerd');
+  var cap = _lpEl('leCpApply'); if(cap) cap.disabled = !has;
+  var cu = _lpEl('leCpUndo'); if(cu) cu.disabled = !_lp.hist.length;
+  var cr = _lpEl('leCpRedo'); if(cr) cr.disabled = !_lp.redo.length;
+  var crs = _lpEl('leCpReset'); if(crs) crs.disabled = !_lp.hist.length;
+  var cfl = _lpEl('leCpUngroup'); if(cfl) cfl.disabled = !!_lp.leafMode;
+  if(_lp.colorMode && !_lp.chipsDone){ _lp.chipsDone = true; _lpCpChips(); }
   // witte achtergrond
   var wb = _lpEl('lePartsWhite');
   if(wb) wb.style.display = _lpFindWhiteBg().length ? '' : 'none';
-  // formaat
-  var sz = _lpEl('lePartsSize');
-  if(sz){
-    var fr = _lpInkFraction();
-    var mw = _fabricObj && _fabricObj._mmW, mh = _fabricObj && _fabricObj._mmH;
-    if(fr && fr.count && mw && mh){
-      sz.textContent = _lpTr('lePartsSizeNow', 'Formaat nu') + ' ' + Math.round(mw) + ' × ' + Math.round(mh) + ' mm  →  ± ' +
-        Math.round(mw * fr.w) + ' × ' + Math.round(mh * fr.h) + ' mm ' + _lpTr('lePartsSizeAfter', 'na bijsnijden');
-    } else if(fr && !fr.count){ sz.textContent = _lpTr('lePartsNothingLeft', 'Er blijft niets over'); }
-    else sz.textContent = '';
-  }
+  _lpScheduleSize();
   var wn = _lpEl('lePartsWarn');
   if(wn) wn.style.display = _lp.warn ? '' : 'none';
   _lpSetLocked(_lp.dirty);
+}
+
+/* Formaat na bijsnijden: zelfde meting als bij Toepassen (autoCropSvg), vertraagd */
+function _lpScheduleSize(){
+  if(!_lp) return;
+  clearTimeout(_lp.sizeTimer);
+  var sess = _lp;
+  sess.sizeTimer = setTimeout(function(){
+    if(_lp !== sess || !sess.ready) return;
+    var sz = _lpEl('lePartsSize');
+    var mw = _fabricObj && _fabricObj._mmW, mh = _fabricObj && _fabricObj._mmH;
+    if(!sz || !mw || !mh) return;
+    if(!sess.dirty){ sz.textContent = _lpTr('lePartsSizeNow', 'Formaat nu') + ' ' + Math.round(mw) + ' × ' + Math.round(mh) + ' mm'; return; }
+    if(!sess.ink0 || typeof window.autoCropSvg !== 'function') return;
+    var token = (sess.sizeToken = (sess.sizeToken || 0) + 1);
+    var fr0 = _lpInkFraction();
+    if(fr0 && !fr0.count){ sz.textContent = _lpTr('lePartsNothingLeft', 'Er blijft niets over'); return; }
+    window.autoCropSvg(_lpSerialize(), function(_c, f){
+      if(_lp !== sess || token !== sess.sizeToken) return;
+      var a = sess.ink0, b = f || { x: 0, y: 0, w: 1, h: 1 };
+      sz.textContent = _lpTr('lePartsSizeNow', 'Formaat nu') + ' ' + Math.round(mw) + ' × ' + Math.round(mh) + ' mm  →  ' +
+        Math.round(mw * b.w / a.w) + ' × ' + Math.round(mh * b.h / a.h) + ' mm ' + _lpTr('lePartsSizeAfter', 'na bijsnijden');
+    });
+  }, 250);
 }
 
 /* ── bewerkingen met geschiedenis ── */
@@ -2465,38 +2547,11 @@ function _lpRemoveUnit(u){
     p = pp;
   }
 }
-function _lpFlattenDom(){
-  var warn = 0, changed = 0;
-  (function walk(parent){
-    Array.prototype.slice.call(parent.children).forEach(function(ch){
-      var ln = ch.localName.toLowerCase();
-      if(LP_SKIP[ln] || ln !== 'g') return;
-      var kids = _lpKids(ch);
-      if(kids.length <= 1){ walk(ch); return; }
-      if(ch.getAttribute('filter') || ch.getAttribute('mask')){ return; }   // blijft één onderdeel
-      var op = parseFloat(ch.getAttribute('opacity'));
-      if((op >= 0 && op < 1) || /opacity/.test(ch.getAttribute('style') || '')) warn++;
-      var extras = Array.prototype.filter.call(ch.children, function(n){ return LP_SKIP[n.localName.toLowerCase()]; });
-      var clones = kids.map(function(k, i){
-        var c = ch.cloneNode(false);
-        if(i > 0) c.removeAttribute('id');
-        if(i === 0) extras.forEach(function(x){ c.appendChild(x); });
-        c.appendChild(k);
-        return c;
-      });
-      clones.forEach(function(c){ parent.insertBefore(c, ch); });
-      parent.removeChild(ch);
-      changed++;
-      clones.forEach(function(c){ walk(c); });
-    });
-  })(_lp.svg);
-  _lp.warn += warn;
-  return changed;
-}
-
 function partsUngroup(){
-  if(!_lp || !_lp.ready) return;
-  _lpOp(function(){ _lpFlattenDom(); _lp.flattened = true; });
+  if(!_lp || !_lp.ready || _lp.leafMode) return;
+  _lp.leafMode = true;
+  _lp.sel = []; _lp.hover = null;
+  _lpRefresh();
   if(window.toast) window.toast(_lpTr('lePartsUngrouped', 'Groepen opgebroken: elk onderdeel is los te selecteren'), 'info', 1800);
 }
 function partsDelete(){
@@ -2521,19 +2576,7 @@ function partsRemoveWhite(){
   if(!_lp) return;
   var leaves = _lpFindWhiteBg();
   if(!leaves.length) return;
-  _lpOp(function(){
-    // eerst opbreken zodat het witte vlak een eigen onderdeel is
-    var units = leaves.map(function(l){ return _lpUnitOf(l); });
-    if(units.some(function(u){ return u && _lpLeaves(u).length > 1; })){ _lpFlattenDom(); _lp.flattened = true; }
-    leaves.forEach(function(l){
-      var u = _lpUnitOf(l);
-      if(!u) return;
-      if(_lpLeaves(u).length > 1){
-        // kon niet los worden gemaakt (filter/mask): alleen het element zelf weghalen
-        if(l.parentNode) l.parentNode.removeChild(l);
-      } else _lpRemoveUnit(u);
-    });
-  });
+  _lpOp(function(){ leaves.forEach(_lpRemoveUnit); });
   if(window.toast) window.toast(_lpTr('lePartsWhiteGone', 'Wit achtergrondvlak verwijderd'), 'info', 1800);
 }
 function partsUndo(){
@@ -2554,7 +2597,109 @@ function partsReset(){
   if(!_lp || !_lp.hist.length) return;
   _lp.hist.push(_lpSerialize());
   _lpLoadSvgString(_lp.orig);
-  _lp.redo = []; _lp.dirty = false; _lp.warn = 0; _lp.flattened = false;
+  _lp.redo = []; _lp.dirty = false; _lp.warn = 0; _lp.leafMode = false;
+  _lpRefresh();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Kleur > Losse delen (v2.64.0) — delen van een vectorlogo een eigen
+   kleur geven. Gebruikt dezelfde veilige iframe-sessie als Bewerken
+   (selecteren, groepen opbreken, ongedaan maken); bij Toepassen gaat
+   het via _lpCommit, dus ook alle kopieën op het vel krijgen de kleur.
+   ══════════════════════════════════════════════════════════════ */
+function _scopeUI(scope){
+  var wrap = document.getElementById('leColorScope');
+  if(wrap) wrap.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.scope === scope); });
+  var whole = document.getElementById('leColorWholeBox');
+  var parts = document.getElementById('leColorPartsBox');
+  if(whole) whole.style.display = scope === 'parts' ? 'none' : '';
+  if(parts) parts.style.display = scope === 'parts' ? '' : 'none';
+}
+function setColorScope(scope){
+  if(scope === 'parts'){
+    if(_lp && _lp.colorMode) return;
+    if(!_lp && !_lpEnter()){ _scopeUI('all'); return; }
+    _lp.colorMode = true;
+    _lp.chipsDone = false;
+    _pickMode = false;
+    _scopeUI('parts');
+    _lpRefresh();
+    return;
+  }
+  if(_lp && _lp.colorMode){
+    if(_lp.dirty){
+      if(window.toast) window.toast(_lpTr('lePartsLocked', 'Pas eerst de bewerking toe of herstel hem'), 'warn', 3000);
+      return;
+    }
+    _lpLeave();
+  }
+  _scopeUI('all');
+  _livePreview();
+}
+function _lpRgbHex(v){
+  var m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(v || '');
+  return m ? _hexFromRgb(+m[1], +m[2], +m[3]) : null;
+}
+/* Snelkeuze: de kleuren die nu in het logo staan, plus zwart en wit */
+function _lpCpChips(){
+  var box = _lpEl('leCpSwatches');
+  if(!box || !_lp || !_lp.ready) return;
+  var win = _lp.doc.defaultView, seen = {}, list = [];
+  var add = function(hex){ if(hex && !seen[hex] && list.length < 14){ seen[hex] = 1; list.push(hex); } };
+  var leaves = _lpLeaves();
+  for(var i = 0; i < leaves.length && i < 3000 && list.length < 12; i++){
+    var cs = win.getComputedStyle(leaves[i]);
+    if(cs.fill && cs.fill !== 'none' && cs.fill.indexOf('url') < 0) add(_lpRgbHex(cs.fill));
+    if(cs.stroke && cs.stroke !== 'none' && cs.stroke.indexOf('url') < 0 && parseFloat(cs.strokeWidth) > 0) add(_lpRgbHex(cs.stroke));
+  }
+  add('#000000'); add('#ffffff');
+  box.innerHTML = list.map(function(h){
+    return '<button type="button" class="le-color-chip" data-hex="' + h + '" title="' + h.toUpperCase() + '" style="width:26px;height:26px;background:' + h + '"></button>';
+  }).join('');
+  var inp = _lpEl('leCpColor');
+  box.querySelectorAll('.le-color-chip').forEach(function(c){
+    c.onclick = function(){
+      if(inp) inp.value = c.dataset.hex;
+      box.querySelectorAll('.le-color-chip').forEach(function(o){ o.classList.toggle('active', o === c); });
+    };
+  });
+}
+/* Eén tekenend element herkleuren. Fill en stroke alleen als ze nu iets
+   tekenen (geen 'none'); een class-regel uit <style> wordt zo nodig met een
+   inline stijl overruled, zodat de nieuwe kleur ook echt zichtbaar is. */
+function _lpPaint(el, hex, win){
+  var ln = el.localName.toLowerCase();
+  if(ln === 'image') return;
+  var cs = win.getComputedStyle(el);
+  var want = hex.toLowerCase();
+  ['fill', 'stroke'].forEach(function(prop){
+    var cur = cs.getPropertyValue(prop);
+    if(!cur || cur === 'none') return;
+    if(prop === 'stroke' && !(parseFloat(cs.strokeWidth) > 0)) return;
+    el.setAttribute(prop, hex);
+    if(el.style && el.style.getPropertyValue(prop)) el.style.removeProperty(prop);
+    var after = _lpRgbHex(win.getComputedStyle(el).getPropertyValue(prop));
+    if(after !== want) el.style.setProperty(prop, hex);
+  });
+}
+function partsColor(){
+  if(!_lp || !_lp.ready || !_lp.sel.length) return;
+  var inp = _lpEl('leCpColor');
+  var hex = (inp && /^#[0-9a-f]{6}$/i.test(inp.value)) ? inp.value.toLowerCase() : '#000000';
+  var sel = _lp.sel.slice();
+  _lp.hist.push(_lpSerialize());
+  if(_lp.hist.length > LP_HIST_MAX) _lp.hist.shift();
+  _lp.redo = [];
+  // na de snapshot: de elementen zelf blijven bestaan, dus de selectie blijft staan
+  var win = _lp.doc.defaultView;
+  sel.forEach(function(u){
+    var ln = u.localName.toLowerCase();
+    var targets = LP_DRAW[ln] ? [u] : _lpLeaves(u);
+    targets.forEach(function(el){ _lpPaint(el, hex, win); });
+  });
+  _lp.dirty = true;
+  _lp.chipsDone = false;
+  _modified = true;
   _lpRefresh();
 }
 
@@ -2569,14 +2714,88 @@ function _lpCommit(){
   var svgStr = _lpSerialize();
   var obj = _fabricObj;
   if(typeof window.autoCropSvg !== 'function'){ if(window.toast) window.toast('autoCropSvg niet beschikbaar', 'error'); return true; }
-  window.autoCropSvg(svgStr, function(cropped, fracs){
-    var fr = fracs || { x: 0, y: 0, w: 1, h: 1 };
-    if(typeof window.pushUndo === 'function') window.pushUndo();      // één Ctrl+Z-stap, vóór de wijziging
-    _lpReplaceGroup(obj, cropped, fr);
+  var origSvg = _lp.orig;
+  var isImg = !_isVector;
+  // Beide in dezelfde viewBox meten; het logo op het vel = het inktgebied van het origineel.
+  // De verhouding tussen die twee bepaalt nieuwe maat en verschuiving.
+  var known = _lp.ink0;
+  var measureOrig = function(cb){ if(known) cb(null, known); else window.autoCropSvg(origSvg, cb); };
+  measureOrig(function(_c0, f0){
+    var a = f0 || { x: 0, y: 0, w: 1, h: 1 };
+    window.autoCropSvg(svgStr, function(cropped, fracs){
+      var b = fracs || { x: 0, y: 0, w: 1, h: 1 };
+      var fr = { x: (b.x - a.x) / a.w, y: (b.y - a.y) / a.h, w: b.w / a.w, h: b.h / a.h };
+      if(typeof window.pushUndo === 'function') window.pushUndo();      // één Ctrl+Z-stap, vóór de wijziging
+      if(isImg) _lpReplaceImages(obj, cropped, fr);
+      else _lpReplaceGroup(obj, cropped, fr);
+    });
   });
   _lpLeave();
   close(true);
   return true;
+}
+
+/* Afbeelding met vectorbron (hi-fi route): opnieuw renderen vanuit de bijgesneden
+   SVG, voor het object zelf en alle kopieën. Export gebruikt daarna de SVG (Track 1). */
+function _lpReplaceImages(obj, svg, fr){
+  var canvas = window._gsbCanvas;
+  if(!canvas || !obj) return;
+  var oid = obj._originalId || obj._id;
+  if(oid != null && typeof svgSourceStore !== 'undefined') svgSourceStore.set(oid, svg);
+  var all = canvas.getObjects().filter(function(o){
+    return o === obj || ((o._originalId || o._id) === oid && o._mmW != null);
+  });
+  var pxPerMm = window._displayPxPerMm || 5;
+  var maxPx = 0;
+  all.forEach(function(o){ maxPx = Math.max(maxPx, o.width * (o.scaleX || 1), o.height * (o.scaleY || 1)); });
+  var naturalMax = Math.max(obj.width || 0, obj.height || 0);
+  var targetW = Math.min(4000, Math.max(1200, Math.round(naturalMax * Math.max(fr.w, 0.05)), Math.round(maxPx * 3)));
+  _renderSvgSourceToCanvas(svg, targetW, function(c){
+    if(!c){ if(window.toast) window.toast(_lpTr('lePartsParseFail', 'Dit logo kan niet in onderdelen worden opgedeeld'), 'error'); return; }
+    var tr = _trimCanvas(c);
+    var url = tr.toDataURL('image/png');
+    var done = 0;
+    all.forEach(function(o){
+      fabric.Image.fromURL(url, function(img){
+        var oldW = o._mmW || 50, oldH = o._mmH || 50;
+        var newW = oldW * fr.w, newH = oldH * fr.h;
+        var fx = o.flipX ? (1 - fr.x - fr.w) : fr.x, fy = o.flipY ? (1 - fr.y - fr.h) : fr.y;
+        var dx = fx * oldW * pxPerMm, dy = fy * oldH * pxPerMm, th = (o.angle || 0) * Math.PI / 180;
+        img.set({
+          originX: 'left', originY: 'top',
+          left: o.left + dx * Math.cos(th) - dy * Math.sin(th),
+          top:  o.top  + dx * Math.sin(th) + dy * Math.cos(th),
+          angle: o.angle, flipX: !!o.flipX, flipY: !!o.flipY,
+          scaleX: (newW * pxPerMm) / img.width, scaleY: (newH * pxPerMm) / img.height
+        });
+        img.objectCaching = false;
+        img._id = o._id; img._originalId = o._originalId; img._name = o._name;
+        img._naturalW = img.width; img._naturalH = img.height;
+        img._mmW = newW; img._mmH = newH; img._mmLeft = o._mmLeft; img._mmTop = o._mmTop;
+        img._svgSource = svg;
+        img._hiFiVector = true;
+        img._recolored = true;          // nooit meer de originele PDF insluiten
+        img._partsEdited = true;
+        ['_vectorOrigin','_isFillTile','_userGroup','_pdfPageW','_pdfPageH','_hasAppliedOutline','_cmykColorMap'].forEach(function(k){
+          if(o[k] != null) img[k] = o[k];
+        });
+        // bewust NIET overnemen: _pdfCropBox, _hasGradients, _pdfHasLayers (horen bij de oude PDF-weergave)
+        if(typeof window.attachObjListeners === 'function') window.attachObjListeners(img);
+        var idx = canvas.getObjects().indexOf(o);
+        canvas.remove(o);
+        if(idx >= 0 && canvas.insertAt) canvas.insertAt(img, idx); else canvas.add(img);
+        if(o === obj) canvas.setActiveObject(img);
+        if(typeof window.syncMmFromPx === 'function') window.syncMmFromPx(img);
+        canvas.requestRenderAll();
+        if(++done === all.length){
+          if(typeof window.invalidateThumb === 'function') window.invalidateThumb(oid);
+          if(typeof window.renderItemList === 'function') window.renderItemList();
+          if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
+          if(window.toast) window.toast(_lpTr('lePartsApplied', 'Bewerking toegepast, logo strak bijgesneden (Ctrl+Z maakt ongedaan)'), 'success', 3500);
+        }
+      }, { crossOrigin: 'anonymous' });
+    });
+  });
 }
 
 /* Bouw een nieuwe groep uit de bijgesneden SVG, geplaatst zodat het overgebleven
@@ -2608,7 +2827,7 @@ function _lpMakeGroup(base, svg, fr, cb){
     g._partsEdited = true;
     if(base._hasAppliedOutline) g._hasAppliedOutline = base._hasAppliedOutline;
     if(base._vectorOrigin) g._vectorOrigin = base._vectorOrigin;
-    if(base._isFillTile) g._isFillTile = base._isFillTile;
+    if(base._isFillTile) g._isFillTile = base._isFillTile; if(base._userGroup) g._userGroup = base._userGroup;
     cb(g);
   });
 }
@@ -2636,7 +2855,7 @@ function _lpReplaceGroup(obj, svg, fr){
     if(typeof window.renderItemList === 'function') window.renderItemList();
     if(typeof window.renderSelectedPanel === 'function') window.renderSelectedPanel();
     if(typeof window.autoDarkBgForWhiteLogo === 'function') window.autoDarkBgForWhiteLogo(g);
-    if(window.toast) window.toast(_lpTr('lePartsApplied', 'Onderdelen verwijderd, logo strak bijgesneden (Ctrl+Z maakt ongedaan)'), 'success', 3500);
+    if(window.toast) window.toast(_lpTr('lePartsApplied', 'Bewerking toegepast, logo strak bijgesneden (Ctrl+Z maakt ongedaan)'), 'success', 3500);
   });
 
   // alle kopieën meenemen
@@ -2680,7 +2899,7 @@ function _lpKey(e){
   if(!m || !m.classList.contains('open')) return;
   var k = e.key, mod = e.ctrlKey || e.metaKey;
   var stop = function(){ e.preventDefault(); e.stopPropagation(); };
-  if(k === 'Delete' || k === 'Backspace'){ stop(); partsDelete(); }
+  if(k === 'Delete' || k === 'Backspace'){ stop(); if(!_lp.colorMode) partsDelete(); }
   else if(mod && (k === 'z' || k === 'Z')){ stop(); if(e.shiftKey) partsRedo(); else partsUndo(); }
   else if(mod && (k === 'y' || k === 'Y')){ stop(); partsRedo(); }
   else if(mod && (k === 'a' || k === 'A')){ stop(); partsSelectAll(); }
@@ -2699,6 +2918,7 @@ window.gsbLogoEditor = {
   applyBgRemove: applyBgRemove,
   applyWhiteRemove: applyWhiteRemove, previewWhiteRemove: previewWhiteRemove,
   setColorMode: setColorMode,
+  setColorScope: setColorScope, partsColor: partsColor,
   partsUngroup: partsUngroup, partsDelete: partsDelete, partsKeep: partsKeep,
   partsSelectAll: partsSelectAll, partsInvert: partsInvert, partsRemoveWhite: partsRemoveWhite,
   partsUndo: partsUndo, partsRedo: partsRedo, partsReset: partsReset,

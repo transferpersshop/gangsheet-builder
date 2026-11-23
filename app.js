@@ -54,7 +54,7 @@ const I18N = {
     leChooseTool:'Kies een tool links om het logo te bewerken',
     leReset:'Reset', leCancel:'Annuleren', leApply:'Toepassen',
     leColorReplaced:'Kleur vervangen', leMadeBlack:'Logo zwart gemaakt', leMadeWhite:'Logo wit gemaakt',
-    leToolParts:'Onderdelen', lePartsTitle:'Onderdelen bewerken',
+    leToolParts:'Bewerken', lePartsTitle:'Bewerken',
     lePartsHelp:'Klik op een onderdeel om het te selecteren. Shift voegt toe, sleep een kader om meerdere te kiezen. Verwijder wat je niet wilt: het logo wordt daarna strak bijgesneden en op dezelfde plek teruggezet.',
     lePartsUngroup:'Groepen opbreken', lePartsSelectAll:'Alles selecteren', lePartsInvert:'Selectie omkeren',
     lePartsDelete:'Verwijder selectie', lePartsKeep:'Houd alleen selectie',
@@ -63,8 +63,8 @@ const I18N = {
     lePartsWarn:'Een groep met doorzichtigheid is opgebroken. Overlappende delen kunnen daardoor iets anders mengen. Controleer het resultaat.',
     lePartsUnits:'onderdelen', lePartsSelected:'geselecteerd', lePartsSizeNow:'Formaat nu', lePartsSizeAfter:'na bijsnijden',
     lePartsNothingLeft:'Er blijft niets over', lePartsUngrouped:'Groepen opgebroken: elk onderdeel is los te selecteren',
-    lePartsWhiteGone:'Wit achtergrondvlak verwijderd', lePartsLocked:'Pas eerst de onderdelen toe of herstel ze',
-    lePartsApplied:'Onderdelen verwijderd, logo strak bijgesneden (Ctrl+Z maakt ongedaan)',
+    lePartsWhiteGone:'Wit achtergrondvlak verwijderd', lePartsLocked:'Pas eerst de bewerking toe of herstel hem',
+    lePartsApplied:'Bewerking toegepast, logo strak bijgesneden (Ctrl+Z maakt ongedaan)',
     lePartsOutlineFirst:'Pas eerst de outline toe of zet hem op 0, daarna kun je onderdelen bewerken',
     lePartsNoSrc:'Geen vectorbron beschikbaar voor dit logo', lePartsParseFail:'Dit logo kan niet in onderdelen worden opgedeeld',
     leResetDone:'Reset naar origineel', leUpdated:'Logo bijgewerkt', leOutlineApplied:'Outline toegepast — vector behouden',
@@ -168,7 +168,7 @@ const I18N = {
     colorMadeMono:'Logo omgezet',
     rollWidth:'Breedte', rollLength:'Kies lengte', lengthUnit:'meter',
     sumLength:'Formaat',
-    sumPricePerM:'Prijs per meter (excl. btw)', sumPriceEx:'Totaal excl. btw', sumPriceInc:'Totaal incl. btw',
+    priceTitle:'Prijsindicatie', sumPricePerM:'Prijs per meter (excl. btw)', sumPriceEx:'Totaal excl. btw', sumPriceInc:'Totaal incl. btw',
     sumPriceNote:'Indicatie op basis van de staffelprijs van Premium DTF Transfer 55 x 100 cm, per hele meter, 21% btw. Verzendkosten niet inbegrepen.',
     sumPriceHint:(m,p)=>`Nog ${m} m erbij: ${p} per meter`,
     rollTooShort:'Vel kan niet korter dan de geplaatste logo\'s. Verwijder eerst logo\'s onderaan.',
@@ -255,8 +255,13 @@ const I18N = {
     undoBtn:'Ongedaan maken', redoBtn:'Herhalen',
     projectSave:'Project opslaan', projectLoad:'Project laden',
     shortcutsBtn:'⌨ Sneltoetsen', shortcutsTitle:'Sneltoetsen',
-    shortcutsBody:'Ctrl+Z: Ongedaan · Ctrl+Shift+Z: Herhalen · Ctrl+D: Dupliceer · Delete: Verwijder · Pijltoetsen: Verschuif · +/−: Zoom · 0: Passend · Ctrl+A: Alle selecteren',
+    shortcutsBody:'Ctrl+Z: Ongedaan · Ctrl+Shift+Z: Herhalen · Ctrl+C / Ctrl+V: Kopiëren / plakken · Ctrl+D: Dupliceer · Ctrl+G: Groeperen · Ctrl+Shift+G: Groep opheffen · Delete: Verwijder · Pijltoetsen: Verschuif · +/−: Zoom · 0: Passend · Ctrl+A: Alle selecteren',
     optimizeLayout:'Optimaliseer indeling', optimizeDone:'Indeling geoptimaliseerd',
+    groupLogos:'Groeperen', ungroupLogos:'Groep opheffen', groupOf:n=>`Groep van ${n} logo's`,
+    groupHint:'Dubbelklik op een logo om het los te bewerken', groupNeedTwo:"Selecteer eerst minstens 2 logo's (Shift+klik of sleep een kader)",
+    groupDone:n=>`${n} logo's gegroepeerd`, ungroupDone:'Groep opgeheven',
+    ctxCopy:'Kopiëren', ctxCut:'Knippen', ctxPaste:'Plakken', ctxDuplicate:'Dupliceren', ctxDelete:'Verwijderen', ctxEdit:'Logo bewerken',
+    clipCopied:n=>n>1?`${n} logo's gekopieerd`:'Logo gekopieerd', clipPasted:n=>n>1?`${n} logo's geplakt`:'Logo geplakt',
     selectMultiple:'Meerdere geselecteerd', deleteMultiple:'Verwijder alles', duplicateMultiple:'Dupliceer alles', rotateMultiple:'Roteer alles 90°',
     alignLeft:'Links', alignCenterH:'Centreer H', alignRight:'Rechts',
     alignTop:'Boven', alignCenterV:'Centreer V', alignBottom:'Onder',
@@ -307,7 +312,7 @@ const I18N = {
     leChooseTool:'Choose a tool from the menu to edit the logo',
     leReset:'Reset', leCancel:'Cancel', leApply:'Save',
     leColorReplaced:'Color replaced', leMadeBlack:'Logo made black', leMadeWhite:'Logo made white',
-    leToolParts:'Parts', lePartsTitle:'Edit parts',
+    leToolParts:'Edit', lePartsTitle:'Edit',
     lePartsHelp:'Click a part to select it. Shift adds, drag a box to pick several. Delete what you do not want: the logo is then cropped tightly and put back in the same place.',
     lePartsUngroup:'Ungroup', lePartsSelectAll:'Select all', lePartsInvert:'Invert selection',
     lePartsDelete:'Delete selection', lePartsKeep:'Keep selection only',
@@ -316,8 +321,8 @@ const I18N = {
     lePartsWarn:'A group with transparency was split up. Overlapping parts may blend slightly differently. Please check the result.',
     lePartsUnits:'parts', lePartsSelected:'selected', lePartsSizeNow:'Size now', lePartsSizeAfter:'after cropping',
     lePartsNothingLeft:'Nothing would be left', lePartsUngrouped:'Groups split up: every part can be selected on its own',
-    lePartsWhiteGone:'White background shape removed', lePartsLocked:'Apply or restore the parts first',
-    lePartsApplied:'Parts removed, logo cropped tightly (Ctrl+Z undoes this)',
+    lePartsWhiteGone:'White background shape removed', lePartsLocked:'Apply or restore the edit first',
+    lePartsApplied:'Edit applied, logo cropped tightly (Ctrl+Z undoes this)',
     lePartsOutlineFirst:'Apply the outline first or set it to 0, then you can edit parts',
     lePartsNoSrc:'No vector source available for this logo', lePartsParseFail:'This logo cannot be split into parts',
     leResetDone:'Reset to original', leUpdated:'Logo updated', leOutlineApplied:'Outline applied — vector preserved',
@@ -421,7 +426,7 @@ const I18N = {
     colorMadeMono:'Logo converted',
     rollWidth:'Width', rollLength:'Choose length', lengthUnit:'meters',
     sumLength:'Format',
-    sumPricePerM:'Price per meter (excl. VAT)', sumPriceEx:'Total excl. VAT', sumPriceInc:'Total incl. VAT',
+    priceTitle:'Price estimate', sumPricePerM:'Price per meter (excl. VAT)', sumPriceEx:'Total excl. VAT', sumPriceInc:'Total incl. VAT',
     sumPriceNote:'Estimate based on the volume price of Premium DTF Transfer 55 x 100 cm, per whole meter, 21% VAT. Shipping not included.',
     sumPriceHint:(m,p)=>`${m} m more: ${p} per meter`,
     rollTooShort:'Sheet cannot be shorter than the placed logos. Remove logos at the bottom first.',
@@ -508,8 +513,13 @@ const I18N = {
     undoBtn:'Undo', redoBtn:'Redo',
     projectSave:'Save project', projectLoad:'Load project',
     shortcutsBtn:'⌨ Shortcuts', shortcutsTitle:'Keyboard Shortcuts',
-    shortcutsBody:'Ctrl+Z: Undo · Ctrl+Shift+Z: Redo · Ctrl+D: Duplicate · Delete: Remove · Arrow keys: Move · +/−: Zoom · 0: Fit · Ctrl+A: Select all',
+    shortcutsBody:'Ctrl+Z: Undo · Ctrl+Shift+Z: Redo · Ctrl+C / Ctrl+V: Copy / paste · Ctrl+D: Duplicate · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Delete: Remove · Arrow keys: Move · +/−: Zoom · 0: Fit · Ctrl+A: Select all',
     optimizeLayout:'Optimize layout', optimizeDone:'Layout optimized',
+    groupLogos:'Group', ungroupLogos:'Ungroup', groupOf:n=>`Group of ${n} logos`,
+    groupHint:'Double-click a logo to edit it on its own', groupNeedTwo:'Select at least 2 logos first (Shift+click or drag a box)',
+    groupDone:n=>`${n} logos grouped`, ungroupDone:'Group removed',
+    ctxCopy:'Copy', ctxCut:'Cut', ctxPaste:'Paste', ctxDuplicate:'Duplicate', ctxDelete:'Delete', ctxEdit:'Edit logo',
+    clipCopied:n=>n>1?`${n} logos copied`:'Logo copied', clipPasted:n=>n>1?`${n} logos pasted`:'Logo pasted',
     selectMultiple:'Multiple selected', deleteMultiple:'Delete all', duplicateMultiple:'Duplicate all', rotateMultiple:'Rotate all 90°',
     alignLeft:'Left', alignCenterH:'Center H', alignRight:'Right',
     alignTop:'Top', alignCenterV:'Center V', alignBottom:'Bottom',
@@ -740,7 +750,8 @@ const FABRIC_EXTRA_PROPS = [
   '_id','_originalId','_name','_naturalW','_naturalH',
   '_mmW','_mmH','_mmLeft','_mmTop','_isFillTile','_svgSource',
   '_embeddedRasterW','_embeddedRasterH','_vectorOrigin','_recolored','_hasGradients',
-  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_pdfCropBox','_pdfHasLayers','_cmykColorMap','_hiFiVector'
+  '_pdfPageW','_pdfPageH','_rasterEdited','_hasAppliedOutline','_textParams','_pdfCropBox','_pdfHasLayers','_cmykColorMap','_hiFiVector',
+  '_userGroup'   // v2.64.0: groep op het vel (blijft bewaard in undo en .gsb-opdrachten)
 ];
 const FABRIC_UNDO_PROPS = FABRIC_EXTRA_PROPS.filter(p => p !== '_svgSource');
 
@@ -4805,7 +4816,7 @@ function recolorRaster(obj, oldHex, newHex){
     if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
     if(obj._pdfPageW) newImg._pdfPageW = obj._pdfPageW;
     if(obj._pdfPageH) newImg._pdfPageH = obj._pdfPageH;
-    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
+    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile; if(obj._userGroup) newImg._userGroup = obj._userGroup;
 
     // Update _svgSource with the new color so PDF export reflects the change
     // Use tolerance: raster-extracted colors may not exactly match SVG source hex values
@@ -4833,8 +4844,8 @@ function recolorRaster(obj, oldHex, newHex){
    SELECTION / SELECTED PANEL
    ========================================================= */
 let _suppressPanelRebuild = false;
-canvas.on('selection:created', e=>{ state.selectedId = e.selected[0]?._id; updateBgRemoveBtn(); updateFillBtn(); if(!_suppressPanelRebuild) renderSelectedPanel(); renderItemList(); });
-canvas.on('selection:updated', e=>{ state.selectedId = e.selected[0]?._id; updateBgRemoveBtn(); updateFillBtn(); if(!_suppressPanelRebuild) renderSelectedPanel(); renderItemList(); });
+canvas.on('selection:created', e=>{ if(e.e && _expandToGroups()) return; _styleGroupSelection(); state.selectedId = e.selected[0]?._id; updateBgRemoveBtn(); updateFillBtn(); if(!_suppressPanelRebuild) renderSelectedPanel(); renderItemList(); });
+canvas.on('selection:updated', e=>{ if(e.e && _expandToGroups()) return; _styleGroupSelection(); state.selectedId = e.selected[0]?._id; updateBgRemoveBtn(); updateFillBtn(); if(!_suppressPanelRebuild) renderSelectedPanel(); renderItemList(); });
 canvas.on('selection:cleared', ()=>{ state.selectedId = null; updateBgRemoveBtn(); updateFillBtn(); renderSelectedPanel(); renderItemList(); });
 
 function getSelectedObj(){ return canvas.getActiveObject(); }
@@ -4847,9 +4858,16 @@ function renderSelectedPanel(){
   // Check for multi-select
   if(obj && obj.type === 'activeSelection'){
     const count = obj._objects?.length || 0;
+    const isGroup = !!_selectionGroupId(obj._objects || []);
+    const hasGrouped = (obj._objects || []).some(o => o._userGroup);
     panel.innerHTML = `
       <div style="padding:12px;background:var(--bg-light);border-radius:8px;text-align:center;margin-bottom:12px">
-        <p style="margin:0;font-size:0.9rem;color:var(--text);font-weight:700">${count} ${t('selectMultiple')}</p>
+        <p style="margin:0;font-size:0.9rem;color:var(--text);font-weight:700">${isGroup ? t('groupOf', count) : count + ' ' + t('selectMultiple')}</p>
+        ${isGroup ? `<p style="margin:4px 0 0;font-size:.72rem;color:var(--muted)">${t('groupHint')}</p>` : ''}
+      </div>
+      <div class="toolbar" style="margin-bottom:8px">
+        ${isGroup ? '' : `<button class="tool-btn group-btn" data-act="multi-group" style="flex:1" title="Ctrl+G">${_GROUP_ICON}${t('groupLogos')}</button>`}
+        ${hasGrouped ? `<button class="tool-btn group-btn" data-act="multi-ungroup" style="flex:1" title="Ctrl+Shift+G">${_UNGROUP_ICON}${t('ungroupLogos')}</button>` : ''}
       </div>
       <div class="toolbar" style="margin-bottom:8px">
         <button class="tool-btn" data-act="multi-rot" style="flex:1">${t('rotateMultiple')}</button>
@@ -5510,8 +5528,12 @@ function actOnSelected(act){
         pushUndo();
         break;
       case 'multi-dup':
-        objs.forEach(o => duplicate(o));
+        // v2.64.0: als blok kopiëren, zodat onderlinge plaatsing (en een groep) behouden blijft
+        if(copySelection(true)) pasteClipboard(null, true);
+        else objs.forEach(o => duplicate(o));
         break;
+      case 'multi-group':   groupSelected(); break;
+      case 'multi-ungroup': ungroupSelected(); break;
       case 'multi-del':
         objs.forEach(o => canvas.remove(o));
         canvas.requestRenderAll();
@@ -5634,6 +5656,7 @@ function duplicate(obj){
     clone._mmH = mmH;
     clone._mmLeft = spot.x;
     clone._mmTop  = spot.y;
+    delete clone._userGroup;
     if(angle) _dupAlign(clone, spot.x, spot.y);
     attachObjListeners(clone);
     canvas.add(clone);
@@ -5671,6 +5694,7 @@ function duplicate(obj){
       left: spot.x * displayPxPerMm,
       top:  spot.y * displayPxPerMm,
     });
+    delete clone._userGroup;   // kopie hoort niet bij de groep van het origineel
     if(angle) _dupAlign(clone, spot.x, spot.y);
     attachObjListeners(clone);
     canvas.add(clone);
@@ -5725,6 +5749,7 @@ function duplicateAsNewLogo(g){
     clone._mmH = mmH;
     clone._mmLeft = spot.x;
     clone._mmTop  = spot.y;
+    delete clone._userGroup;
     // bronnen meekopiëren: vector-export en (her)bewerking blijven werken
     const svgSrc = src._rasterEdited ? null : getSvgSource(src);
     if(svgSrc){ clone._svgSource = svgSrc; svgSourceStore.set(newOid, svgSrc); }
@@ -6463,7 +6488,7 @@ function removeWhiteBg(obj, threshold){
     if(obj._embeddedRasterH) newImg._embeddedRasterH = obj._embeddedRasterH;
     if(obj._pdfPageW) newImg._pdfPageW = obj._pdfPageW;
     if(obj._pdfPageH) newImg._pdfPageH = obj._pdfPageH;
-    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile;
+    if(obj._isFillTile) newImg._isFillTile = obj._isFillTile; if(obj._userGroup) newImg._userGroup = obj._userGroup;
     attachObjListeners(newImg);
     canvas.remove(obj);
     canvas.add(newImg);
@@ -6784,6 +6809,7 @@ function tileSheet(){
         clone._naturalW = ft.naturalW;
         clone._naturalH = ft.naturalH;
         clone._isFillTile = true;
+        delete clone._userGroup;
         // Explicitly preserve vector properties — enlivenObjects may drop custom _ props
         if(sample._hasGradients) clone._hasGradients = sample._hasGradients;
         if(sample._vectorOrigin) clone._vectorOrigin = sample._vectorOrigin;
@@ -7076,10 +7102,11 @@ function priceForMeters(meters){
   const incCents = Math.round(exCents * (1 + PRICE_VAT));
   return { meters: m, perM: tier.perM, exCents, incCents, next };
 }
+/* Bedragen zonder euroteken (v2.64.0): het blok heet al "Prijsindicatie" */
 function formatEur(v){
   try{
-    return new Intl.NumberFormat(state.lang === 'en' ? 'en-GB' : 'nl-NL', { style:'currency', currency:'EUR' }).format(v);
-  }catch(e){ return '€ ' + v.toFixed(2); }
+    return new Intl.NumberFormat(state.lang === 'en' ? 'en-GB' : 'nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 }).format(v);
+  }catch(e){ return v.toFixed(2); }
 }
 function updatePriceRows(){
   const wrap = document.getElementById('sumPriceBlock');
@@ -8113,9 +8140,22 @@ function repackAll(opts){
      the placement that adds the least height. This fills side-gaps naturally
      because smaller items slide into lower parts of the skyline. */
 
+  // v2.64.0: gegroepeerde logo's (≥2 leden op het vel) gaan als één blok mee;
+  // binnen het blok blijven positie, draaiing en spiegeling ongemoeid.
+  const _blockMap = new Map();
+  objs.forEach(o => {
+    if(!o._userGroup) return;
+    if(!_blockMap.has(o._userGroup)) _blockMap.set(o._userGroup, []);
+    _blockMap.get(o._userGroup).push(o);
+  });
+  for(const [k, arr] of _blockMap) if(arr.length < 2) _blockMap.delete(k);
+  const _inBlock = new Set();
+  _blockMap.forEach(arr => arr.forEach(o => _inBlock.add(o)));
+  const singles = objs.filter(o => !_inBlock.has(o));
+
   // Reset all rotations/flips to 0° before repacking — prevents accumulation
   // (e.g. 90°+90°=180° upside down) and ensures the packer only applies 0° or 90°.
-  objs.forEach(o => {
+  singles.forEach(o => {
     o.rotate(0);
     o.flipX = false;
     o.flipY = false;
@@ -8126,9 +8166,19 @@ function repackAll(opts){
   });
 
   // Gather items with their ORIGINAL (un-rotated) mm dimensions
-  const items = objs.map(o => {
+  const items = singles.map(o => {
     // Use _mmW/_mmH which are the logical dimensions
     return { obj: o, origW: o._mmW, origH: o._mmH, area: o._mmW * o._mmH };
+  });
+  _blockMap.forEach((arr, gid) => {
+    const rs = arr.map(o => { o.setCoords(); return o.getBoundingRect(true, true); });
+    const l = Math.min(...rs.map(r => r.left)), tp = Math.min(...rs.map(r => r.top));
+    const rr = Math.max(...rs.map(r => r.left + r.width)), bb = Math.max(...rs.map(r => r.top + r.height));
+    const w = (rr - l) / displayPxPerMm, h = (bb - tp) / displayPxPerMm;
+    items.push({
+      obj: null, isBlock: true, blockGid: 'ug:' + gid, origW: w, origH: h, area: w * h,
+      members: arr.map((o, i) => ({ o, dx: (rs[i].left - l) / displayPxPerMm, dy: (rs[i].top - tp) / displayPxPerMm })),
+    });
   });
 
   // Sort for skyline packing, maar houd kopieën van hetzelfde logo ALTIJD bij elkaar:
@@ -8139,7 +8189,7 @@ function repackAll(opts){
   const _gidOf = o => (o._originalId != null ? o._originalId : ('s' + o._id));
   const _groups = new Map();
   items.forEach(it => {
-    const gid = _gidOf(it.obj);
+    const gid = it.isBlock ? it.blockGid : _gidOf(it.obj);
     let g = _groups.get(gid);
     if(!g){ g = { order: _groups.size, maxH: 0 }; _groups.set(gid, g); }
     if(it.origH > g.maxH) g.maxH = it.origH;
@@ -8261,7 +8311,7 @@ function repackAll(opts){
   items.forEach(item => {
     const w = item.origW, h = item.origH;
     const fitsNormal  = w <= sheetW + 0.01;
-    const fitsRotated = (allowRot || !fitsNormal) && h <= sheetW + 0.01;
+    const fitsRotated = !item.isBlock && (allowRot || !fitsNormal) && h <= sheetW + 0.01;
     if(!fitsNormal && !fitsRotated){ overflow.push(item); return; }
 
     // Add gap to dimensions for packing, but place at position without gap
@@ -8332,6 +8382,20 @@ function repackAll(opts){
   placements.forEach((p, idx) => {
     const item = p.item;
     if(!item) return;
+    if(item.isBlock){
+      // groep: alle leden met dezelfde onderlinge afstand verschuiven
+      item.members.forEach(m => {
+        const o = m.o;
+        o.setCoords();
+        const br = o.getBoundingRect(true, true);
+        o.left += ((p.x + m.dx) * displayPxPerMm) - br.left;
+        o.top  += ((p.y + m.dy) * displayPxPerMm) - br.top;
+        o.setCoords();
+        o._mmLeft = p.x + m.dx;
+        o._mmTop  = p.y + m.dy;
+      });
+      return;
+    }
     const o = item.obj;
 
     // Save original logical dimensions before any transforms
@@ -8614,6 +8678,340 @@ if(_manualToggle) _manualToggle.addEventListener('change', ()=>{
 
 /* Keyboard shortcuts: now shown in the info panel (ⓘ button) */
 
+
+/* =========================================================
+   GROEPEREN · KOPIËREN/PLAKKEN · RECHTERMUISMENU  (v2.64.0)
+   ---------------------------------------------------------
+   Een groep is géén fabric.Group: elk logo blijft een los object op het
+   vel (export, DPI-check, kleuren en bewerken blijven per logo werken).
+   Leden delen alleen een _userGroup-id. Klikken op één lid selecteert de
+   hele groep (en slepen verplaatst hem meteen); dubbelklik kiest één logo.
+   Bij indelen/optimaliseren wordt een groep als één blok geplaatst.
+   ========================================================= */
+const _GROUP_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M1 1h22v22H1z" stroke-dasharray="3 3" opacity=".6"/></svg>';
+const _UNGROUP_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><rect x="2" y="2" width="8" height="8" rx="1.5"/><rect x="14" y="14" width="8" height="8" rx="1.5"/></svg>';
+
+/* Absoluut omhullend kader (canvas-px), ook voor een logo binnen een
+   meervoudige selectie: fabric's getBoundingRect geeft daar coördinaten
+   relatief aan de selectie. calcTransformMatrix rekent de selectie wél mee. */
+function _absRect(o){
+  if(!o.group) return o.getBoundingRect(true, true);
+  const m = o.calcTransformMatrix();
+  const d = o._getNonTransformedDimensions();
+  const pts = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([sx, sy]) => fabric.util.transformPoint(new fabric.Point(sx * d.x / 2, sy * d.y / 2), m));
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const l = Math.min(...xs), tp = Math.min(...ys);
+  return { left: l, top: tp, width: Math.max(...xs) - l, height: Math.max(...ys) - tp };
+}
+/* mm-positie (en bij schalen ook mm-maat) van een logo bijwerken, ook binnen een selectie */
+function _syncMemberMm(o){
+  const r = _absRect(o);
+  const px = displayPxPerMm;
+  o._mmLeft = r.left / px;
+  o._mmTop  = r.top / px;
+  const a = (((o.angle || 0) + (o.group ? (o.group.angle || 0) : 0)) % 360 + 360) % 360;
+  const swapped = (a > 45 && a < 135) || (a > 225 && a < 315);
+  o._mmW = (swapped ? r.height : r.width) / px;
+  o._mmH = (swapped ? r.width : r.height) / px;
+}
+
+function _newGroupId(){ return 'ug' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function _logoObjs(){ return canvas.getObjects().filter(o => o._mmW); }
+function _groupMembers(gid){ return gid ? _logoObjs().filter(o => o._userGroup === gid) : []; }
+function _gsbModalOpen(){
+  return !!document.querySelector('.gsb-modal-backdrop.open, .modal-backdrop.open, .modal-backdrop.show, .info-panel-backdrop.open');
+}
+
+/* Is de selectie precies één complete groep? → groeps-id, anders null */
+function _selectionGroupId(objs){
+  if(!objs || objs.length < 2) return null;
+  const gid = objs[0]._userGroup;
+  if(!gid || !objs.every(o => o._userGroup === gid)) return null;
+  return _groupMembers(gid).length === objs.length ? gid : null;
+}
+
+function _selectObjects(objs){
+  canvas.discardActiveObject();
+  if(objs.length === 1) canvas.setActiveObject(objs[0]);
+  else if(objs.length > 1) canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+  canvas.requestRenderAll();
+}
+
+/* Groep herkenbaar maken: gestippeld selectiekader */
+function _styleGroupSelection(){
+  const a = canvas.getActiveObject();
+  if(a && a.type === 'activeSelection'){
+    a.borderDashArray = _selectionGroupId(a._objects) ? [7, 4] : null;
+    canvas.requestRenderAll();
+  }
+}
+
+/* Selectie aanvullen met de overige leden van aangeklikte groepen */
+let _expandingGroup = false;
+function _expandToGroups(){
+  if(_expandingGroup) return false;
+  const act = canvas.getActiveObjects();
+  if(!act.length) return false;
+  const gids = new Set(act.map(o => o._userGroup).filter(Boolean));
+  if(!gids.size) return false;
+  const want = _logoObjs().filter(o => act.includes(o) || gids.has(o._userGroup));
+  if(want.length === act.length) return false;
+  _expandingGroup = true;
+  try { _selectObjects(want); } finally { _expandingGroup = false; }
+  return true;
+}
+
+/* Klik op een groepslid: vóórdat fabric de klik verwerkt de hele groep
+   selecteren en die als doel doorgeven, zodat je in één beweging sleept. */
+canvas.on('mouse:down:before', opt => {
+  const e = opt.e || {}, tgt = opt.target;
+  if(!tgt || !tgt._userGroup || e.shiftKey || (e.button != null && e.button !== 0)) return;
+  if(canvas.getActiveObject() === tgt) return;          // los gekozen (dubbelklik)
+  const members = _groupMembers(tgt._userGroup);
+  if(members.length < 2) return;
+  _expandingGroup = true;
+  try { _selectObjects(members); } finally { _expandingGroup = false; }
+  _styleGroupSelection();
+  canvas._target = canvas.getActiveObject();
+});
+
+/* Dubbelklik binnen een groep: alleen dat logo selecteren */
+canvas.on('mouse:dblclick', opt => {
+  const a = canvas.getActiveObject();
+  if(!a || a.type !== 'activeSelection' || !_selectionGroupId(a._objects)) return;
+  const p = canvas.getPointer(opt.e);
+  const hit = a._objects.slice().reverse().find(o => {
+    const r = _absRect(o);
+    return p.x >= r.left && p.x <= r.left + r.width && p.y >= r.top && p.y <= r.top + r.height;
+  });
+  if(!hit) return;
+  canvas.discardActiveObject();
+  canvas.setActiveObject(hit);
+  canvas.requestRenderAll();
+});
+
+/* Meervoudige selectie (groep) verplaatst: binnen het vel houden, niet laten
+   overlappen en de mm-posities van alle leden bijwerken (export en vrije-plek
+   zoeken rekenen met _mmLeft/_mmTop). */
+canvas.on('object:modified', opt => {
+  const sel = opt.target;
+  if(!sel || sel.type !== 'activeSelection') return;
+  if(!state.manualMode){ clampObjToSheet(sel); preventOverlap(sel); }
+  (sel._objects || []).forEach(_syncMemberMm);
+  autoExtendIfNeeded();
+  if(_preTransformSnap && !_isLoadingState){
+    undoRedoStack.undo.push({ json: _preTransformSnap, svgSnap: _preTransformSvgSnap });
+    if(undoRedoStack.undo.length > undoRedoStack.maxStates) undoRedoStack.undo.shift();
+    undoRedoStack.redo = [];
+    undoRedoStack._statsDirty = true;
+    _preTransformSnap = null;
+    _preTransformSvgSnap = null;
+    updateUndoRedoButtons();
+  }
+  canvas.requestRenderAll();
+  updateInfoBar();
+});
+
+function groupSelected(){
+  const objs = canvas.getActiveObjects().filter(o => o._mmW);
+  if(objs.length < 2){ toast(t('groupNeedTwo'), 'info', 2600); return; }
+  if(_selectionGroupId(objs)) return;
+  pushUndo();
+  const gid = _newGroupId();
+  objs.forEach(o => { o._userGroup = gid; });
+  _styleGroupSelection();
+  renderSelectedPanel();
+  toast(t('groupDone', objs.length), 'success', 2200);
+}
+function ungroupSelected(){
+  const objs = canvas.getActiveObjects().filter(o => o._mmW && o._userGroup);
+  if(!objs.length) return;
+  pushUndo();
+  const gids = new Set(objs.map(o => o._userGroup));
+  _logoObjs().forEach(o => { if(gids.has(o._userGroup)) delete o._userGroup; });
+  _styleGroupSelection();
+  renderSelectedPanel();
+  toast(t('ungroupDone'), 'info', 2000);
+}
+
+function _deleteActive(){
+  const objs = canvas.getActiveObjects().filter(o => o._mmW);
+  if(!objs.length) return;
+  if(objs.length === 1){ removeObj(objs[0]); return; }
+  pushUndo();
+  canvas.discardActiveObject();
+  objs.forEach(o => canvas.remove(o));
+  canvas.requestRenderAll();
+  renderItemList(); renderSelectedPanel(); updateInfoBar(); updateSummary();
+}
+
+/* ── Klembord (binnen de builder) ──
+   Bij kopiëren wordt alles vastgelegd wat nodig is om de logo's opnieuw op
+   te bouwen; plakken werkt dus ook als het origineel intussen is verwijderd.
+   Onderlinge plaatsing (en groepen) blijven behouden. */
+let _gsbClip = null;
+const _CLIP_SKIP = { _id:1, _mmLeft:1, _mmTop:1, _isFillTile:1, _userGroup:1 };
+function copySelection(silent){
+  const objs = canvas.getActiveObjects().filter(o => o._mmW);
+  if(!objs.length) return false;
+  const px = displayPxPerMm;
+  const rects = objs.map(_absRect);
+  const minL = Math.min(...rects.map(r => r.left)), minT = Math.min(...rects.map(r => r.top));
+  const maxR = Math.max(...rects.map(r => r.left + r.width)), maxB = Math.max(...rects.map(r => r.top + r.height));
+  const grpCount = {};
+  objs.forEach(o => { if(o._userGroup) grpCount[o._userGroup] = (grpCount[o._userGroup] || 0) + 1; });
+  _gsbClip = {
+    bw: (maxR - minL) / px, bh: (maxB - minT) / px,
+    items: objs.map((o, i) => {
+      const props = {};
+      FABRIC_EXTRA_PROPS.forEach(k => { if(!_CLIP_SKIP[k] && o[k] != null) props[k] = o[k]; });
+      if(!props._svgSource && !o._rasterEdited){ const src = getSvgSource(o); if(src) props._svgSource = src; }
+      if(o._partsEdited != null) props._partsEdited = o._partsEdited;
+      return {
+        json: o.type === 'image' ? null : o.toJSON(FABRIC_EXTRA_PROPS),
+        imgEl: o.type === 'image' ? o.getElement() : null,
+        dx: (rects[i].left - minL) / px, dy: (rects[i].top - minT) / px,
+        mmW: o._mmW, mmH: o._mmH, angle: o.angle || 0, flipX: !!o.flipX, flipY: !!o.flipY,
+        group: (o._userGroup && grpCount[o._userGroup] > 1) ? o._userGroup : null,
+        props,
+      };
+    }),
+  };
+  if(!silent) toast(t('clipCopied', objs.length), 'info', 1500);
+  return true;
+}
+
+function pasteClipboard(atMm, silent){
+  const clip = _gsbClip;
+  if(!clip || !clip.items.length) return;
+  const n = clip.items.length;
+  const px = displayPxPerMm;
+  let spot = null, angleOverride = null, repack = false;
+  // Plakken via het rechtermuismenu: op de plek van de muis als het daar past
+  if(atMm && clip.bw <= state.sheet.w && clip.bh <= state.sheet.h){
+    const x = Math.max(0, Math.min(state.sheet.w - clip.bw, atMm.x));
+    const y = Math.max(0, Math.min(state.sheet.h - clip.bh, atMm.y));
+    if(state.manualMode || !overlapsAny(x, y, clip.bw, clip.bh)) spot = { x, y };
+  }
+  if(!spot && n === 1){
+    const it = clip.items[0];
+    const pick = _dupPick(it.mmW, it.mmH, it.angle, it.props._originalId);
+    if(!pick) return;
+    spot = pick.spot; angleOverride = pick.angle; repack = !!pick.repack;
+  }
+  if(!spot) spot = ensureSpotOnAnySheet(clip.bw, clip.bh);
+  if(!spot) return;
+
+  pushUndo();
+  const gmap = new Map();
+  clip.items.forEach(it => { if(it.group && !gmap.has(it.group)) gmap.set(it.group, _newGroupId()); });
+
+  const make = it => new Promise(res => {
+    const finish = clone => {
+      if(!clone){ res(null); return; }
+      Object.keys(it.props).forEach(k => { clone[k] = it.props[k]; });
+      clone._id = ++idCounter;
+      delete clone._isFillTile;
+      delete clone._userGroup;
+      if(it.group) clone._userGroup = gmap.get(it.group);
+      const angle = angleOverride != null ? angleOverride : it.angle;
+      const x = spot.x + (n === 1 ? 0 : it.dx), y = spot.y + (n === 1 ? 0 : it.dy);
+      clone.set({
+        originX:'left', originY:'top', angle,
+        flipX: it.flipX, flipY: it.flipY,
+        scaleX: (it.mmW * px) / clone.width,
+        scaleY: (it.mmH * px) / clone.height,
+        left: x * px, top: y * px,
+      });
+      _dupAlign(clone, x, y);
+      clone._mmW = it.mmW; clone._mmH = it.mmH;
+      clone._mmLeft = x; clone._mmTop = y;
+      if(clone._objects) clone._objects.forEach(c => { c.objectCaching = false; });
+      attachObjListeners(clone);
+      canvas.add(clone);
+      res(clone);
+    };
+    if(it.imgEl) finish(new fabric.Image(it.imgEl, {}));
+    else fabric.util.enlivenObjects([it.json], arr => finish(arr && arr[0]));
+  });
+
+  Promise.all(clip.items.map(make)).then(list => {
+    const clones = list.filter(Boolean);
+    if(repack){ repackAll({ silent:true, noUndo:true }); toast(t('dupRepacked'), 'info', 3500); }
+    _expandingGroup = true;
+    try { _selectObjects(clones); } finally { _expandingGroup = false; }
+    _styleGroupSelection();
+    autoExtendIfNeeded();
+    renderItemList(); renderSelectedPanel(); updateInfoBar(); updateSummary();
+    if(!silent) toast(t('clipPasted', clones.length), 'success', 1600);
+  });
+}
+
+/* ── Rechtermuismenu op het vel ── */
+let _ctxMenuEl = null;
+function _closeCtxMenu(){ if(_ctxMenuEl){ _ctxMenuEl.remove(); _ctxMenuEl = null; } }
+function _openCtxMenu(ev){
+  _closeCtxMenu();
+  const target = canvas.findTarget(ev, false);
+  const act = canvas.getActiveObjects();
+  if(target && target._mmW && !act.includes(target)){
+    // rechtsklik op een niet-geselecteerd logo: dat logo (of zijn groep) selecteren
+    const members = target._userGroup ? _groupMembers(target._userGroup) : [target];
+    _expandingGroup = true;
+    try { _selectObjects(members.length ? members : [target]); } finally { _expandingGroup = false; }
+    _styleGroupSelection();
+  } else if(!target){
+    canvas.discardActiveObject(); canvas.requestRenderAll();
+  }
+  const sel = canvas.getActiveObjects().filter(o => o._mmW);
+  const p = canvas.getPointer(ev);
+  const atMm = { x: p.x / displayPxPerMm, y: p.y / displayPxPerMm };
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+  const mod = isMac ? '⌘' : 'Ctrl+';
+  const isGroup = !!_selectionGroupId(sel);
+  const single = sel.length === 1 ? sel[0] : null;
+  const items = [];
+  if(single && (single.type === 'image' || single.type === 'group')) items.push({ label: single._textParams ? t('editText') : t('ctxEdit'), run: () => actOnSelected('edit-logo') }, '-');
+  items.push(
+    { label: t('ctxCopy'),      key: mod + 'C', disabled: !sel.length, run: () => copySelection() },
+    { label: t('ctxCut'),       key: mod + 'X', disabled: !sel.length, run: () => { if(copySelection(true)) _deleteActive(); } },
+    { label: t('ctxPaste'),     key: mod + 'V', disabled: !_gsbClip,   run: () => pasteClipboard(atMm) },
+    { label: t('ctxDuplicate'), key: mod + 'D', disabled: !sel.length, run: () => { if(sel.length === 1) duplicate(sel[0]); else if(copySelection(true)) pasteClipboard(null, true); } },
+    '-'
+  );
+  if(sel.length > 1 && !isGroup) items.push({ label: t('groupLogos'), key: mod + 'G', run: groupSelected });
+  if(sel.some(o => o._userGroup)) items.push({ label: t('ungroupLogos'), key: (isMac ? '⇧⌘' : 'Ctrl+Shift+') + 'G', run: ungroupSelected });
+  if(items[items.length - 1] !== '-') items.push('-');
+  items.push({ label: t('ctxDelete'), key: 'Del', disabled: !sel.length, danger: true, run: _deleteActive });
+
+  const m = document.createElement('div');
+  m.className = 'gsb-ctx-menu';
+  m.setAttribute('role', 'menu');
+  items.forEach(it => {
+    if(it === '-'){ m.insertAdjacentHTML('beforeend', '<div class="gsb-ctx-sep"></div>'); return; }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'gsb-ctx-item' + (it.danger ? ' danger' : '');
+    b.disabled = !!it.disabled;
+    b.setAttribute('role', 'menuitem');
+    const lab = document.createElement('span'); lab.textContent = it.label; b.appendChild(lab);
+    if(it.key){ const kb = document.createElement('kbd'); kb.textContent = it.key; b.appendChild(kb); }
+    b.onclick = () => { _closeCtxMenu(); it.run(); };
+    m.appendChild(b);
+  });
+  document.body.appendChild(m);
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(ev.clientX, window.innerWidth - mw - 8)) + 'px';
+  m.style.top  = Math.max(8, Math.min(ev.clientY, window.innerHeight - mh - 8)) + 'px';
+  _ctxMenuEl = m;
+}
+canvas.wrapperEl.addEventListener('contextmenu', ev => { ev.preventDefault(); _openCtxMenu(ev); });
+document.addEventListener('mousedown', ev => { if(_ctxMenuEl && !_ctxMenuEl.contains(ev.target)) _closeCtxMenu(); }, true);
+document.addEventListener('keydown', ev => { if(ev.key === 'Escape') _closeCtxMenu(); });
+window.addEventListener('blur', _closeCtxMenu);
+window.addEventListener('resize', _closeCtxMenu);
+document.getElementById('canvasWrap')?.addEventListener('scroll', _closeCtxMenu, { passive: true });
+
 /* =========================================================
    KEYBOARD
    ========================================================= */
@@ -8624,6 +9022,15 @@ document.addEventListener('keydown', e=>{
   if(e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey){ e.preventDefault(); undo(); return; }
   if((e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) || (e.key === 'y' && (e.ctrlKey || e.metaKey))){ e.preventDefault(); redo(); return; }
   if(e.key === 'a' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); canvas.discardActiveObject(); canvas.getObjects().forEach(o=>canvas.setActiveObject(o, null, true)); canvas.requestRenderAll(); renderSelectedPanel(); return; }
+
+  // v2.64.0: kopiëren / knippen / plakken / groeperen — niet terwijl een pop-up openstaat
+  if((e.ctrlKey || e.metaKey) && !e.altKey && !_gsbModalOpen()){
+    const k = (e.key || '').toLowerCase();
+    if(k === 'c' && !(window.getSelection && String(window.getSelection()))){ if(copySelection()){ e.preventDefault(); } return; }
+    if(k === 'x'){ if(copySelection(true)){ e.preventDefault(); _deleteActive(); } return; }
+    if(k === 'v'){ if(_gsbClip){ e.preventDefault(); pasteClipboard(); } return; }
+    if(k === 'g'){ e.preventDefault(); if(e.shiftKey) ungroupSelected(); else groupSelected(); return; }
+  }
 
   if(e.key === '+' || e.key === '='){ e.preventDefault(); setZoom(state.zoom * 1.25); return; }
   if(e.key === '-' || e.key === '_'){ e.preventDefault(); setZoom(state.zoom / 1.25); return; }
@@ -8656,6 +9063,18 @@ document.addEventListener('keydown', e=>{
   if(e.key === 'ArrowRight') dx =  nudge;
   if(e.key === 'ArrowUp')    dy = -nudge;
   if(e.key === 'ArrowDown')  dy =  nudge;
+  if((dx || dy) && obj.type === 'activeSelection'){
+    e.preventDefault();
+    pushUndo();
+    obj.left += dx * displayPxPerMm;
+    obj.top  += dy * displayPxPerMm;
+    obj.setCoords();
+    clampObjToSheet(obj);
+    (obj._objects || []).forEach(_syncMemberMm);
+    canvas.requestRenderAll();
+    updateInfoBar();
+    return;
+  }
   if(dx || dy){
     e.preventDefault();
     obj._mmLeft = Math.max(0, Math.min(state.sheet.w - visMmW(obj), (obj._mmLeft||0) + dx));

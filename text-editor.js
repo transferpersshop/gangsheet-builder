@@ -1043,6 +1043,7 @@ function _replaceTextObject(obj, svgText, params, mmW, mmH){
     g._naturalW = g.width; g._naturalH = g.height;
     g._mmW = mmW; g._mmH = mmH; g._mmLeft = obj._mmLeft; g._mmTop = obj._mmTop;
     g._svgSource = svgText; g._recolored = true; g._textParams = params;
+    if(obj._userGroup) g._userGroup = obj._userGroup;   // v2.64.0: groep op het vel behouden
     if(g._originalId && typeof svgSourceStore !== 'undefined') svgSourceStore.set(g._originalId, svgText);
     var canvas = window._gsbCanvas;
     if(canvas){
