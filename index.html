@@ -1046,7 +1046,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.64.0 · 23-11-2026</p>
+    <p class="version-tag">v2.65.0 · 23-11-2026</p>
   </div>
 </div>
 
@@ -1418,12 +1418,39 @@ window.addEventListener('load', ()=>{
 .le-parts-white{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;padding:8px 10px;border:1px solid #c4e8ec;background:#f0fdff;border-radius:8px;font-size:.78rem}
 .le-parts-size{font-size:.78rem;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
 .le-parts-warn{color:#b45309}
-/* v2.64.0 — Kleur: hele logo of losse delen */
-#leColorScope{height:32px;margin-bottom:14px}
-#leColorScope button{flex:1}
+/* v2.65.0 — Kleur: eerst kiezen wat je wilt doen (opzet A) */
+.le-ct-cards{display:flex;flex-direction:column;gap:10px}
+.le-ct-card{display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:#fff;cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}
+.le-ct-card:hover{border-color:var(--primary);background:var(--bg-light)}
+.le-ct-ico{width:38px;height:38px;border-radius:10px;flex-shrink:0;box-sizing:border-box}
+.le-ct-ico-bw{background:linear-gradient(90deg,#111 50%,#fff 50%);border:1px solid #d1d5db}
+.le-ct-ico-swap{background:linear-gradient(135deg,#e30613 50%,#2563eb 50%)}
+.le-ct-ico-parts{background:var(--bg-light);border:2px dashed var(--primary)}
+.le-ct-txt{display:flex;flex-direction:column;gap:2px}
+.le-ct-txt strong{font-size:.86rem;color:var(--text)}
+.le-ct-txt span{font-size:.74rem;color:var(--muted)}
+.le-ct-back{display:block;border:0;background:none;color:var(--primary);font-weight:700;font-size:.8rem;cursor:pointer;padding:0;margin:0 0 10px;font-family:inherit}
+.le-ct-step{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;margin:0 0 8px;color:var(--text)}
+.le-ct-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem}
+.le-ct-selbox{padding:9px 12px;border-radius:10px;background:var(--bg-light);border:1px solid #c4e8ec;font-size:.8rem}
+.le-ct-selbox #leCpStatus{font-weight:700}
+.le-ct-pal{display:flex;flex-direction:column;gap:6px}
+.le-ct-pal-label{font-size:.68rem;color:var(--muted);font-weight:600}
+.le-ct-pal-row{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}
+.le-ct-pal-row .le-color-chip{width:100%;height:28px}
+.le-ct-badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;background:var(--primary);color:#fff;font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:999px;pointer-events:none;white-space:nowrap}
 .le-cp-label{font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin:4px 0 6px}
 .le-cp-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .le-color-chip.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,154,175,.35)}
+/* v2.64.1 — kleurvlakken in het logo-editorpaneel nooit laten krimpen */
+#logoEditorModal input[type=color]{flex:0 0 auto;min-width:44px;width:44px;height:32px}
+#logoEditorModal input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
+#logoEditorModal input[type=color]::-webkit-color-swatch{border:1px solid rgba(0,0,0,.18);border-radius:4px}
+.le-out-hex{font-size:.74rem;font-family:ui-monospace,monospace;color:var(--muted)}
+.le-out-quick{display:flex;gap:6px;margin-left:auto}
+.le-out-quick button{width:24px;height:24px;border-radius:6px;border:1px solid rgba(0,0,0,.18);cursor:pointer;padding:0}
+.le-out-quick button[data-oc="#FFFFFF"]{background:#fff}
+.le-out-quick button[data-oc="#000000"]{background:#000}
 @media (max-width:860px){
   #logoEditorModal .le-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(200px,45%) minmax(0,1fr)}
   #logoEditorModal .le-preview-wrap{grid-column:1;grid-row:1;margin:12px 12px 0}
@@ -1488,6 +1515,7 @@ window.addEventListener('load', ()=>{
           <!-- Onderdelen-tool: SVG staat in een iframe zonder scripts (sandbox) -->
           <iframe id="lePartsFrame" sandbox="allow-same-origin" title="Bewerken" style="display:none"></iframe>
           <div id="lePartsOverlay" style="display:none"></div>
+          <div class="le-ct-badge" id="leCtBadge" style="display:none" data-i18n="leCtBadge">Klik op de delen die je wilt kleuren</div>
         </div>
 
         <!-- Placeholder -->
@@ -1498,23 +1526,44 @@ window.addEventListener('load', ()=>{
 
         <!-- ═══ 1. Kleur aanpassen ═══ -->
         <div class="le-tool-panel" id="lePanel_color">
-          <!-- v2.64.0: hele logo of losse delen kleuren (alleen bij een vectorbron) -->
-          <div class="te-mode-toggle le-scope-toggle" id="leColorScope" style="display:none">
-            <button class="active" data-scope="all" onclick="gsbLogoEditor.setColorScope('all')" data-i18n="leScopeAll">Hele logo</button>
-            <button data-scope="parts" onclick="gsbLogoEditor.setColorScope('parts')" data-i18n="leScopeParts">Losse delen</button>
-          </div>
-          <div id="leColorWholeBox">
-          <h4 data-i18n="leQuickConvert">Snel omzetten</h4>
-          <div style="display:flex;gap:8px;margin-bottom:14px">
-            <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.78rem;padding:8px 0;border-radius:8px" data-i18n="leMakeBlackBtn">Maak zwart</button>
-            <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.78rem;padding:8px 0;border:1px solid #ddd;border-radius:8px" data-i18n="leMakeWhiteBtn">Maak wit</button>
+          <!-- v2.65.0 (opzet A): eerst kiezen wat je wilt doen, daarna alleen de knoppen van die taak -->
+
+          <!-- ── Keuze ── -->
+          <div class="le-ct-view" id="leCtHome">
+            <h4 data-i18n="leCtQuestion">Wat wil je doen?</h4>
+            <div class="le-ct-cards">
+              <button type="button" class="le-ct-card" onclick="gsbLogoEditor.colorTask('quick')">
+                <span class="le-ct-ico le-ct-ico-bw" aria-hidden="true"></span>
+                <span class="le-ct-txt"><strong data-i18n="leCtQuickTitle">Hele logo zwart of wit</strong><span data-i18n="leCtQuickDesc">Eén klik, alle kleuren in één keer</span></span>
+              </button>
+              <button type="button" class="le-ct-card" onclick="gsbLogoEditor.colorTask('replace')">
+                <span class="le-ct-ico le-ct-ico-swap" aria-hidden="true"></span>
+                <span class="le-ct-txt"><strong data-i18n="leCtReplaceTitle">Een kleur vervangen</strong><span data-i18n="leCtReplaceDesc">Bijv. overal rood wordt blauw</span></span>
+              </button>
+              <button type="button" class="le-ct-card" id="leCtPartsCard" onclick="gsbLogoEditor.colorTask('parts')">
+                <span class="le-ct-ico le-ct-ico-parts" aria-hidden="true"></span>
+                <span class="le-ct-txt"><strong data-i18n="leCtPartsTitle">Losse delen kleuren</strong><span data-i18n="leCtPartsDesc">Klik delen aan en geef ze een kleur</span></span>
+              </button>
+            </div>
+            <p class="le-info" style="margin-top:10px" data-i18n="leCtHomeHint">Je kiest eerst wat je wilt. Daarna zie je alleen de knoppen die daarbij horen.</p>
           </div>
 
-          <div style="border-top:1px solid var(--border);padding-top:12px">
-          <h4 data-i18n="leColorReplaceTitle">Kleur vervangen</h4>
+          <!-- ── Hele logo zwart of wit ── -->
+          <div class="le-ct-view" id="leCtQuick" style="display:none">
+            <button type="button" class="le-ct-back" onclick="gsbLogoEditor.colorTask('home')" data-i18n="leCtBack">← Andere keuze</button>
+            <h4 data-i18n="leCtQuickTitle">Hele logo zwart of wit</h4>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <button class="le-btn" onclick="gsbLogoEditor.makeAllBlack()" style="flex:1;background:#1a1a1a;color:#fff;font-size:.8rem;padding:10px 0;border-radius:8px" data-i18n="leMakeBlackBtn">Maak zwart</button>
+              <button class="le-btn" onclick="gsbLogoEditor.makeAllWhite()" style="flex:1;background:#fff;color:#1a1a1a;font-size:.8rem;padding:10px 0;border:1px solid #ddd;border-radius:8px" data-i18n="leMakeWhiteBtn">Maak wit</button>
+            </div>
+            <p class="le-info" data-i18n="leCtApplyHint">Het voorbeeld laat direct het resultaat zien. Klik op Toepassen om het op het vel te zetten.</p>
+          </div>
 
-          <div style="margin-bottom:12px">
-            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">1</span><span data-i18n="leColorPickHelp">Kies de kleur die je wilt vervangen — klik een kleur of gebruik de pipet</span></label>
+          <!-- ── Een kleur vervangen ── -->
+          <div class="le-ct-view" id="leCtReplace" style="display:none">
+            <button type="button" class="le-ct-back" onclick="gsbLogoEditor.colorTask('home')" data-i18n="leCtBack">← Andere keuze</button>
+            <h4 data-i18n="leCtReplaceTitle">Een kleur vervangen</h4>
+            <p class="le-ct-step"><span class="le-ct-num">1</span><span data-i18n="leCtWhich">Welke kleur?</span></p>
             <div style="display:flex;align-items:center;gap:8px">
               <div class="le-color-chips" id="leColorSwatches" style="margin:0"></div>
               <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.startPick()" style="margin-left:auto;padding:6px 10px;flex-shrink:0">
@@ -1522,15 +1571,12 @@ window.addEventListener('load', ()=>{
                 <span data-i18n="lePipette">Pipet</span>
               </button>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin:8px 0 14px">
               <div class="le-swatch" id="lePickedSwatch" style="background:repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 50%/10px 10px;border-color:#ddd"></div>
               <span class="le-swatch-hex" id="lePickedHex" data-i18n="leNoColorPicked">Nog geen kleur gekozen</span>
               <span class="le-cmyk" id="lePickedCmyk" style="margin:0"></span>
             </div>
-          </div>
-
-          <div style="margin-bottom:12px">
-            <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">2</span><span data-i18n="leNewColor">Kies de nieuwe kleur</span></label>
+            <p class="le-ct-step"><span class="le-ct-num">2</span><span data-i18n="leCtBecomes">Wordt</span></p>
             <div style="display:flex;align-items:center;gap:8px">
               <input type="color" id="leReplColor" value="#FF0000" title="Klik om een kleur te kiezen" data-i18n-title="leClickPickColor">
               <span style="font-size:.72rem;color:var(--muted)" data-i18n="leClickPickColor">Klik om een kleur te kiezen</span>
@@ -1540,35 +1586,30 @@ window.addEventListener('load', ()=>{
               </div>
             </div>
             <span class="le-cmyk" id="leReplCmyk" style="margin:4px 0 0"></span>
+            <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%;margin-top:14px" data-i18n="leCtReplaceBtn">Vervang kleur</button>
           </div>
 
-          <label style="font-size:.72rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gradient);color:#fff;font-size:.66rem;margin-right:6px">3</span><span data-i18n="leApplyShort">Pas toe</span></label>
-          <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyColorReplace()" style="width:100%">Kleur vervangen</button>
-          </div>
-          </div>
-
-          <!-- Losse delen kleuren: selecteren in het voorbeeld (zelfde veilige iframe als Bewerken) -->
-          <div id="leColorPartsBox" style="display:none">
-            <h4 data-i18n="leCpTitle">Losse delen kleuren</h4>
-            <p class="le-info" style="margin:0 0 12px" data-i18n="leCpHelp">Klik in het voorbeeld op een deel om het te selecteren. Shift voegt toe, sleep een kader om meerdere te kiezen. Kies daarna de nieuwe kleur.</p>
-            <div class="le-parts-actions">
-              <button class="le-btn le-btn-sub" id="leCpUngroup" onclick="gsbLogoEditor.partsUngroup()" data-i18n="lePartsUngroup">Groepen opbreken</button>
-              <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.partsSelectAll()" data-i18n="lePartsSelectAll">Alles selecteren</button>
-              <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.partsInvert()" data-i18n="lePartsInvert">Selectie omkeren</button>
-            </div>
-            <label class="le-cp-label" data-i18n="leNewColor">Kies de nieuwe kleur</label>
-            <div class="le-cp-row">
-              <input type="color" id="leCpColor" value="#FF0000" title="Klik om een kleur te kiezen" data-i18n-title="leClickPickColor">
-              <div class="le-color-chips" id="leCpSwatches" style="margin:0"></div>
-            </div>
-            <button class="le-btn le-btn-sub" id="leCpApply" onclick="gsbLogoEditor.partsColor()" style="width:100%" data-i18n="leCpApply" disabled>Kleur geven aan selectie</button>
+          <!-- ── Losse delen kleuren: selecteren in het voorbeeld (zelfde veilige iframe als Bewerken) ── -->
+          <div class="le-ct-view" id="leColorPartsBox" style="display:none">
+            <button type="button" class="le-ct-back" onclick="gsbLogoEditor.colorTask('home')" data-i18n="leCtBack">← Andere keuze</button>
+            <h4 data-i18n="leCtPartsTitle">Losse delen kleuren</h4>
+            <div class="le-ct-selbox"><span id="leCpStatus"></span> · <span data-i18n="leCtShiftHint">Shift = meer delen</span></div>
             <div class="le-parts-actions" style="margin-top:10px">
+              <button class="le-btn le-btn-pick" id="leCpUngroup" onclick="gsbLogoEditor.partsUngroup()" data-i18n="leCtSmaller" title="Groepen opbreken: kleinere delen apart aanklikken">Kleinere delen</button>
+              <button class="le-btn le-btn-pick" onclick="gsbLogoEditor.partsSelectAll()" data-i18n="lePartsSelectAll">Alles selecteren</button>
+            </div>
+            <p class="le-ct-step" style="margin-top:4px"><span data-i18n="leCtNewColor">Kies de nieuwe kleur</span></p>
+            <div class="le-ct-pal" id="leCpSwatches"></div>
+            <div class="le-cp-row" style="margin-top:8px">
+              <input type="color" id="leCpColor" value="#FF0000" title="Eigen kleur" data-i18n-title="leCtOwnColor">
+              <span style="font-size:.72rem;color:var(--muted)" data-i18n="leCtOwnColor">Eigen kleur</span>
+            </div>
+            <p class="le-info" data-i18n="leCtPartsHint">De kleur komt direct op de geselecteerde delen. Klik op Toepassen om het op het vel te zetten.</p>
+            <div class="le-parts-actions" style="margin-top:8px">
               <button class="le-btn le-btn-pick" id="leCpUndo" onclick="gsbLogoEditor.partsUndo()" data-i18n="lePartsUndo" disabled>Ongedaan</button>
               <button class="le-btn le-btn-pick" id="leCpRedo" onclick="gsbLogoEditor.partsRedo()" data-i18n="lePartsRedo" disabled>Opnieuw</button>
               <button class="le-btn le-btn-pick" id="leCpReset" onclick="gsbLogoEditor.partsReset()" data-i18n="lePartsReset" disabled>Herstel alles</button>
             </div>
-            <div class="le-status" id="leCpStatus"></div>
-            <p class="le-info" data-i18n="leCpApplyHint">Klik op Toepassen om de nieuwe kleuren op het vel te zetten.</p>
           </div>
         </div>
 
@@ -1592,12 +1633,20 @@ window.addEventListener('load', ()=>{
         <!-- ═══ 3. Outline ═══ -->
         <div class="le-tool-panel" id="lePanel_outline">
           <h4 data-i18n="leOutlineAddTitle">Outline toevoegen</h4>
+          <!-- v2.64.1: kleur en dikte elk op een eigen regel; in het smalle paneel werd het kleurvlak tot een streepje samengedrukt -->
           <div class="le-row">
             <label data-i18n="leToolColor">Kleur</label>
             <input type="color" id="leOutColor" value="#FFFFFF" title="Klik om een kleur te kiezen" data-i18n-title="leClickPickColor">
-            <label style="min-width:auto;margin-left:12px" data-i18n="leThickness">Dikte (mm)</label>
+            <span class="le-out-hex" id="leOutColorHex">#FFFFFF</span>
+            <span class="le-out-quick">
+              <button type="button" data-oc="#FFFFFF" title="Wit" onclick="gsbLogoEditor.setOutlineColor('#FFFFFF')"></button>
+              <button type="button" data-oc="#000000" title="Zwart" onclick="gsbLogoEditor.setOutlineColor('#000000')"></button>
+            </span>
+          </div>
+          <div class="le-row">
+            <label data-i18n="leThickness">Dikte (mm)</label>
             <input type="range" id="leOutWidth" min="0" max="10" step="0.25" value="0" oninput="gsbLogoEditor.previewOutline()">
-            <span class="le-val" id="leOutWidthVal" style="min-width:38px">0 mm</span>
+            <span class="le-val" id="leOutWidthVal" style="min-width:42px;text-align:right">0 mm</span>
           </div>
           <p style="font-size:.72rem;color:var(--muted);margin:2px 0 8px" data-i18n="leOutlineHelp">Wit is standaard voor DTF. De dikte is in millimeters op ware printgrootte.</p>
           <button class="le-btn le-btn-sub" onclick="gsbLogoEditor.applyOutline()" style="width:100%;margin-top:4px" data-i18n="leOutlineApplyBtn">Outline toepassen</button>
@@ -1662,10 +1711,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js" integrity="sha384-rZipYyCodoDMAXvm3BS6DXnn3CAyORo9RZ+7OSlLIj1y1YP4KeMFwgKVkO+9W3nB" crossorigin="anonymous"></script>
-<script src="./auth.js?v=2.64.0"></script>
-<script src="./login-ui.js?v=2.64.0"></script>
-<script src="./app.js?v=2.64.0"></script>
-<script src="./text-editor.js?v=2.64.0"></script>
-<script src="./logo-editor.js?v=2.64.0"></script>
+<script src="./auth.js?v=2.65.0"></script>
+<script src="./login-ui.js?v=2.65.0"></script>
+<script src="./app.js?v=2.65.0"></script>
+<script src="./text-editor.js?v=2.65.0"></script>
+<script src="./logo-editor.js?v=2.65.0"></script>
 </body>
 </html>

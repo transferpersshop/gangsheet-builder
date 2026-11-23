@@ -1,6 +1,6 @@
 /* ================================================================
    logo-editor.js — Per-logo bewerkingsmodal voor Gang Sheet Builder
-   v2.64.0 — tool 'Onderdelen' heet nu 'Bewerken'; Kleur: losse delen van een vectorlogo kleuren; v2.63.1 — onderdelen-tool ook voor logo's met vectorbron als afbeelding (veel paden); v2.63.0 — onderdelen-tool (selecteren, degroeperen, verwijderen, strak bijsnijden); eerder v2.45.0: retina-scherpe preview met vol-brede achtergrond,
+   v2.65.0 — Kleur: eerst kiezen wat je wilt doen (zwart/wit, kleur vervangen, losse delen); v2.64.1 — outline-kleurvlak zichtbaar (eigen regel, hex + wit/zwart); v2.64.0 — tool 'Onderdelen' heet nu 'Bewerken'; Kleur: losse delen van een vectorlogo kleuren; v2.63.1 — onderdelen-tool ook voor logo's met vectorbron als afbeelding (veel paden); v2.63.0 — onderdelen-tool (selecteren, degroeperen, verwijderen, strak bijsnijden); eerder v2.45.0: retina-scherpe preview met vol-brede achtergrond,
    witte-achtergrond verwijdering (globaal + de-fringe),
    kleurclustering (vectorizer-stijl), SVG-natieve outline
    ================================================================ */
@@ -229,9 +229,9 @@ function open(fabricObj){
   if(upBtn) upBtn.style.display = (_isRaster && !fabricObj._vectorOrigin) ? '' : 'none';
   var partsBtn = document.getElementById('leToolParts');
   if(partsBtn) partsBtn.style.display = _lpSource() ? '' : 'none';
-  var scopeEl = document.getElementById('leColorScope');
-  if(scopeEl) scopeEl.style.display = _lpSource() ? '' : 'none';
-  _scopeUI('all');
+  var partsCard = document.getElementById('leCtPartsCard');
+  if(partsCard) partsCard.style.display = _lpSource() ? '' : 'none';
+  _colorTaskUI('home');
   var bgBtn = document.getElementById('leToolBgRemove');
   if(bgBtn) bgBtn.style.display = (_isRaster && !fabricObj._vectorOrigin) ? '' : 'none';
 
@@ -496,13 +496,15 @@ function selectTool(tool){
   // Onderdelen: iframe-sessie starten/stoppen; bij openstaande wijzigingen blijven we hier
   if(tool === 'parts'){
     if(!_lp && !_lpEnter()) return;
-    if(_lp.colorMode){ _lp.colorMode = false; _scopeUI('all'); _lpRefresh(); }
+    if(_lp.colorMode){ _lp.colorMode = false; _colorTaskUI('home'); _lpRefresh(); }
   } else if(_lp && !(tool === 'color' && _lp.colorMode)){
     if(_lp.dirty) return;
     _lpLeave();
   }
   _activeTool = tool;
   _pickMode = false;
+  // Kleur opnieuw gekozen (niet midden in 'losse delen'): terug naar de keuzekaarten
+  if(tool === 'color' && !(_lp && _lp.colorMode)){ _pickedRGB = null; _colorTaskUI('home'); }
   document.querySelectorAll('.le-tool-btn').forEach(function(b){
     b.classList.toggle('active', b.dataset.tool === tool);
   });
@@ -519,6 +521,7 @@ function _resetToolPanels(){
   selectTool('');
   var oc = document.getElementById('leOutColor');
   if(oc) oc.value = '#FFFFFF';
+  _syncOutHex();
   var ow = document.getElementById('leOutWidth');
   if(ow) ow.value = '0';
   var owv = document.getElementById('leOutWidthVal');
@@ -703,7 +706,7 @@ function _wireEvents(){
   var outW = document.getElementById('leOutWidth');
   var outC = document.getElementById('leOutColor');
   if(outW) outW.addEventListener('input', function(){ _livePreview(); });
-  if(outC) outC.addEventListener('input', function(){ _livePreview(); });
+  if(outC) outC.addEventListener('input', function(){ _syncOutHex(); _livePreview(); });
   var replC = document.getElementById('leReplColor');
   if(replC) replC.addEventListener('input', function(){
     _updateCmykDisplay('leReplCmyk', replC.value);
@@ -2352,7 +2355,7 @@ function _lpLeave(){
   if(_previewEl) _previewEl.style.visibility = '';
   _lp = null;
   _lpSetLocked(false);
-  _scopeUI('all');
+  if(_colorTask === 'parts') _colorTaskUI('home');
 }
 
 /* andere tools uitschakelen zolang er openstaande onderdelen-wijzigingen zijn */
@@ -2488,7 +2491,8 @@ function _lpRefresh(){
   var fl = _lpEl('lePartsUngroup'); if(fl) fl.disabled = !!_lp.leafMode;
   // Kleur > Losse delen gebruikt dezelfde sessie
   var cst = _lpEl('leCpStatus');
-  if(cst) cst.textContent = units + ' ' + _lpTr('lePartsUnits', 'onderdelen') + ' · ' + _lp.sel.length + ' ' + _lpTr('lePartsSelected', 'geselecteerd');
+  if(cst) cst.textContent = !_lp.sel.length ? _lpTr('leCtSel0', 'Nog niets geselecteerd')
+    : (_lp.sel.length === 1 ? _lpTr('leCtSel1', '1 deel geselecteerd') : _lp.sel.length + ' ' + _lpTr('leCtSelN', 'delen geselecteerd'));
   var cap = _lpEl('leCpApply'); if(cap) cap.disabled = !has;
   var cu = _lpEl('leCpUndo'); if(cu) cu.disabled = !_lp.hist.length;
   var cr = _lpEl('leCpRedo'); if(cr) cr.disabled = !_lp.redo.length;
@@ -2607,22 +2611,30 @@ function partsReset(){
    (selecteren, groepen opbreken, ongedaan maken); bij Toepassen gaat
    het via _lpCommit, dus ook alle kopieën op het vel krijgen de kleur.
    ══════════════════════════════════════════════════════════════ */
-function _scopeUI(scope){
-  var wrap = document.getElementById('leColorScope');
-  if(wrap) wrap.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.scope === scope); });
-  var whole = document.getElementById('leColorWholeBox');
-  var parts = document.getElementById('leColorPartsBox');
-  if(whole) whole.style.display = scope === 'parts' ? 'none' : '';
-  if(parts) parts.style.display = scope === 'parts' ? '' : 'none';
+/* ── Kleur-taken (v2.65.0, opzet A): home → quick | replace | parts ── */
+var _colorTask = 'home';
+var LE_CT_VIEWS = { home: 'leCtHome', quick: 'leCtQuick', replace: 'leCtReplace', parts: 'leColorPartsBox' };
+function _colorTaskUI(task){
+  _colorTask = task;
+  Object.keys(LE_CT_VIEWS).forEach(function(k){
+    var el = document.getElementById(LE_CT_VIEWS[k]);
+    if(el) el.style.display = (k === task) ? '' : 'none';
+  });
+  var badge = document.getElementById('leCtBadge');
+  if(badge) badge.style.display = task === 'parts' ? '' : 'none';
 }
-function setColorScope(scope){
-  if(scope === 'parts'){
-    if(_lp && _lp.colorMode) return;
-    if(!_lp && !_lpEnter()){ _scopeUI('all'); return; }
-    _lp.colorMode = true;
-    _lp.chipsDone = false;
+function colorTask(task){
+  if(!LE_CT_VIEWS[task]) task = 'home';
+  if(task === _colorTask && !(task === 'parts' && !(_lp && _lp.colorMode))) return;
+  if(task === 'parts'){
+    if(!(_lp && _lp.colorMode)){
+      if(!_lp && !_lpEnter()) return;
+      _lp.colorMode = true;
+      _lp.chipsDone = false;
+    }
     _pickMode = false;
-    _scopeUI('parts');
+    _pickedRGB = null;
+    _colorTaskUI('parts');
     _lpRefresh();
     return;
   }
@@ -2633,34 +2645,50 @@ function setColorScope(scope){
     }
     _lpLeave();
   }
-  _scopeUI('all');
+  // een gekozen maar niet bevestigde vervanging vervalt bij een andere keuze
+  if(_colorTask === 'replace' && task !== 'replace'){ _pickedRGB = null; }
+  _pickMode = false;
+  if(_previewEl) _previewEl.style.cursor = '';
+  _colorTaskUI(task);
+  if(task === 'replace'){ _updatePickedSwatch(); _extractColors(); }
   _livePreview();
 }
+/* oude namen (v2.64.x) blijven werken */
+function setColorScope(scope){ colorTask(scope === 'parts' ? 'parts' : 'home'); }
 function _lpRgbHex(v){
   var m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(v || '');
   return m ? _hexFromRgb(+m[1], +m[2], +m[3]) : null;
 }
-/* Snelkeuze: de kleuren die nu in het logo staan, plus zwart en wit */
+/* Kleurkeuze bij losse delen: de kleuren uit het logo + een standaardpalet.
+   Klik op een kleur = direct toepassen op de selectie. */
+var LE_CT_STD = ['#ffffff','#000000','#dc2626','#ff6600','#f39200','#ffe100','#16a34a','#00b7c6','#1d9aaf','#2563eb','#1e3a8a','#65358c','#d946ef','#ec4899','#8b4513','#6b7280'];
 function _lpCpChips(){
   var box = _lpEl('leCpSwatches');
   if(!box || !_lp || !_lp.ready) return;
-  var win = _lp.doc.defaultView, seen = {}, list = [];
-  var add = function(hex){ if(hex && !seen[hex] && list.length < 14){ seen[hex] = 1; list.push(hex); } };
+  var win = _lp.doc.defaultView, seen = {}, logo = [];
   var leaves = _lpLeaves();
-  for(var i = 0; i < leaves.length && i < 3000 && list.length < 12; i++){
+  for(var i = 0; i < leaves.length && i < 3000 && logo.length < 8; i++){
     var cs = win.getComputedStyle(leaves[i]);
-    if(cs.fill && cs.fill !== 'none' && cs.fill.indexOf('url') < 0) add(_lpRgbHex(cs.fill));
-    if(cs.stroke && cs.stroke !== 'none' && cs.stroke.indexOf('url') < 0 && parseFloat(cs.strokeWidth) > 0) add(_lpRgbHex(cs.stroke));
+    [cs.fill, (parseFloat(cs.strokeWidth) > 0 ? cs.stroke : null)].forEach(function(v){
+      if(!v || v === 'none' || v.indexOf('url') >= 0) return;
+      var h = _lpRgbHex(v);
+      if(h && !seen[h] && logo.length < 8){ seen[h] = 1; logo.push(h); }
+    });
   }
-  add('#000000'); add('#ffffff');
-  box.innerHTML = list.map(function(h){
-    return '<button type="button" class="le-color-chip" data-hex="' + h + '" title="' + h.toUpperCase() + '" style="width:26px;height:26px;background:' + h + '"></button>';
-  }).join('');
+  var chip = function(h){
+    return '<button type="button" class="le-color-chip" data-hex="' + h + '" title="' + h.toUpperCase() + '" aria-label="' + h.toUpperCase() + '" style="background:' + h + '"></button>';
+  };
+  var html = '';
+  if(logo.length){
+    html += '<span class="le-ct-pal-label">' + _lpTr('leCtFromLogo', 'Uit dit logo') + '</span><div class="le-ct-pal-row">' + logo.map(chip).join('') + '</div>';
+  }
+  html += '<span class="le-ct-pal-label">' + _lpTr('leCtStandard', 'Standaard') + '</span><div class="le-ct-pal-row">' + LE_CT_STD.map(chip).join('') + '</div>';
+  box.innerHTML = html;
   var inp = _lpEl('leCpColor');
   box.querySelectorAll('.le-color-chip').forEach(function(c){
     c.onclick = function(){
       if(inp) inp.value = c.dataset.hex;
-      box.querySelectorAll('.le-color-chip').forEach(function(o){ o.classList.toggle('active', o === c); });
+      partsColor();
     };
   });
 }
@@ -2683,7 +2711,8 @@ function _lpPaint(el, hex, win){
   });
 }
 function partsColor(){
-  if(!_lp || !_lp.ready || !_lp.sel.length) return;
+  if(!_lp || !_lp.ready) return;
+  if(!_lp.sel.length){ if(window.toast) window.toast(_lpTr('leCtSelectFirst', 'Klik eerst een deel aan in het voorbeeld'), 'info', 2200); return; }
   var inp = _lpEl('leCpColor');
   var hex = (inp && /^#[0-9a-f]{6}$/i.test(inp.value)) ? inp.value.toLowerCase() : '#000000';
   var sel = _lp.sel.slice();
@@ -2906,6 +2935,24 @@ function _lpKey(e){
 }
 document.addEventListener('keydown', _lpKey, true);
 
+/* Outline-kleur: hexwaarde naast het vlak tonen + snelknoppen wit/zwart */
+function _syncOutHex(){
+  var oc = document.getElementById('leOutColor'), hx = document.getElementById('leOutColorHex');
+  if(oc && hx) hx.textContent = (oc.value || '').toUpperCase();
+}
+function setOutlineColor(hex){
+  var oc = document.getElementById('leOutColor');
+  if(!oc) return;
+  oc.value = hex;
+  oc.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/* Eigen kleur bij losse delen: toepassen zodra de kleur gekozen is */
+(function(){
+  var cpIn = document.getElementById('leCpColor');
+  if(cpIn) cpIn.onchange = function(){ if(_colorTask === 'parts') partsColor(); };
+})();
+
 /* ══════════ Expose ══════════ */
 window.gsbLogoEditor = {
   open: open, close: function(){ close(false); }, apply: apply, reset: reset,
@@ -2918,7 +2965,7 @@ window.gsbLogoEditor = {
   applyBgRemove: applyBgRemove,
   applyWhiteRemove: applyWhiteRemove, previewWhiteRemove: previewWhiteRemove,
   setColorMode: setColorMode,
-  setColorScope: setColorScope, partsColor: partsColor,
+  setColorScope: setColorScope, colorTask: colorTask, partsColor: partsColor, setOutlineColor: setOutlineColor,
   partsUngroup: partsUngroup, partsDelete: partsDelete, partsKeep: partsKeep,
   partsSelectAll: partsSelectAll, partsInvert: partsInvert, partsRemoveWhite: partsRemoveWhite,
   partsUndo: partsUndo, partsRedo: partsRedo, partsReset: partsReset,
