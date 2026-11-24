@@ -9515,8 +9515,9 @@ async function gsbBuildProofInfo(pageWMm){
   const font = px => '700 ' + px + 'px ' + fam;
   const lines = colors.map(c => ({
     c, hex:_pmHex(c),
-    l1: (c.name || 'Kleur') + (c.pms ? ' · PMS ' + c.pms : ''),
-    l2: 'C' + c.c + ' M' + c.m + ' Y' + c.y + ' K' + c.k
+    // Met PMS-code: alleen naam + PMS (geen CMYK), verticaal gecentreerd t.o.v. het kleurblok
+    l1: c.pms ? ((c.name ? c.name + ' · ' : '') + 'PMS ' + c.pms) : (c.name || 'Kleur'),
+    l2: c.pms ? '' : 'C' + c.c + ' M' + c.m + ' Y' + c.y + ' K' + c.k
   }));
   // Layout (eerst meten, dan tekenen)
   let y = 22, typeY = 0, rows = [], cx, cy;
@@ -9526,7 +9527,7 @@ async function gsbBuildProofInfo(pageWMm){
     y = colorsTop; cx = M + LABEL_W; cy = y;
     for(const ln of lines){
       mc.font = font(13); const w1 = mc.measureText(ln.l1).width;
-      mc.font = font(10.5);  const w2 = mc.measureText(ln.l2).width;
+      mc.font = font(10.5);  const w2 = ln.l2 ? mc.measureText(ln.l2).width : 0;
       const w = 40 + Math.max(w1, w2);
       if(cx + w > MR && cx > M + LABEL_W){ cx = M + LABEL_W; cy += 40; }
       rows.push({ ln, x:cx, y:cy }); cx += w + 30;
@@ -9553,8 +9554,16 @@ async function gsbBuildProofInfo(pageWMm){
     for(const r of rows){
       ctx.fillStyle = r.ln.hex; ctx.fillRect(r.x, r.y, CHIP, CHIP);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(r.x + .5, r.y + .5, CHIP - 1, CHIP - 1);
-      ctx.fillStyle = '#fff';    ctx.font = font(13); ctx.fillText(r.ln.l1, r.x + 40, r.y + 12.5);
-      ctx.fillStyle = '#d5d8de'; ctx.font = font(10.5);  ctx.fillText(r.ln.l2, r.x + 40, r.y + 26.5);
+      if(r.ln.l2){
+        ctx.fillStyle = '#fff';    ctx.font = font(13); ctx.fillText(r.ln.l1, r.x + 40, r.y + 12.5);
+        ctx.fillStyle = '#d5d8de'; ctx.font = font(10.5);  ctx.fillText(r.ln.l2, r.x + 40, r.y + 26.5);
+      } else {
+        // PMS-kleur: één regel, verticaal in het midden van het kleurblok
+        ctx.fillStyle = '#fff'; ctx.font = font(14);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(r.ln.l1, r.x + 40, r.y + CHIP / 2);
+        ctx.textBaseline = 'alphabetic';
+      }
     }
   }
   if(m.fullColor){
