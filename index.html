@@ -85,6 +85,7 @@ window.addEventListener('load', ()=>{
   .gsb-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:0;background:#1a1a2e;color:#fff;padding:8px 12px;border-radius:8px;font-size:.72rem;font-weight:500;line-height:1.45;width:230px;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .1s;z-index:6000;box-shadow:0 6px 18px rgba(0,0,0,.3)}
   .gsb-tip::before{content:'';position:absolute;bottom:calc(100% + 3px);left:14px;border:5px solid transparent;border-top-color:#1a1a2e;opacity:0;visibility:hidden;transition:opacity .1s;z-index:6000}
   .gsb-tip:hover::after,.gsb-tip:hover::before{opacity:1;visibility:visible}
+  .te-field .gsb-tip::after{text-transform:none;letter-spacing:normal;font-weight:500}
 
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;height:100%;font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--bg-light)}
@@ -361,7 +362,7 @@ window.addEventListener('load', ()=>{
   .item-row:hover{border-color:#cbd5e1}
   .item-row.selected{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:9px}
   .item-row.item-row-empty{opacity:.5}
-  .purge-logos-btn{width:100%;margin-top:4px;padding:9px 12px;border:1px solid #fecaca;border-radius:10px;background:#fff;color:var(--error);font-size:.78rem;font-weight:700;cursor:pointer;transition:background .15s}
+  .purge-logos-btn{width:100%;margin:0 0 10px;padding:9px 12px;border:1px solid #fecaca;border-radius:10px;background:#fff;color:var(--error);font-size:.78rem;font-weight:700;cursor:pointer;transition:background .15s}
   .purge-logos-btn:hover{background:#fee2e2}
   .item-thumb{width:42px;height:42px;background:#f3f4f6;border-radius:8px;flex-shrink:0;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--border)}
   .item-info{flex:1;min-width:0}
@@ -835,10 +836,10 @@ window.addEventListener('load', ()=>{
 
       <div class="section" id="itemListSection">
         <div class="section-head"><span class="num">4</span><h3><span data-i18n="allLogos">Geüploade logo's</span> <span id="itemCount" style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:4px">(0)</span></h3></div>
+        <button type="button" id="purgeLogosBtn" class="purge-logos-btn" style="display:none" data-i18n="purgeBtn">Alle logo's definitief verwijderen</button>
         <div id="itemList">
           <p class="empty" data-i18n="listEmpty">Nog niets geüpload.</p>
         </div>
-        <button type="button" id="purgeLogosBtn" class="purge-logos-btn" style="display:none" data-i18n="purgeBtn">Alle logo's definitief verwijderen</button>
       </div>
 
       <div class="section" id="layoutGapSection">
@@ -1049,7 +1050,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.66.2 · 25-11-2026</p>
+    <p class="version-tag">v2.66.3 · 25-11-2026</p>
   </div>
 </div>
 
@@ -1747,10 +1748,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js" integrity="sha384-rZipYyCodoDMAXvm3BS6DXnn3CAyORo9RZ+7OSlLIj1y1YP4KeMFwgKVkO+9W3nB" crossorigin="anonymous"></script>
-<script src="./auth.js?v=2.66.2"></script>
-<script src="./login-ui.js?v=2.66.2"></script>
-<script src="./app.js?v=2.66.2"></script>
-<script src="./text-editor.js?v=2.66.2"></script>
-<script src="./logo-editor.js?v=2.66.2"></script>
+<script src="./auth.js?v=2.66.3"></script>
+<script src="./login-ui.js?v=2.66.3"></script>
+<script src="./app.js?v=2.66.3"></script>
+<script src="./text-editor.js?v=2.66.3"></script>
+<script src="./logo-editor.js?v=2.66.3"></script>
 </body>
 </html>

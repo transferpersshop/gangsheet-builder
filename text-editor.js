@@ -73,6 +73,7 @@ var _cmykStroke = null;  // {c,m,y,k} of null
 var _sizeMode = 'height';
 // Jersey rows
 var _jerseyRows = [{name:'', num:''}];
+var _numStash = null;      // letter spacing/buiging van het Tekst-tabblad, tijdelijk op 0 tijdens Cijfers
 var _panelMode = 'text';   // 'text' | 'numbers' (tab Cijfers hergebruikt het Tekst-paneel)
 
 /* ══════════ Modal ══════════ */
@@ -87,6 +88,7 @@ function open(){
   _colorMode = 'rgb'; _cmykFill = null; _cmykStroke = null; _sizeMode = 'height';
   _syncColorModeUI(); _syncSizeModeUI();
   var _r1 = document.getElementById('teTextInput'); if(_r1) _r1.value = '';
+  _numStash = null;
   _resetNumFields();
   selectPanel('create');
   var _r2 = document.getElementById('teSizeMm'); if(_r2) _r2.value = 30;
@@ -1008,10 +1010,28 @@ function _setPanelMode(mode){
   });
   var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
   if(addBtn && !_editTarget) addBtn.textContent = t(mode==='numbers' ? 'teAddNumbers' : 'teAddToSheet');
+  // Cijfers: geen letter spacing / buiging — waarden bewaren en op 0 zetten, bij terugkeer herstellen
+  var sr = document.getElementById('teSpacingRow');
+  if(mode==='numbers' && !_numStash){
+    _numStash = { sp:_spacing, cv:_curve };
+    _spacing = 0; _curve = 0;
+    _syncSpacingCurveUI();
+    if(sr) sr.style.display = 'none';
+  } else if(mode!=='numbers' && _numStash){
+    _spacing = _numStash.sp; _curve = _numStash.cv; _numStash = null;
+    _syncSpacingCurveUI();
+    if(sr) sr.style.display = '';
+  }
   if(mode==='numbers') _numChange();
 }
+function _syncSpacingCurveUI(){
+  var sp = document.getElementById('teSpacing'); if(sp) sp.value = _spacing;
+  var spv = document.getElementById('teSpacingVal'); if(spv) spv.textContent = _spacing;
+  var cv = document.getElementById('teCurve'); if(cv) cv.value = _curve;
+  var cvv = document.getElementById('teCurveVal'); if(cvv) cvv.textContent = _curve + '\u00b0';
+}
 function _resetNumFields(){
-  var d = {teNumPrefix:'', teNumFrom:1, teNumTo:10, teNumSuffix:'', teNumDigits:1, teNumStep:1};
+  var d = {teNumPrefix:'', teNumFrom:'1', teNumTo:'10', teNumSuffix:'', teNumStep:'1'};
   Object.keys(d).forEach(function(id){ var e = document.getElementById(id); if(e) e.value = d[id]; });
 }
 var NUM_MAX = 5000;
@@ -1019,20 +1039,23 @@ var NUM_MAX = 5000;
 function _numList(){
   function val(id){ var e = document.getElementById(id); return e ? e.value : ''; }
   var prefix = val('teNumPrefix'), suffix = val('teNumSuffix');
-  var from = parseInt(val('teNumFrom'), 10), to = parseInt(val('teNumTo'), 10);
-  var step = parseInt(val('teNumStep'), 10), digits = parseInt(val('teNumDigits'), 10);
-  if(isNaN(from) || isNaN(to)) return {list:[], error:'Vul een begin- en eindcijfer in'};
-  if(from < 0 || to < 0) return {list:[], error:'Alleen cijfers van 0 of hoger'};
+  var fromT = val('teNumFrom').trim(), toT = val('teNumTo').trim();
+  var step = parseInt(val('teNumStep'), 10);
+  if(!fromT || !toT) return {list:[], error:'Vul een begin- en eindcijfer in'};
+  if(!/^\d+$/.test(fromT) || !/^\d+$/.test(toT)) return {list:[], error:'Gebruik alleen cijfers (0-9) bij Van en Tot en met'};
+  if(fromT.length > 9 || toT.length > 9) return {list:[], error:'Getallen zijn te lang'};
+  var from = parseInt(fromT, 10), to = parseInt(toT, 10);
   if(isNaN(step) || step < 1) step = 1;
-  if(isNaN(digits) || digits < 1) digits = 1;
-  if(digits > 10) digits = 10;
+  // Voorloopnullen: typ je 001 (of 0001) bij Van of Tot, dan krijgen alle cijfers minimaal zoveel posities
+  var digits = 1;
+  if(fromT.length > 1 && fromT.charAt(0) === '0') digits = Math.max(digits, fromT.length);
+  if(toT.length > 1 && toT.charAt(0) === '0') digits = Math.max(digits, toT.length);
   var count = Math.floor(Math.abs(to - from) / step) + 1;
   if(count > NUM_MAX) return {list:[], error:'Te veel cijfers ('+count+') — maximaal '+NUM_MAX+' per keer'};
   var dir = (to >= from) ? 1 : -1;
   var list = [];
   for(var i = 0; i < count; i++){
-    var n = from + dir * step * i;
-    var s = String(n);
+    var s = String(from + dir * step * i);
     while(s.length < digits) s = '0' + s;
     list.push(prefix + s + suffix);
   }
@@ -1193,7 +1216,7 @@ async function addTexts(){
       bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
       strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve, sizeMode:_sizeMode,
       colorMode:_colorMode, cmykFill:_cmykFill, cmykStroke:_cmykStroke };
-    batch.push({svg:result.svg, name:line, params:params});
+    batch.push({svg:result.svg, name:line, params:params, mmW:result.mmW, mmH:result.mmH});
   });
   var added = batch.length;
   if(added > 0){
