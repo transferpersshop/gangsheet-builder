@@ -1046,7 +1046,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.65.1 · 24-11-2026</p>
+    <p class="version-tag">v2.66.0 · 25-11-2026</p>
   </div>
 </div>
 
@@ -1188,6 +1188,10 @@ window.addEventListener('load', ()=>{
           <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
           <span data-i18n="teTabText">Tekst</span>
         </button>
+        <button class="le-tool-btn" id="teTabBtn_numbers" onclick="gsbTextEditor.selectPanel('numbers')">
+          <svg viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+          <span data-i18n="teTabNumbers">Cijfers</span>
+        </button>
         <button class="le-tool-btn" id="teTabBtn_fonts" onclick="gsbTextEditor.selectPanel('fonts')">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 16l3-8 3 8M10 13.5h4"/></svg>
           Fonts
@@ -1304,6 +1308,7 @@ window.addEventListener('load', ()=>{
           </div>
 
           <!-- ══════ Tekst invoer ══════ -->
+            <div id="teTextBlock">
             <div class="te-field">
               <label><span data-i18n="teText">Tekst</span> <span style="font-weight:400;opacity:.65" data-i18n="teNewLineHint">(nieuwe regel = nieuw los object)</span></label>
               <textarea id="teTextInput" class="te-input te-wysiwyg" rows="3" placeholder="Jan&#10;Piet&#10;Klaas" oninput="gsbTextEditor.updatePreview()"></textarea>
@@ -1315,6 +1320,40 @@ window.addEventListener('load', ()=>{
               </button>
               <input type="file" id="teCsvInput" accept=".csv,.txt,.xlsx" style="display:none" onchange="gsbTextEditor.onCsvImport()">
             </div>
+            </div><!-- end teTextBlock -->
+
+            <!-- ══════ Cijfers invoer (cijferreeks) ══════ -->
+            <div id="teNumBlock" style="display:none">
+              <div class="te-row" style="align-items:flex-end;flex-wrap:wrap">
+                <div class="te-field" style="flex:0 0 auto">
+                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumPrefix">Prefix</label>
+                  <input type="text" id="teNumPrefix" class="te-input" placeholder="27-" style="width:90px;height:38px" oninput="gsbTextEditor.numChange()">
+                </div>
+                <div class="te-field" style="flex:0 0 auto">
+                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumFrom">Van</label>
+                  <input type="number" id="teNumFrom" class="te-input" value="1" min="0" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                </div>
+                <div class="te-field" style="flex:0 0 auto">
+                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumTo">Tot en met</label>
+                  <input type="number" id="teNumTo" class="te-input" value="10" min="0" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                </div>
+                <div class="te-field" style="flex:0 0 auto">
+                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumSuffix">Suffix</label>
+                  <input type="text" id="teNumSuffix" class="te-input" placeholder="" style="width:90px;height:38px" oninput="gsbTextEditor.numChange()">
+                </div>
+              </div>
+              <div class="te-row" style="align-items:flex-end;flex-wrap:wrap;margin-top:8px">
+                <div class="te-field" style="flex:0 0 auto">
+                  <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-tip="Minimaal aantal cijfers; korter wordt aangevuld met voorloopnullen. 3 geeft 001, 002 … 010 … 100. Langere getallen (1000) blijven gewoon staan." data-i18n="teNumDigits" data-i18n-tip="teNumDigitsTip">Aantal cijfers &#9432;</label>
+                  <input type="number" id="teNumDigits" class="te-input" value="1" min="1" max="10" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                </div>
+                <div class="te-field" style="flex:0 0 auto">
+                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumStep">Stap</label>
+                  <input type="number" id="teNumStep" class="te-input" value="1" min="1" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                </div>
+              </div>
+              <div id="teNumSummary" style="font-size:.78rem;margin-top:10px;min-height:18px;color:var(--muted)"></div>
+            </div><!-- end teNumBlock -->
             <!-- Preview (shows stroke/styling) -->
             <div id="tePreviewWrap" style="margin-top:8px">
               <div id="tePreview" class="te-preview" style="min-height:40px">

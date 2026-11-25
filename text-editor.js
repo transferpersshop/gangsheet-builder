@@ -73,6 +73,7 @@ var _cmykStroke = null;  // {c,m,y,k} of null
 var _sizeMode = 'height';
 // Jersey rows
 var _jerseyRows = [{name:'', num:''}];
+var _panelMode = 'text';   // 'text' | 'numbers' (tab Cijfers hergebruikt het Tekst-paneel)
 
 /* ══════════ Modal ══════════ */
 function open(){
@@ -86,6 +87,8 @@ function open(){
   _colorMode = 'rgb'; _cmykFill = null; _cmykStroke = null; _sizeMode = 'height';
   _syncColorModeUI(); _syncSizeModeUI();
   var _r1 = document.getElementById('teTextInput'); if(_r1) _r1.value = '';
+  _resetNumFields();
+  selectPanel('create');
   var _r2 = document.getElementById('teSizeMm'); if(_r2) _r2.value = 30;
   var _r3 = document.getElementById('teColor'); if(_r3) _r3.value = '#000000';
   var _r3h = document.getElementById('teColorHex'); if(_r3h) _r3h.textContent = '#000000';
@@ -133,6 +136,7 @@ function close(){
   var m = document.getElementById('textEditorModal');
   if(m) m.classList.remove('open');
   _editTarget = null;
+  _setPanelMode('text');
   var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
   if(addBtn) addBtn.textContent = t('teAddToSheet');
   _closePicker();
@@ -783,6 +787,11 @@ function _refreshPreview(){
   if(!_currentFont){ el.innerHTML = '<span style="color:#9ca3af;font-size:.82rem">'+t('teChooseFontPreview')+'</span>'; return; }
   var ta = document.getElementById('teTextInput');
   var text = ((ta?ta.value:'')||'').split('\n')[0] || 'Voorbeeld';
+  if(_panelMode === 'numbers' && !_editTarget){
+    var nl0 = _numList().list;
+    // langste item tonen is onhandig; eerste item is wat de gebruiker verwacht
+    text = nl0.length ? nl0[0] : '123';
+  }
   var ci = document.getElementById('teColor');
   var color = ci?ci.value:'#000000';
   try{
@@ -970,13 +979,78 @@ function _curvedSvg(text, font, fontSize, color, opts){
 }
 /* ══════════ Sidebar-panelen ══════════ */
 function selectPanel(p){
-  ['create','fonts'].forEach(function(k){
-    var pane = document.getElementById('tePanel_'+k);
-    if(pane) pane.style.display = (k===p) ? '' : 'none';
+  var showCreate = (p==='create' || p==='numbers');
+  var pane = document.getElementById('tePanel_create');
+  if(pane) pane.style.display = showCreate ? '' : 'none';
+  var fp = document.getElementById('tePanel_fonts');
+  if(fp) fp.style.display = (p==='fonts') ? '' : 'none';
+  ['create','numbers','fonts'].forEach(function(k){
     var btn = document.getElementById('teTabBtn_'+k);
     if(btn) btn.classList.toggle('active', k===p);
   });
+  if(showCreate){
+    // Tijdens bewerken van een bestaande tekst blijft het Tekst-paneel actief
+    if(p==='numbers' && _editTarget) p = 'create';
+    _setPanelMode(p==='numbers' ? 'numbers' : 'text');
+    _refreshPreview();
+  }
   if(p==='fonts') _showUsedFonts();
+}
+
+/* ══════════ Cijfers-tab: cijferreeks (prefix + van/tot + suffix) ══════════ */
+function _setPanelMode(mode){
+  _panelMode = mode;
+  var tb = document.getElementById('teTextBlock'); if(tb) tb.style.display = (mode==='numbers') ? 'none' : '';
+  var nb = document.getElementById('teNumBlock');  if(nb) nb.style.display = (mode==='numbers') ? '' : 'none';
+  ['create','numbers'].forEach(function(k){
+    var btn = document.getElementById('teTabBtn_'+k);
+    if(btn) btn.classList.toggle('active', (k==='numbers') === (mode==='numbers'));
+  });
+  var addBtn = document.querySelector('#tePanel_create .btn-grad-fill');
+  if(addBtn && !_editTarget) addBtn.textContent = t(mode==='numbers' ? 'teAddNumbers' : 'teAddToSheet');
+  if(mode==='numbers') _numChange();
+}
+function _resetNumFields(){
+  var d = {teNumPrefix:'', teNumFrom:1, teNumTo:10, teNumSuffix:'', teNumDigits:1, teNumStep:1};
+  Object.keys(d).forEach(function(id){ var e = document.getElementById(id); if(e) e.value = d[id]; });
+}
+var NUM_MAX = 5000;
+// Geeft {list:[…], error:''} — de lijst met teksten van de cijferreeks
+function _numList(){
+  function val(id){ var e = document.getElementById(id); return e ? e.value : ''; }
+  var prefix = val('teNumPrefix'), suffix = val('teNumSuffix');
+  var from = parseInt(val('teNumFrom'), 10), to = parseInt(val('teNumTo'), 10);
+  var step = parseInt(val('teNumStep'), 10), digits = parseInt(val('teNumDigits'), 10);
+  if(isNaN(from) || isNaN(to)) return {list:[], error:'Vul een begin- en eindcijfer in'};
+  if(from < 0 || to < 0) return {list:[], error:'Alleen cijfers van 0 of hoger'};
+  if(isNaN(step) || step < 1) step = 1;
+  if(isNaN(digits) || digits < 1) digits = 1;
+  if(digits > 10) digits = 10;
+  var count = Math.floor(Math.abs(to - from) / step) + 1;
+  if(count > NUM_MAX) return {list:[], error:'Te veel cijfers ('+count+') — maximaal '+NUM_MAX+' per keer'};
+  var dir = (to >= from) ? 1 : -1;
+  var list = [];
+  for(var i = 0; i < count; i++){
+    var n = from + dir * step * i;
+    var s = String(n);
+    while(s.length < digits) s = '0' + s;
+    list.push(prefix + s + suffix);
+  }
+  return {list:list, error:''};
+}
+function _numChange(){
+  var el = document.getElementById('teNumSummary');
+  var r = _numList();
+  if(el){
+    if(r.error){ el.style.color = '#dc2626'; el.textContent = r.error; }
+    else {
+      el.style.color = '';
+      var l = r.list;
+      el.textContent = l.length === 1 ? '1 cijfer: ' + l[0]
+        : l.length + ' cijfers: ' + l[0] + (l.length > 2 ? ' \u2026 ' : ', ') + l[l.length-1];
+    }
+  }
+  _refreshPreview();
 }
 
 /* ══════════ Bewerk-modus: bestaande tekst heropenen ══════════ */
@@ -1065,7 +1139,13 @@ async function addTexts(){
   if(!_currentFont){ if(window.toast) window.toast('Kies eerst een lettertype','warn'); return; }
   var ta = document.getElementById('teTextInput');
   var raw = (ta?ta.value:'').trim();
-  if(!raw){ if(window.toast) window.toast('Voer tekst in','warn'); return; }
+  var numMode = (_panelMode === 'numbers' && !_editTarget);
+  var numLines = null;
+  if(numMode){
+    var nr = _numList();
+    if(nr.error || !nr.list.length){ if(window.toast) window.toast(nr.error || 'Geen cijfers ingevuld','warn'); return; }
+    numLines = nr.list;
+  } else if(!raw){ if(window.toast) window.toast('Voer tekst in','warn'); return; }
 
   var si = document.getElementById('teSizeMm');
   var su = document.getElementById('teSizeUnit');
@@ -1081,7 +1161,7 @@ async function addTexts(){
   var simBold = _needsSimBold();
   var simItalic = _needsSimItalic();
 
-  var lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  var lines = numMode ? numLines : raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
   if(!lines.length) return;
 
   var svgOpts = {
@@ -1105,7 +1185,7 @@ async function addTexts(){
     close();
     return;
   }
-  var added = 0;
+  var batch = [];
   lines.forEach(function(line){
     var result = _textToSvg(line, font, sizeMm, color, svgOpts);
     if(!result){ console.warn('[TE] Empty SVG for:',line); return; }
@@ -1113,11 +1193,16 @@ async function addTexts(){
       bold:_bold, italic:_italic, underline:_underline, allCaps:_allCaps, spacing:_spacing,
       strokeColor:_strokeColor, strokeWidth:_strokeWidth, curve:_curve, sizeMode:_sizeMode,
       colorMode:_colorMode, cmykFill:_cmykFill, cmykStroke:_cmykStroke };
-    if(window.loadSvg){ window.loadSvg(result.svg, line, params); added++; }
+    batch.push({svg:result.svg, name:line, params:params});
   });
+  var added = batch.length;
   if(added > 0){
-    if(window.toast) window.toast(added+' tekst'+(added>1?'en':'')+' toegevoegd','success');
+    var doneMsg = function(n){
+      if(window.toast) window.toast(numMode ? n+' cijfer'+(n>1?'s':'')+' toegevoegd' : n+' tekst'+(n>1?'en':'')+' toegevoegd','success');
+    };
     close();
+    if(window.gsbAddSvgBatch){ window.gsbAddSvgBatch(batch, doneMsg); }
+    else if(window.loadSvg){ batch.forEach(function(b){ window.loadSvg(b.svg, b.name, b.params); }); doneMsg(added); }
   } else {
     if(window.toast) window.toast(t('toastTextConvertNone'),'warn');
   }
@@ -1681,6 +1766,7 @@ window.gsbTextEditor = {
   onSpacingChange:onSpacingChange,
   onCurveChange:onCurveChange,
   selectPanel:selectPanel,
+  numChange:_numChange,
   syncColor:syncColor, syncStroke:syncStroke,
   setColorMode:setColorMode, setSizeMode:setSizeMode,
   addTexts:addTexts,

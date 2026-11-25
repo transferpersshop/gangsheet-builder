@@ -79,6 +79,9 @@ const I18N = {
     lePartsNoSrc:'Geen vectorbron beschikbaar voor dit logo', lePartsParseFail:'Dit logo kan niet in onderdelen worden opgedeeld',
     leResetDone:'Reset naar origineel', leUpdated:'Logo bijgewerkt', leOutlineApplied:'Outline toegepast — vector behouden',
     teTitle:'Tekst maken', teTabText:'Tekst', teTabFonts:'Fonts',
+    teTabNumbers:'Cijfers', teNumPrefix:'Prefix', teNumFrom:'Van', teNumTo:'Tot en met', teNumSuffix:'Suffix', teNumDigits:'Aantal cijfers', teNumStep:'Stap',
+    teNumDigitsTip:'Minimaal aantal cijfers; korter wordt aangevuld met voorloopnullen. 3 geeft 001, 002 … 010 … 100. Langere getallen (1000) blijven gewoon staan.',
+    teAddNumbers:'Cijfers toevoegen aan vel',
     teFont:'Lettertype', teSearchFont:'Zoek lettertype…', teChooseFont:'Kies een lettertype…',
     teColorMode:'Kleurmodus', teTextColor:'Tekstkleur', teOutlineColor:'Outline kleur', teOutlineWidth:'Outline dikte (mm)',
     teFontHeight:'Font hoogte', teFontWidth:'Font breedte', teSizePer:'Afmeting per', teStyle:'Stijl',
@@ -347,6 +350,9 @@ const I18N = {
     lePartsNoSrc:'No vector source available for this logo', lePartsParseFail:'This logo cannot be split into parts',
     leResetDone:'Reset to original', leUpdated:'Logo updated', leOutlineApplied:'Outline applied — vector preserved',
     teTitle:'Add text', teTabText:'Text', teTabFonts:'Fonts',
+    teTabNumbers:'Numbers', teNumPrefix:'Prefix', teNumFrom:'From', teNumTo:'Up to and including', teNumSuffix:'Suffix', teNumDigits:'Number of digits', teNumStep:'Step',
+    teNumDigitsTip:'Minimum number of digits; shorter numbers get leading zeros. 3 gives 001, 002 … 010 … 100. Longer numbers (1000) stay as they are.',
+    teAddNumbers:'Add numbers to sheet',
     teFont:'Font', teSearchFont:'Search font…', teChooseFont:'Choose a font…',
     teColorMode:'Color mode', teTextColor:'Text color', teOutlineColor:'Outline color', teOutlineWidth:'Outline width (mm)',
     teFontHeight:'Font height', teFontWidth:'Font width', teSizePer:'Size based on', teStyle:'Style',
@@ -3536,6 +3542,42 @@ function placeImage(obj, name, mmW, mmH, naturalW, naturalH){
     pushUndo();
   }
 }
+
+/* Voegt een lijst SVG's toe (bv. een cijferreeks uit de teksteditor).
+   Meer dan 10 items → bulk-modus: één keer renderen, één undo-stap, voortgang in beeld. */
+function gsbAddSvgBatch(items, onDone){
+  const n = items.length;
+  if(!n){ if(onDone) onDone(0); return; }
+  if(n <= 10){
+    items.forEach(it=> loadSvg(it.svg, it.name, it.params));
+    if(onDone) onDone(n);
+    return;
+  }
+  _bulkMode = true;
+  _bulkCount = 0;
+  showLogoLoading(`0 / ${n} laden…`);
+  let loaded = 0;
+  const origHide = window._origHideLogoLoading || hideLogoLoading;
+  if(!window._origHideLogoLoading) window._origHideLogoLoading = hideLogoLoading;
+  window.hideLogoLoading = hideLogoLoading = function(){
+    loaded++;
+    if(loaded < n){
+      if(loaded % 10 === 0) showLogoLoading(`${loaded} / ${n} laden…`);
+    } else {
+      window.hideLogoLoading = hideLogoLoading = origHide;
+      origHide();
+      _finishBulk();
+      if(onDone) onDone(n);
+    }
+  };
+  let i = 0;
+  (function next(){
+    const end = Math.min(i + 40, n);
+    for(; i < end; i++) loadSvg(items[i].svg, items[i].name, items[i].params);
+    if(i < n) setTimeout(next, 0);
+  })();
+}
+window.gsbAddSvgBatch = gsbAddSvgBatch;
 
 function _finishBulk(){
   _bulkMode = false;
