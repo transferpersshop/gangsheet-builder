@@ -361,6 +361,8 @@ window.addEventListener('load', ()=>{
   .item-row:hover{border-color:#cbd5e1}
   .item-row.selected{background:linear-gradient(#fff,#fff) padding-box,var(--gradient) border-box;border:2px solid transparent;padding:9px}
   .item-row.item-row-empty{opacity:.5}
+  .purge-logos-btn{width:100%;margin-top:4px;padding:9px 12px;border:1px solid #fecaca;border-radius:10px;background:#fff;color:var(--error);font-size:.78rem;font-weight:700;cursor:pointer;transition:background .15s}
+  .purge-logos-btn:hover{background:#fee2e2}
   .item-thumb{width:42px;height:42px;background:#f3f4f6;border-radius:8px;flex-shrink:0;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--border)}
   .item-info{flex:1;min-width:0}
   .item-info .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
@@ -836,6 +838,7 @@ window.addEventListener('load', ()=>{
         <div id="itemList">
           <p class="empty" data-i18n="listEmpty">Nog niets geüpload.</p>
         </div>
+        <button type="button" id="purgeLogosBtn" class="purge-logos-btn" style="display:none" data-i18n="purgeBtn">Alle logo's definitief verwijderen</button>
       </div>
 
       <div class="section" id="layoutGapSection">
@@ -1046,7 +1049,7 @@ window.addEventListener('load', ()=>{
       <strong data-i18n="infoTipBg">Transparante achtergrond</strong>
       <p data-i18n="infoTipBgBody">Gebruik PNG's met transparante achtergrond. Een witte achtergrond wordt meegeprint als wit vlak rondom je logo. De "Verwijder witte achtergrond" functie kan helpen, maar een echt transparant bronbestand is altijd beter.</p>
     </div>
-    <p class="version-tag">v2.66.0 · 25-11-2026</p>
+    <p class="version-tag">v2.66.2 · 25-11-2026</p>
   </div>
 </div>
 
@@ -1290,7 +1293,7 @@ window.addEventListener('load', ()=>{
           </div>
 
           <!-- ── Letter spacing + Tekst buiging row ── -->
-          <div style="display:flex;gap:24px;margin-bottom:14px">
+          <div id="teSpacingRow" style="display:flex;gap:24px;margin-bottom:14px">
             <div style="flex:0 1 220px">
               <div style="display:flex;align-items:center;gap:6px">
                 <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);white-space:nowrap;margin:0" data-tip="Extra ruimte tussen de letters, in % van de letterhoogte. Negatief = letters dichter op elkaar." data-i18n="teLetterSpacingL" data-i18n-tip="teLetterSpacingTip">Letter spacing &#9432;</label>
@@ -1326,30 +1329,24 @@ window.addEventListener('load', ()=>{
             <div id="teNumBlock" style="display:none">
               <div class="te-row" style="align-items:flex-end;flex-wrap:wrap">
                 <div class="te-field" style="flex:0 0 auto">
-                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumPrefix">Prefix</label>
+                  <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-tip="Tekst die vóór elk cijfer komt, bijvoorbeeld 27- of NR. Laat leeg als je alleen cijfers wilt." data-i18n="teNumPrefix" data-i18n-tip="teNumPrefixTip">Prefix &#9432;</label>
                   <input type="text" id="teNumPrefix" class="te-input" placeholder="27-" style="width:90px;height:38px" oninput="gsbTextEditor.numChange()">
                 </div>
                 <div class="te-field" style="flex:0 0 auto">
-                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumFrom">Van</label>
-                  <input type="number" id="teNumFrom" class="te-input" value="1" min="0" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                  <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-tip="Eerste cijfer van de reeks. Typ 001 voor voorloopnullen (001, 002 … 1000), of 1 voor 1, 2, 3 …" data-i18n="teNumFrom" data-i18n-tip="teNumFromTip">Van &#9432;</label>
+                  <input type="text" inputmode="numeric" id="teNumFrom" class="te-input" value="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
                 </div>
                 <div class="te-field" style="flex:0 0 auto">
                   <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumTo">Tot en met</label>
-                  <input type="number" id="teNumTo" class="te-input" value="10" min="0" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                  <input type="text" inputmode="numeric" id="teNumTo" class="te-input" value="10" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
                 </div>
                 <div class="te-field" style="flex:0 0 auto">
-                  <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumSuffix">Suffix</label>
+                  <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-tip="Tekst die ná elk cijfer komt, bijvoorbeeld een letter (A) of /25. Laat leeg als je het niet nodig hebt." data-i18n="teNumSuffix" data-i18n-tip="teNumSuffixTip">Suffix &#9432;</label>
                   <input type="text" id="teNumSuffix" class="te-input" placeholder="" style="width:90px;height:38px" oninput="gsbTextEditor.numChange()">
-                </div>
-              </div>
-              <div class="te-row" style="align-items:flex-end;flex-wrap:wrap;margin-top:8px">
-                <div class="te-field" style="flex:0 0 auto">
-                  <label class="gsb-tip" style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-tip="Minimaal aantal cijfers; korter wordt aangevuld met voorloopnullen. 3 geeft 001, 002 … 010 … 100. Langere getallen (1000) blijven gewoon staan." data-i18n="teNumDigits" data-i18n-tip="teNumDigitsTip">Aantal cijfers &#9432;</label>
-                  <input type="number" id="teNumDigits" class="te-input" value="1" min="1" max="10" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
                 </div>
                 <div class="te-field" style="flex:0 0 auto">
                   <label style="font-size:.68rem;color:var(--muted);margin:0 0 2px" data-i18n="teNumStep">Stap</label>
-                  <input type="number" id="teNumStep" class="te-input" value="1" min="1" step="1" style="width:84px;height:38px" oninput="gsbTextEditor.numChange()">
+                  <input type="number" id="teNumStep" class="te-input" value="1" min="1" step="1" style="width:70px;height:38px" oninput="gsbTextEditor.numChange()">
                 </div>
               </div>
               <div id="teNumSummary" style="font-size:.78rem;margin-top:10px;min-height:18px;color:var(--muted)"></div>
@@ -1750,10 +1747,10 @@ window.addEventListener('load', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
 <!-- opentype.js for text-to-SVG -->
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.min.js" integrity="sha384-rZipYyCodoDMAXvm3BS6DXnn3CAyORo9RZ+7OSlLIj1y1YP4KeMFwgKVkO+9W3nB" crossorigin="anonymous"></script>
-<script src="./auth.js?v=2.65.0"></script>
-<script src="./login-ui.js?v=2.65.0"></script>
-<script src="./app.js?v=2.65.0"></script>
-<script src="./text-editor.js?v=2.65.0"></script>
-<script src="./logo-editor.js?v=2.65.0"></script>
+<script src="./auth.js?v=2.66.2"></script>
+<script src="./login-ui.js?v=2.66.2"></script>
+<script src="./app.js?v=2.66.2"></script>
+<script src="./text-editor.js?v=2.66.2"></script>
+<script src="./logo-editor.js?v=2.66.2"></script>
 </body>
 </html>

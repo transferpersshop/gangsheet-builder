@@ -79,8 +79,10 @@ const I18N = {
     lePartsNoSrc:'Geen vectorbron beschikbaar voor dit logo', lePartsParseFail:'Dit logo kan niet in onderdelen worden opgedeeld',
     leResetDone:'Reset naar origineel', leUpdated:'Logo bijgewerkt', leOutlineApplied:'Outline toegepast — vector behouden',
     teTitle:'Tekst maken', teTabText:'Tekst', teTabFonts:'Fonts',
-    teTabNumbers:'Cijfers', teNumPrefix:'Prefix', teNumFrom:'Van', teNumTo:'Tot en met', teNumSuffix:'Suffix', teNumDigits:'Aantal cijfers', teNumStep:'Stap',
-    teNumDigitsTip:'Minimaal aantal cijfers; korter wordt aangevuld met voorloopnullen. 3 geeft 001, 002 … 010 … 100. Langere getallen (1000) blijven gewoon staan.',
+    teTabNumbers:'Cijfers', teNumPrefix:'Prefix \u24d8', teNumFrom:'Van \u24d8', teNumTo:'Tot en met', teNumSuffix:'Suffix \u24d8', teNumStep:'Stap',
+    teNumPrefixTip:'Tekst die vóór elk cijfer komt, bijvoorbeeld 27- of NR. Laat leeg als je alleen cijfers wilt.',
+    teNumFromTip:'Eerste cijfer van de reeks. Typ 001 voor voorloopnullen (001, 002 … 1000), of 1 voor 1, 2, 3 …',
+    teNumSuffixTip:'Tekst die ná elk cijfer komt, bijvoorbeeld een letter (A) of /25. Laat leeg als je het niet nodig hebt.',
     teAddNumbers:'Cijfers toevoegen aan vel',
     teFont:'Lettertype', teSearchFont:'Zoek lettertype…', teChooseFont:'Kies een lettertype…',
     teColorMode:'Kleurmodus', teTextColor:'Tekstkleur', teOutlineColor:'Outline kleur', teOutlineWidth:'Outline dikte (mm)',
@@ -218,6 +220,9 @@ const I18N = {
     bgRemoved:'Witte achtergrond verwijderd',
     bgAiTitle:'AI achtergrond verwijderen',
     bgAiBody:"Deze functie gebruikt remove.bg of een vergelijkbare AI-service voor foto's en complexere afbeeldingen. In de productieversie koppel je hier een API-key. In deze demo is de AI-knop uitgeschakeld — gebruik de browser-versie hierboven voor platte witte achtergronden.",
+    purgeBtn:"Alle logo's definitief verwijderen", purgeTitle:"Logo's definitief verwijderen",
+    purgeBody:"Alle logo's verdwijnen definitief uit deze lijst en uit het geheugen van de app. Je kunt ze daarna niet meer opnieuw op het vel plaatsen of via ongedaan maken terughalen; upload ze dan opnieuw.",
+    purgeDone:(n)=>`${n} logo's definitief verwijderd`,
     clearTitle:'Leegmaken',
     clearBody:"Weet je zeker dat je het hele vel wilt leegmaken? Alle logo's worden verwijderd.",
     clearDone:'Vel leeggemaakt',
@@ -350,8 +355,10 @@ const I18N = {
     lePartsNoSrc:'No vector source available for this logo', lePartsParseFail:'This logo cannot be split into parts',
     leResetDone:'Reset to original', leUpdated:'Logo updated', leOutlineApplied:'Outline applied — vector preserved',
     teTitle:'Add text', teTabText:'Text', teTabFonts:'Fonts',
-    teTabNumbers:'Numbers', teNumPrefix:'Prefix', teNumFrom:'From', teNumTo:'Up to and including', teNumSuffix:'Suffix', teNumDigits:'Number of digits', teNumStep:'Step',
-    teNumDigitsTip:'Minimum number of digits; shorter numbers get leading zeros. 3 gives 001, 002 … 010 … 100. Longer numbers (1000) stay as they are.',
+    teTabNumbers:'Numbers', teNumPrefix:'Prefix \u24d8', teNumFrom:'From \u24d8', teNumTo:'Up to and including', teNumSuffix:'Suffix \u24d8', teNumStep:'Step',
+    teNumPrefixTip:'Text placed before every number, for example 27- or NO. Leave empty if you only want numbers.',
+    teNumFromTip:'First number of the series. Type 001 for leading zeros (001, 002 … 1000), or 1 for 1, 2, 3 …',
+    teNumSuffixTip:'Text placed after every number, for example a letter (A) or /25. Leave empty if you do not need it.',
     teAddNumbers:'Add numbers to sheet',
     teFont:'Font', teSearchFont:'Search font…', teChooseFont:'Choose a font…',
     teColorMode:'Color mode', teTextColor:'Text color', teOutlineColor:'Outline color', teOutlineWidth:'Outline width (mm)',
@@ -489,6 +496,9 @@ const I18N = {
     bgRemoved:'White background removed',
     bgAiTitle:'AI background removal',
     bgAiBody:'This uses remove.bg or a similar AI service for photos and complex images. In production you plug in an API key. In this demo the AI button is disabled — use the browser version above for flat white backgrounds.',
+    purgeBtn:'Delete all logos permanently', purgeTitle:'Delete logos permanently',
+    purgeBody:'All logos are removed from this list and from the app\'s memory for good. You cannot place them on the sheet again or bring them back with undo; upload them again if needed.',
+    purgeDone:(n)=>`${n} logo${n===1?'':'s'} permanently deleted`,
     clearTitle:'Clear sheet',
     clearBody:'Clear the whole sheet? All logos will be removed.',
     clearDone:'Sheet cleared',
@@ -3177,7 +3187,7 @@ function _svgExportRisk(svgText){
   return null;
 }
 
-function loadSvg(svgText, name, extra){
+function loadSvg(svgText, name, extra, presetSpot){
   // Kleurnotaties die svg2pdf niet aankan meteen platslaan (v2.57.0),
   // zodat _svgSource, de kleurherkenning en de export dezelfde waarden zien.
   svgText = _normalizeSvgColors(svgText);
@@ -3231,7 +3241,7 @@ function loadSvg(svgText, name, extra){
         targetMmH = targetMmW * (naturalH / naturalW);
       }
       if(extra) group._textParams = extra;
-      placeImage(group, name, targetMmW, targetMmH, naturalW, naturalH);
+      placeImage(group, name, targetMmW, targetMmH, naturalW, naturalH, presetSpot);
       hideLogoLoading();
       if(embeddedRaster){
         toast(`⚠️ "${name}": ${t('embeddedRasterWarn')}`, 'warn', 8000);
@@ -3246,6 +3256,7 @@ function loadSvg(svgText, name, extra){
 // Parse SVG text for <image> tags with raster data. Returns {w,h} of the
 // largest embedded raster, or null if the SVG is pure vector.
 function detectEmbeddedRaster(svgText){
+  if(svgText.indexOf('<image') === -1) return null;   // snelle weg: geen ingesloten bitmaps
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
   const images = doc.querySelectorAll('image');
@@ -3499,8 +3510,9 @@ function autoCropSvg(svgText, callback){
 let _bulkMode = false;
 let _bulkCount = 0;
 
-function placeImage(obj, name, mmW, mmH, naturalW, naturalH){
-  const spot = ensureSpotOnAnySheet(mmW, mmH);
+function placeImage(obj, name, mmW, mmH, naturalW, naturalH, presetSpot){
+  // presetSpot: vooraf berekende plek (batch-plaatsing) — slaat de zoektocht naar een vrije plek over
+  const spot = presetSpot || ensureSpotOnAnySheet(mmW, mmH);
   if(!spot) return;
   const id = ++idCounter;
   obj._id = id;
@@ -3522,8 +3534,7 @@ function placeImage(obj, name, mmW, mmH, naturalW, naturalH){
   attachObjListeners(obj);
   canvas.add(obj);
   registerLogo(obj);
-  autoDarkBgForWhiteLogo(obj);
-  autoExtendIfNeeded();
+  if(!presetSpot){ autoDarkBgForWhiteLogo(obj); autoExtendIfNeeded(); }
   if(_bulkMode){
     // In bulk mode: skip per-item render, undo push, item list, summary
     _bulkCount++;
@@ -3553,6 +3564,9 @@ function gsbAddSvgBatch(items, onDone){
     if(onDone) onDone(n);
     return;
   }
+  // Snelle weg: alle posities vooraf berekenen (rijen van links naar rechts) i.p.v.
+  // per object een vrije plek zoeken — dat laatste loopt kwadratisch op bij honderden objecten.
+  const spots = _batchShelfSpots(items);
   _bulkMode = true;
   _bulkCount = 0;
   showLogoLoading(`0 / ${n} laden…`);
@@ -3567,15 +3581,46 @@ function gsbAddSvgBatch(items, onDone){
       window.hideLogoLoading = hideLogoLoading = origHide;
       origHide();
       _finishBulk();
+      if(spots){
+        // Witte tekst → preview-achtergrond zwart (één keer i.p.v. per object)
+        const last = canvas.getObjects().filter(o=>o._mmW).pop();
+        if(last) autoDarkBgForWhiteLogo(last);
+      }
       if(onDone) onDone(n);
     }
   };
   let i = 0;
   (function next(){
     const end = Math.min(i + 40, n);
-    for(; i < end; i++) loadSvg(items[i].svg, items[i].name, items[i].params);
+    for(; i < end; i++) loadSvg(items[i].svg, items[i].name, items[i].params, spots ? spots[i] : undefined);
     if(i < n) setTimeout(next, 0);
   })();
+}
+/* Rijen-indeling (links→rechts, boven→onder) onder de bestaande inhoud.
+   Geeft null als het niet past (vaste vellen) of items ontbreken aan maten → dan de gewone, trage plaatsing. */
+function _batchShelfSpots(items){
+  if(!items.every(it => it.mmW > 0 && it.mmH > 0)) return null;
+  const gap = state.gapMm || 0, W = state.sheet.w;
+  const hasContent = canvas.getObjects().some(o => o._mmW);
+  let x = 0, y = hasContent ? getContentBottomMm() + gap : 0, rowH = 0;
+  const spots = [];
+  for(const it of items){
+    if(it.mmW > W) return null;
+    if(x > 0 && x + it.mmW > W + 0.01){ x = 0; y += rowH + gap; rowH = 0; }
+    spots.push({ x, y });
+    x += it.mmW + gap;
+    if(it.mmH > rowH) rowH = it.mmH;
+  }
+  const bottom = y + rowH;
+  const isDTF = !!SHEET_FORMATS[state.sheetFormat]?.isDTF;
+  if(isDTF){
+    const needed = bottom + (state.gapMm || 5);
+    if(needed > MAX_LENGTH_MM) return null;
+    if(needed > state.sheet.h) growRoll(Math.ceil(needed / 1000) * 1000 - state.sheet.h);
+  } else if(bottom > state.sheet.h){
+    return null;
+  }
+  return spots;
 }
 window.gsbAddSvgBatch = gsbAddSvgBatch;
 
@@ -5919,7 +5964,11 @@ function renderItemList(){
     canvas.getObjects().forEach(o=>{ if(o._mmW){ uniqueIds.add(o._originalId ?? o._id); totalObjs++; } });
     for(const [oid] of _logoRegistry) uniqueIds.add(oid);
     document.getElementById('itemCount').textContent = `(${uniqueIds.size} ${uniqueIds.size===1?t('logo'):t('logos')} · ${totalObjs} ${t('copies')})`;
-    return;
+    // Is er een logo bijgekomen of weggehaald? Dan moet de lijst wél opnieuw opgebouwd worden —
+    // anders verschijnt een nieuw logo pas zodra de focus uit het aantal-veld is (klik op het canvas).
+    const shownIds = new Set([...list.querySelectorAll('.count-stepper')].map(s => String(s.dataset.oid)));
+    const sameSet = shownIds.size === uniqueIds.size && [...uniqueIds].every(id => shownIds.has(String(id)));
+    if(sameSet){ _updatePurgeBtn(); return; }
   }
 
   const groups = new Map();
@@ -5949,15 +5998,17 @@ function renderItemList(){
   if(!groups.size){
     list.innerHTML = `<p class="empty">${t('listEmpty')}</p>`;
     updateSummary();
+    _updatePurgeBtn();
     return;
   }
 
   list.innerHTML = '';
   // Sort groups by _logoRegistry insertion order (= upload order) for stable display
-  const registryOrder = [..._logoRegistry.keys()];
+  const registryOrder = new Map();
+  { let _ri = 0; for(const k of _logoRegistry.keys()) registryOrder.set(k, _ri++); }
   const sortedGroups = [...groups.values()].sort((a, b) => {
-    const ai = registryOrder.indexOf(a.originalId);
-    const bi = registryOrder.indexOf(b.originalId);
+    const ai = registryOrder.has(a.originalId) ? registryOrder.get(a.originalId) : -1;
+    const bi = registryOrder.has(b.originalId) ? registryOrder.get(b.originalId) : -1;
     // Items not in registry go to the end
     return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
   });
@@ -6075,7 +6126,48 @@ function renderItemList(){
     list.appendChild(row);
   });
   updateSummary();
+  _updatePurgeBtn();
 }
+
+/* "Alle logo's definitief verwijderen": alleen zichtbaar als het vel leeg is maar er nog
+   (doorzichtige) logo's in de lijst staan. Die blijven na "Vel leegmaken" bewust bewaard
+   (zodat je ze opnieuw kunt plaatsen), maar houden geheugen vast: SVG-bronnen, PDF-buffers,
+   miniaturen en de undo-geschiedenis. */
+function _updatePurgeBtn(){
+  const btn = document.getElementById('purgeLogosBtn');
+  if(!btn) return;
+  const sheetEmpty = !canvas.getObjects().some(o => o._mmW);
+  btn.style.display = (sheetEmpty && _logoRegistry.size > 0) ? '' : 'none';
+}
+function purgeAllLogos(){
+  if(canvas.getObjects().some(o => o._mmW)) return;   // alleen bij een leeg vel
+  const n = _logoRegistry.size;
+  _logoRegistry.clear();
+  _thumbCache.clear();
+  svgSourceStore.clear();
+  pristineSvgStore.clear();
+  pdfSourceBuffers.clear();
+  _rotPref.clear();
+  _thinCache.clear();
+  warnedDpiIds.clear();
+  state.fillTemplate = null;
+  state.selectedId = null;
+  // Undo-geschiedenis bevat kopieën van de verwijderde logo's → ook leeg (anders blijft het geheugen bezet)
+  undoRedoStack.undo = [];
+  undoRedoStack.redo = [];
+  undoRedoStack._statsDirty = true;
+  undoRedoStack._statsCache = null;
+  renderItemList();
+  renderSelectedPanel();
+  updateInfoBar();
+  updateSummary();
+  pushUndo();
+  toast(t('purgeDone', n), 'success');
+}
+document.getElementById('purgeLogosBtn')?.addEventListener('click', ()=>{
+  if(canvas.getObjects().some(o => o._mmW)) return;
+  confirmModal(t('purgeTitle'), t('purgeBody')).then(ok=>{ if(ok) purgeAllLogos(); });
+});
 
 // Single canvas mode — no cross-tab helpers needed
 
