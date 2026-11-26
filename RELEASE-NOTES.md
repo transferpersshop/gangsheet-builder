@@ -1,3 +1,11 @@
+# Gangsheet Builder v2.66.4 · 26-11-2026
+
+Te uploaden: app.js, index.html
+
+## Snellere undo bij grote vellen
+- Undo-stappen bewaren de beelddata van PNG/JPG-logo's nog maar één keer, in plaats van één keer per kopie. Bij 100 kopieën van een PNG van 3,6 MB: undo-stap van 358 MB naar 0,1 MB, geheugen van ongeveer 1 GB naar ongeveer 22 MB, geen hapering meer bij het begin van slepen. Vanaf ongeveer 150 kopieën crashte de undo eerder ("Invalid string length").
+- Eén klik op Ongedaan maken is nu genoeg. Voorheen moest je na veel acties (aantal wijzigen, verwijderen, opvullen) twee keer klikken voordat er iets gebeurde.
+
 # Gangsheet Builder v2.65.0 · 23-11-2026
 
 Te uploaden: app.js, index.html, logo-editor.js

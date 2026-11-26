@@ -641,8 +641,8 @@ const undoRedoStack = {
   redo: [],
   _statsDirty: true,
   _statsCache: null,
-  // 15 stappen: elke stap bevat een volledige canvas-serialisatie (incl.
-  // base64-beelddata van rasterlogo's) — 15 i.p.v. 30 halveert het geheugen
+  // 15 stappen. Beelddata van rasterlogo's zit NIET meer in elke stap maar
+  // één keer in _imgSrcPool (v2.66.4), dus een stap is klein.
   maxStates: 15,
 
   push(state) {
@@ -671,13 +671,19 @@ const undoRedoStack = {
   }
 };
 
-/* ── Undo / redo helpers ──
-   pushUndo()      — call BEFORE a programmatic change (delete, duplicate,
-                     recolor, repack, fill, clear, etc.)
-   Interactive transforms (drag/scale/rotate) are captured automatically
-   via before:transform → modified events on the canvas. */
+/* ── Undo / redo helpers (v2.66.4) ──
+   Commit-model: _committedState is de laatst vastgelegde toestand van het vel.
+   pushUndo()  — "leg vast": als het vel veranderd is t.o.v. _committedState,
+                 gaat _committedState op de undo-stapel en wordt de huidige
+                 toestand de nieuwe _committedState. Mag dus zowel VÓÓR als NÁ
+                 een wijziging aangeroepen worden: vóór sluit openstaande
+                 wijzigingen af als eigen stap, ná legt de wijziging zelf vast.
+                 Zonder verschil doet hij niets. Eén klik op undo is genoeg.
+   Interactieve transforms (slepen/schalen/draaien) worden vastgelegd via
+   before:transform en object:modified op het canvas. */
 
 let _isLoadingState = false;       // guard: don't record while restoring
+let _committedState = null;        // { json, svgSnap } — laatst vastgelegde toestand
 /* Draaihoek waarmee een logo "op zijn zij" wordt gelegd bij indelen/kopiëren.
    Een logo dat van zichzelf staand (portret) is, moet met 270° liggen om
    rechtop te lezen; 90° zet het op de kop (v2.62.2). Zodra de gebruiker zelf
@@ -689,8 +695,6 @@ function _rotAngleFor(oid, mmW, mmH){
   return (mmH > mmW) ? 270 : 90;
 }
 function _packRotAngle(o){ return _rotAngleFor(o._originalId, o._mmW, o._mmH); }
-
-let _preTransformSnap = null;      // snapshot taken before drag/scale/rotate
 
 function _snapshotSvgSources() {
   // Capture current svgSource per _originalId for undo restore.
@@ -713,33 +717,93 @@ function _restoreSvgSources(snap) {
   });
 }
 
+/* Undo-snapshot zonder dubbele beelddata: elke kopie van een rasterlogo deelt
+   dezelfde base64-src. We bewaren die src één keer in een pool en zetten in de
+   snapshot alleen een korte verwijzing ("@img:N"). Zonder dit was een undo-stap
+   bij 100 kopieën van een PNG van 3,6 MB al 358 MB en crashte de browser rond
+   150-200 kopieën ("Invalid string length"). v2.66.4 */
+const _imgSrcPool = new Map();      // N -> src
+const _imgRefByEl = new WeakMap();  // HTMLImageElement -> N
+const _imgRefBySrc = new Map();     // src -> N (na undo/redo zijn het nieuwe elementen met dezelfde src)
+let _imgSrcSeq = 0;
+function _imgRefFor(o){
+  const el = o._originalElement || o._element;
+  if(!el) return null;
+  let ref = _imgRefByEl.get(el);
+  if(ref == null){
+    const src = o.getSrc();
+    if(!src || src.length < 4096) return null;
+    ref = _imgRefBySrc.get(src);
+    if(ref == null){
+      ref = ++_imgSrcSeq;
+      _imgSrcPool.set(ref, src);
+      _imgRefBySrc.set(src, ref);
+    }
+    _imgRefByEl.set(el, ref);
+  }
+  return '@img:' + ref;
+}
+function _clearImgSrcPool(){
+  _imgSrcPool.clear();
+  _imgRefBySrc.clear();
+}
+function _serializeForUndo(){
+  const objects = canvas.getObjects().filter(o => !o.excludeFromExport).map(o => {
+    if(o.type === 'image'){
+      const ref = _imgRefFor(o);
+      if(ref){ o.getSrc = () => ref; try { return canvas._toObject(o, 'toObject', FABRIC_UNDO_PROPS); } finally { delete o.getSrc; } }
+    }
+    return canvas._toObject(o, 'toObject', FABRIC_UNDO_PROPS);
+  });
+  // Zelfde vorm als canvas.toJSON(): versie, objecten, achtergrond/overlay
+  return JSON.stringify(Object.assign({ version: fabric.version, objects },
+    canvas.__serializeBgOverlay('toObject', FABRIC_UNDO_PROPS)));
+}
+function _rehydrateUndoJson(jsonStr){
+  if(jsonStr.indexOf('"@img:') === -1) return jsonStr;
+  const data = JSON.parse(jsonStr);
+  (data.objects||[]).forEach(o => {
+    if(typeof o.src === 'string' && o.src.startsWith('@img:')) o.src = _imgSrcPool.get(+o.src.slice(5)) || '';
+  });
+  return data;
+}
+
+function _currentUndoState(){
+  return { json: _serializeForUndo(), svgSnap: _snapshotSvgSources() };
+}
+
 function pushUndo() {
   if(_isLoadingState) return;
-  const json = JSON.stringify(canvas.toJSON(FABRIC_UNDO_PROPS));
-  const svgSnap = _snapshotSvgSources();
-  undoRedoStack.undo.push({ json, svgSnap });
-  if(undoRedoStack.undo.length > undoRedoStack.maxStates) undoRedoStack.undo.shift();
-  undoRedoStack.redo = [];          // new action kills redo branch
+  const cur = _currentUndoState();
+  if(_committedState && cur.json === _committedState.json) return; // niets veranderd
+  if(_committedState){
+    undoRedoStack.undo.push(_committedState);
+    if(undoRedoStack.undo.length > undoRedoStack.maxStates) undoRedoStack.undo.shift();
+    undoRedoStack.redo = [];        // new action kills redo branch
+  }
+  _committedState = cur;
   undoRedoStack._statsDirty = true;
   updateUndoRedoButtons();
 }
 
 function undo() {
+  if(_isLoadingState) return;
+  pushUndo();                       // openstaande wijzigingen eerst vastleggen
   if(undoRedoStack.undo.length === 0) return;
-  const currentJson = JSON.stringify(canvas.toJSON(FABRIC_UNDO_PROPS));
-  const currentSvg = _snapshotSvgSources();
   const prev = undoRedoStack.undo.pop();
-  undoRedoStack.redo.push({ json: currentJson, svgSnap: currentSvg });
+  undoRedoStack.redo.push(_committedState);
+  _committedState = prev;
   loadCanvasState(prev.json, prev.svgSnap);
   updateUndoRedoButtons();
 }
 
 function redo() {
+  if(_isLoadingState) return;
+  pushUndo();                       // nieuwe wijzigingen wissen de redo-tak
   if(undoRedoStack.redo.length === 0) return;
-  const currentJson = JSON.stringify(canvas.toJSON(FABRIC_UNDO_PROPS));
-  const currentSvg = _snapshotSvgSources();
   const next = undoRedoStack.redo.pop();
-  undoRedoStack.undo.push({ json: currentJson, svgSnap: currentSvg });
+  undoRedoStack.undo.push(_committedState);
+  _committedState = next;
   loadCanvasState(next.json, next.svgSnap);
   updateUndoRedoButtons();
 }
@@ -747,12 +811,15 @@ function redo() {
 function loadCanvasState(jsonStr, svgSnap) {
   _isLoadingState = true;
   invalidateAllThumbs();
-  canvas.loadFromJSON(jsonStr, () => {
+  canvas.loadFromJSON(_rehydrateUndoJson(jsonStr), () => {
     // Re-attach SVG sources from snapshot
     if(svgSnap) _restoreSvgSources(svgSnap);
     canvas.getObjects().forEach(o => attachObjListeners(o));
     canvas.renderAll();
     _isLoadingState = false;
+    // Basislijn opnieuw uit het geladen vel halen, zodat kleine verschillen na
+    // het laden niet als nieuwe wijziging tellen (en de redo-tak niet wissen)
+    _committedState = _currentUndoState();
     renderItemList();
     renderSelectedPanel();
     updateInfoBar();
@@ -791,15 +858,15 @@ const FABRIC_EXTRA_PROPS = [
 ];
 const FABRIC_UNDO_PROPS = FABRIC_EXTRA_PROPS.filter(p => p !== '_svgSource');
 
-/* Capture state BEFORE any interactive transform starts.
-   The snapshot is pushed to the undo stack when 'modified' fires. */
-let _preTransformSvgSnap = null;
-canvas.on('before:transform', () => {
-  if(!_isLoadingState){
-    _preTransformSnap = JSON.stringify(canvas.toJSON(FABRIC_UNDO_PROPS));
-    _preTransformSvgSnap = _snapshotSvgSources();
-  }
-});
+/* Interactieve transforms: vóór het slepen openstaande wijzigingen vastleggen
+   (meestal een no-op), na afloop de transform zelf. Via een microtask, zodat
+   eerst de per-object 'modified'-handler en de multi-selectie-handler
+   (clamp/overlap/mm-sync) klaar zijn. */
+canvas.on('before:transform', () => { pushUndo(); });
+canvas.on('object:modified', () => { Promise.resolve().then(pushUndo); });
+
+// Startpunt van de undo-historie: het lege vel
+_committedState = _currentUndoState();
 
 /* ── Adaptieve object-caching ──────────────────────────────────────
    Vectorgroepen staan standaard op objectCaching=false voor maximale
@@ -833,16 +900,7 @@ function attachObjListeners(o){
   o.on('modified', ()=>{
     if(!state.manualMode){ clampObjToSheet(o); preventOverlap(o); }
     syncMmFromPx(o);
-    // Push the PRE-transform snapshot (state before drag/scale/rotate)
-    if(_preTransformSnap && !_isLoadingState){
-      undoRedoStack.undo.push({ json: _preTransformSnap, svgSnap: _preTransformSvgSnap });
-      if(undoRedoStack.undo.length > undoRedoStack.maxStates) undoRedoStack.undo.shift();
-      undoRedoStack.redo = [];
-      undoRedoStack._statsDirty = true;
-      _preTransformSnap = null;
-      _preTransformSvgSnap = null;
-      updateUndoRedoButtons();
-    }
+    // Undo-stap wordt vastgelegd door canvas.on('object:modified')
   });
   o.on('moving', ()=>{
     if(!state.manualMode){ clampObjToSheet(o); preventOverlap(o); }
@@ -6157,6 +6215,9 @@ function purgeAllLogos(){
   undoRedoStack.redo = [];
   undoRedoStack._statsDirty = true;
   undoRedoStack._statsCache = null;
+  _clearImgSrcPool();                  // vel is leeg, dus geen verwijzingen meer nodig
+  _committedState = _currentUndoState();
+  updateUndoRedoButtons();
   renderItemList();
   renderSelectedPanel();
   updateInfoBar();
@@ -8953,15 +9014,7 @@ canvas.on('object:modified', opt => {
   if(!state.manualMode){ clampObjToSheet(sel); preventOverlap(sel); }
   (sel._objects || []).forEach(_syncMemberMm);
   autoExtendIfNeeded();
-  if(_preTransformSnap && !_isLoadingState){
-    undoRedoStack.undo.push({ json: _preTransformSnap, svgSnap: _preTransformSvgSnap });
-    if(undoRedoStack.undo.length > undoRedoStack.maxStates) undoRedoStack.undo.shift();
-    undoRedoStack.redo = [];
-    undoRedoStack._statsDirty = true;
-    _preTransformSnap = null;
-    _preTransformSvgSnap = null;
-    updateUndoRedoButtons();
-  }
+  // Undo-stap: zie canvas.on('object:modified') bij de undo-code
   canvas.requestRenderAll();
   updateInfoBar();
 });
