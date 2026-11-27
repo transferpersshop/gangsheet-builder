@@ -8,7 +8,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument, rgb } = require('pdf-lib');
 
 const ROOT = path.resolve(__dirname, '..');
 const INDEX_HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -62,7 +62,9 @@ test('alle CDN-scripts in index.html hebben een exact versienummer en een integr
   }
 });
 
-test('builder laden, logo plaatsen en PDF exporteren', async ({ page, context }) => {
+// Laadt de builder met lokale CDN-bibliotheken en nep-Supabase. Geeft de lijst
+// met problemen (JS-fouten, ontbrekende bibliotheken) terug.
+async function openBuilder(page, context) {
   const problems = [];
   page.on('pageerror', (err) => problems.push(`JS-fout: ${err.message}`));
 
@@ -109,6 +111,11 @@ test('builder laden, logo plaatsen en PDF exporteren', async ({ page, context })
   await page.goto('/index.html');
   await expect(page.locator('#appContainer')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('#loginScreen')).toBeHidden();
+  return problems;
+}
+
+test('builder laden, logo plaatsen en PDF exporteren', async ({ page, context }) => {
+  const problems = await openBuilder(page, context);
 
   // Logo plaatsen
   await page.locator('#fileInput').setInputFiles(path.join(__dirname, 'fixtures', 'logo.svg'));
@@ -130,5 +137,42 @@ test('builder laden, logo plaatsen en PDF exporteren', async ({ page, context })
   expect(width).toBeGreaterThan(0);
   expect(height).toBeGreaterThan(0);
 
+  expect(problems, problems.join('\n')).toEqual([]);
+});
+
+// Afspraak: een upload komt altijd 1-op-1 op het vel. Een A3-PDF op een A3-vel
+// moet 297 × 420 mm blijven (tot v2.66.4 werd hij verkleind naar 90% van de
+// velbreedte). Met GSB_A3_PDF=<pad> test je een echt klantbestand in plaats
+// van het gegenereerde vel.
+test('A3-PDF op A3-vel blijft 1-op-1', async ({ page, context }) => {
+  const problems = await openBuilder(page, context);
+
+  let file = process.env.GSB_A3_PDF;
+  if (!file) {
+    const mm = 72 / 25.4;
+    const doc = await PDFDocument.create();
+    const pg = doc.addPage([297 * mm, 420 * mm]);
+    // Vlak tot op de rand, zodat bijsnijden niets weghaalt
+    pg.drawRectangle({ x: 0, y: 0, width: 297 * mm, height: 420 * mm, color: rgb(0.1, 0.3, 0.8) });
+    file = test.info().outputPath('a3-vol.pdf');
+    fs.writeFileSync(file, await doc.save());
+  }
+
+  await page.evaluate(() => switchSheetFormat('a3'));
+  await expect.poll(() => page.evaluate(() => [state.sheet.w, state.sheet.h])).toEqual([297, 420]);
+
+  await page.locator('#fileInput').setInputFiles(file);
+  await expect
+    .poll(() => page.evaluate(() => canvas.getObjects().filter((o) => o._mmW != null).length), { timeout: 60_000 })
+    .toBe(1);
+  const size = await page.evaluate(() => {
+    const o = canvas.getObjects().find((x) => x._mmW != null);
+    return { w: o._mmW, h: o._mmH };
+  });
+  console.log(`A3-test: geplaatst op ${size.w.toFixed(2)} × ${size.h.toFixed(2)} mm`);
+  if (!process.env.GSB_A3_PDF) {
+    expect(size.w).toBeCloseTo(297, 0);
+    expect(size.h).toBeCloseTo(420, 0);
+  }
   expect(problems, problems.join('\n')).toEqual([]);
 });
