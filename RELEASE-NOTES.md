@@ -1,3 +1,13 @@
+# Gangsheet Builder v2.66.5 · 27-11-2026
+
+Te uploaden: app.js, index.html
+
+## Uploads komen weer 1-op-1 op het vel
+- PDF/AI, SVG/EPS en PNG/JPG met DPI-info worden niet meer verkleind naar 90% van de velbreedte. Een A3-PDF op een A3-vel was 267,3 × 378 mm, en is nu 297 × 420 mm.
+- Alleen als een bestand echt groter is dan het vel, wordt het verkleind, en dan precies tot het past. Je krijgt daar een melding van met het percentage. Bij een DTF-rol telt alleen de breedte, want de rol groeit in de lengte mee.
+- Afrondingsverschillen van een paar duizendste mm (een A3-artboard uit Illustrator is 297,0007 mm breed) zetten we stil op de velmaat, anders paste een vel-vullend bestand net niet.
+- Nieuwe test: A3-PDF op A3-vel moet 297 × 420 mm blijven.
+
 # Gangsheet Builder v2.66.4 · 26-11-2026
 
 Te uploaden: app.js, index.html

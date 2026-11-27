@@ -191,6 +191,7 @@ const I18N = {
     formatTooSmall:'Logo\'s passen niet op dit formaat. Verwijder eerst logo\'s.',
     sheetLabel:'Vel', addSheet:'+ Nieuw vel',
     sizeTooLarge:'Logo te groot om te tilen op dit vel',
+    importScaledDown:(n,pct)=>`${n} is groter dan het vel en is verkleind naar ${pct}% zodat het past`,
     autoRotatedToFit:'Logo is automatisch 90° gedraaid om op het vel te passen',
     autoScaledToFit:'Logo 90° gedraaid en een klein beetje verkleind zodat het op het vel past',
     dupRepacked:'Indeling automatisch aangepast zodat alles op het vel past',
@@ -467,6 +468,7 @@ const I18N = {
     formatTooSmall:'Logos don\'t fit on this format. Remove logos first.',
     sheetLabel:'Sheet', addSheet:'+ New sheet',
     sizeTooLarge:'Logo too large to tile on this sheet',
+    importScaledDown:(n,pct)=>`${n} is larger than the sheet and was reduced to ${pct}% to fit`,
     autoRotatedToFit:'Logo was rotated 90° automatically to fit on the sheet',
     autoScaledToFit:'Logo rotated 90° and reduced very slightly to fit the sheet',
     dupRepacked:'Layout adjusted automatically so everything fits on the sheet',
@@ -1815,12 +1817,7 @@ function loadRaster(dataUrl, name, dpi){
         // Use real-world size from DPI metadata
         targetMmW = (cw / dpi) * 25.4;
         targetMmH = (ch / dpi) * 25.4;
-        // Clamp to 90% of sheet width if too large
-        if(targetMmW > state.sheet.w * 0.9){
-          const scale = (state.sheet.w * 0.9) / targetMmW;
-          targetMmW *= scale;
-          targetMmH *= scale;
-        }
+        [targetMmW, targetMmH] = fitImportToSheet(name, targetMmW, targetMmH);
         console.log(`[GSB] "${name}": DPI=${dpi}, real size=${targetMmW.toFixed(1)}×${targetMmH.toFixed(1)}mm (${cw}×${ch}px)`);
       } else {
         // No DPI info — use 25% of sheet width as fallback
@@ -3111,12 +3108,7 @@ async function loadPdfAsImage(arrayBuffer, name){
         // accounts for any remaining transparent border removal.
         let targetMmW = _refMmW * (cw / ow);
         let targetMmH = _refMmH * (ch / oh);
-        // Clamp to 90% of sheet width if too large
-        if(targetMmW > state.sheet.w * 0.9){
-          const sc = (state.sheet.w * 0.9) / targetMmW;
-          targetMmW *= sc;
-          targetMmH *= sc;
-        }
+        [targetMmW, targetMmH] = fitImportToSheet(name, targetMmW, targetMmH);
         if(pdfCropBox) cropped._pdfCropBox = pdfCropBox;
         // Illustrator-lagen (/OCProperties): bij embedPdf raakt de document-
         // brede lagen-administratie kwijt en verbergen viewers die content.
@@ -3287,12 +3279,7 @@ function loadSvg(svgText, name, extra, presetSpot){
       if(docSize){
         targetMmW = docSize.mmW;
         targetMmH = docSize.mmH;
-        // Clamp to sheet size
-        if(targetMmW > state.sheet.w){
-          const scale = state.sheet.w / targetMmW * 0.9;
-          targetMmW *= scale;
-          targetMmH *= scale;
-        }
+        [targetMmW, targetMmH] = fitImportToSheet(name, targetMmW, targetMmH);
       } else {
         // No physical size — use 25% of sheet width as default
         targetMmW = state.sheet.w * 0.25;
@@ -3567,6 +3554,32 @@ function autoCropSvg(svgText, callback){
 /* ── Bulk mode: defers expensive per-item operations during large uploads ── */
 let _bulkMode = false;
 let _bulkCount = 0;
+
+/* Importmaat: altijd 1-op-1 (v2.66.5).
+   Een upload houdt zijn echte maat uit het bestand. Alleen als het bestand
+   groter is dan het vel, verkleinen we, en dan precies tot het past (niet
+   meer naar 90% van de velbreedte zoals voorheen). Een DTF-rol groeit in de
+   lengte mee, dus daar telt alleen de breedte; A3/A4/A5 hebben een vaste
+   hoogte. Afrondingsverschillen pt→mm (A3-artboard = 297,0007 mm) tot
+   0,5 mm boven de velmaat zetten we stil op de velmaat, anders weigert de
+   plekzoeker een vel-vullend bestand. */
+const IMPORT_FIT_TOL_MM = 0.5;
+function fitImportToSheet(name, mmW, mmH){
+  const sw = state.sheet.w, sh = state.sheet.h;
+  const fixedH = !SHEET_FORMATS[state.sheetFormat]?.isDTF;
+  let s = 1;
+  if(mmW > sw) s = Math.min(s, sw / mmW);
+  if(fixedH && mmH > sh) s = Math.min(s, sh / mmH);
+  if(s >= 1) return [mmW, mmH];
+  const overW = mmW - sw, overH = fixedH ? mmH - sh : 0;
+  if(Math.max(overW, overH) > IMPORT_FIT_TOL_MM){
+    toast(t('importScaledDown', name, Math.floor(s * 1000) / 10), 'warn', 6000);
+  }
+  // Exact op de velmaat landen, zonder zwevende-kommarest erboven
+  const w = Math.min(mmW * s, sw);
+  const h = fixedH ? Math.min(mmH * s, sh) : mmH * s;
+  return [w, h];
+}
 
 function placeImage(obj, name, mmW, mmH, naturalW, naturalH, presetSpot){
   // presetSpot: vooraf berekende plek (batch-plaatsing) — slaat de zoektocht naar een vrije plek over
